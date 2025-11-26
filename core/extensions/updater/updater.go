@@ -170,9 +170,9 @@ func (e *UpdaterExt) Download(ctx context.Context, c *http.Client, url string) (
 
 			if total > 0 {
 				percent := float64(downloaded) / float64(total) * 100
-				fmt.Printf("\rDownloading... %.2f%%", percent)
+				logger.Info(fmt.Sprintf("\rDownloading... %.2f%%", percent))
 			} else {
-				fmt.Printf("\rDownloading... %d bytes", downloaded)
+				logger.Info(fmt.Sprintf("\rDownloading... %d bytes", downloaded))
 			}
 		}
 		if err != nil {
@@ -182,7 +182,7 @@ func (e *UpdaterExt) Download(ctx context.Context, c *http.Client, url string) (
 			return "", fmt.Errorf("read body: %w", err)
 		}
 	}
-	fmt.Println("\nDownload completed!")
+	logger.Info("\nDownload completed!")
 
 	return tmpFile.Name(), nil
 }

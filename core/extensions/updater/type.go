@@ -5,11 +5,11 @@ import (
 )
 
 type Config struct {
-	AppcastURL      string `yaml:"appcast_url"`
-	PublicKeyBase64 string `yaml:"public_key_base_64"`
-	PlatformKey     string `yaml:"platform_key"`
-	ForceElevate    bool   `yaml:"force_elevate"`
-	CurrentVersion  string `yaml:"current_version"`
+	AppcastURL      string `yaml:"appcast_url" json:"appcast_url"`
+	PublicKeyBase64 string `yaml:"public_key_base_64" json:"public_key_base_64"`
+	PlatformKey     string `yaml:"platform_key" json:"platform_key"`
+	ForceElevate    bool   `yaml:"force_elevate" json:"force_elevate"`
+	CurrentVersion  string `yaml:"current_version" json:"current_version"`
 }
 
 type StaticAppcast struct {
