@@ -1,0 +1,5 @@
+package window
+
+func New() {
+
+}

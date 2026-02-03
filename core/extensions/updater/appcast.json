@@ -1,0 +1,11 @@
+{
+  "version": "1.0.2",
+  "notes": "Improved performance and fixed some minor bugs.",
+  "pub_date": "2025-08-28T12:00:00Z",
+  "platforms": {
+    "windows-amd64": {
+      "url": "http://127.0.0.1:8080/RDMS-1.0.2-windows-amd64.msi",
+      "signature": "BASE64_SIGNATURE"
+    }
+  }
+}
