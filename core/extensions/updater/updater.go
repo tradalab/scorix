@@ -41,6 +41,12 @@ func (e *UpdaterExt) Init(ctx context.Context) (err error) {
 	extension.Expose(e, "CheckForUpdate")
 	extension.Expose(e, "FullUpdate")
 
+	if os.Getenv("SCORIX_UPDATER") == "1" {
+		logger.Info("[updater] replace AppImage")
+		runAppImageReplace()
+		return
+	}
+
 	return nil
 }
 
@@ -54,7 +60,6 @@ func defaultClient() *http.Client {
 }
 
 func (e *UpdaterExt) CheckForUpdate() (*Result, error) {
-
 	body, err := httpGet(context.Background(), defaultClient(), e.cfg.AppcastURL)
 	if err != nil {
 		return nil, err
@@ -217,33 +222,10 @@ func boolToByte(b bool) byte {
 	return 0
 }
 
-// RunInstaller run file .exe, can use elevation
-func RunInstaller(ctx context.Context, path string, elevate bool) error {
-	if runtime.GOOS != "windows" {
-		return fmt.Errorf("installer run only implemented for Windows")
-	}
-
-	args := []string{"/i", path, "/norestart"}
-
-	if !elevate {
-		cmd := exec.CommandContext(ctx, "msiexec.exe", args...)
-		cmd.Dir = filepath.Dir(path)
-		return cmd.Run()
-	}
-
-	// Elevate qua PowerShell
-	ps := fmt.Sprintf(`Start-Process -FilePath "msiexec.exe" -ArgumentList '%s' -Verb RunAs -Wait`,
-		`/i "`+path+`" /norestart`,
-	)
-
-	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps)
-	cmd.Dir = filepath.Dir(path)
-	return cmd.Run()
-}
-
 // FullUpdate flow: check -> download -> verify -> run
 func (e *UpdaterExt) FullUpdate() (*Result, error) {
 	ctx := context.Background()
+
 	res, err := e.CheckForUpdate()
 	if err != nil {
 		return res, err
@@ -258,15 +240,87 @@ func (e *UpdaterExt) FullUpdate() (*Result, error) {
 	}
 	res.LocalPath = localPath
 
-	// TODO verify data
-	//	if err := VerifyEd25519(p.cfg.PublicKeyBase64, res.SigBase64, data); err != nil {
-	//		return res, err
-	//	}
+	switch runtime.GOOS {
+	case "windows":
+		err = RunMSI(ctx, localPath, res.Elevate)
+	case "linux":
+		err = RunAppImage(ctx, localPath)
+	default:
+		err = fmt.Errorf("unsupported OS: %s", runtime.GOOS)
+	}
 
-	if err := RunInstaller(ctx, localPath, res.Elevate); err != nil {
+	if err != nil {
 		return res, err
 	}
+
 	return res, nil
+}
+
+// RunMSI run file .exe, can use elevation
+func RunMSI(ctx context.Context, path string, elevate bool) error {
+	if runtime.GOOS != "windows" {
+		return fmt.Errorf("installer run only implemented for Windows")
+	}
+
+	args := []string{"/i", path, "/norestart"}
+
+	if !elevate {
+		cmd := exec.CommandContext(ctx, "msiexec.exe", args...)
+		cmd.Dir = filepath.Dir(path)
+		return cmd.Run()
+	}
+
+	// Elevate with PowerShell
+	ps := fmt.Sprintf(`Start-Process -FilePath "msiexec.exe" -ArgumentList '%s' -Verb RunAs -Wait`, `/i "`+path+`" /norestart`)
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps)
+	cmd.Dir = filepath.Dir(path)
+
+	return cmd.Run()
+}
+
+// RunAppImage run file .AppImage
+func RunAppImage(ctx context.Context, newImage string) error {
+	self, err := os.Executable()
+	if err != nil {
+		return err
+	}
+
+	if err := os.Chmod(newImage, 0755); err != nil {
+		return fmt.Errorf("chmod appimage: %w", err)
+	}
+
+	return spawnAppImageUpdater(ctx, self, newImage)
+}
+
+func spawnAppImageUpdater(ctx context.Context, current, next string) error {
+	cmd := exec.CommandContext(ctx, current, "--appimage-update", current, next)
+	cmd.Env = append(os.Environ(), "SCORIX_UPDATER=1")
+	return cmd.Start()
+}
+
+func runAppImageReplace() {
+	if len(os.Args) < 3 {
+		os.Exit(1)
+	}
+
+	current := os.Args[1]
+	next := os.Args[2]
+
+	backup := current + ".bak"
+
+	_ = os.Remove(backup)
+	_ = os.Rename(current, backup)
+
+	if err := os.Rename(next, current); err != nil {
+		_ = os.Rename(backup, current)
+		os.Exit(1)
+	}
+
+	_ = os.Chmod(current, 0755)
+
+	// restart app
+	cmd := exec.Command(current)
+	cmd.Start()
 }
 
 func init() {
