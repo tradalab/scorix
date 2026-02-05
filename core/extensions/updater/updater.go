@@ -242,9 +242,21 @@ func (e *UpdaterExt) FullUpdate() (*Result, error) {
 
 	switch runtime.GOOS {
 	case "windows":
-		err = RunMSI(ctx, localPath, res.Elevate)
+		go func() {
+			err := RunMSI(ctx, localPath, res.Elevate)
+			if err != nil {
+				logger.Error(err.Error())
+				return
+			}
+		}()
 	case "linux":
-		err = RunAppImage(ctx, localPath)
+		go func() {
+			err := RunAppImage(ctx, localPath)
+			if err != nil {
+				logger.Error(err.Error())
+				return
+			}
+		}()
 	default:
 		err = fmt.Errorf("unsupported OS: %s", runtime.GOOS)
 	}
