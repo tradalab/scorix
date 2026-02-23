@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Chat</title>
+    <style>
+        .chat-box {
+            width: 400px;
+            margin: 30px auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            font-family: Arial, sans-serif;
+        }
+
+        #result {
+            height: 280px;
+            border: 1px solid #ddd;
+            padding: 8px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            background: #fafafa;
+        }
+
+        .msg {
+            margin: 5px 0;
+        }
+
+        .me {
+            color: #0b5ed7;
+            font-weight: bold;
+        }
+
+        .bot {
+            color: #198754;
+        }
+
+        form {
+            display: flex;
+            gap: 5px;
+        }
+
+        input {
+            flex: 1;
+            padding: 6px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="chat-box">
+    <h3>Chat</h3>
+    <div id="result"></div>
+    <form id="chat-form">
+        <input type="text" id="input" placeholder="Input message..." autocomplete="off"/>
+        <button id="btn" type="submit">Send</button>
+    </form>
+</div>
+
+<script type="module">
+    import scorix from "./scorix.js"
+
+    const form = document.querySelector("#chat-form")
+    const input = document.querySelector("#input")
+    const result = document.querySelector("#result")
+
+    function appendMessage(sender, text, cls) {
+        const div = document.createElement("div")
+        div.className = `msg ${cls}`
+        div.innerHTML = `<span class="${cls}">${sender}:</span> ${text}`
+        result.appendChild(div)
+        result.scrollTop = result.scrollHeight
+    }
+
+    async function sendMessage() {
+        const message = input.value.trim()
+        if (!message) return
+
+        appendMessage("You", message, "me")
+        input.value = ""
+
+        try {
+            const res = await scorix.invoke("send", {
+                user: "admin",
+                message: message
+            })
+
+            appendMessage("Bot", JSON.stringify(res), "bot")
+            console.log("invoke result:", res)
+        } catch (err) {
+            console.error(err)
+            appendMessage("System", "Error sending message", "bot")
+        }
+    }
+
+    form.addEventListener("submit", (e) => {
+        e.preventDefault()
+        sendMessage()
+    })
+
+    input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault()
+            sendMessage()
+        }
+    })
+</script>
+</body>
+</html>
