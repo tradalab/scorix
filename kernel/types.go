@@ -1,23 +1,19 @@
 package kernel
 
 import (
-	"context"
-
+	"github.com/tradalab/scorix/kernel/core/messaging/command"
+	"github.com/tradalab/scorix/kernel/core/messaging/event"
 	"github.com/tradalab/scorix/kernel/core/plugin"
 )
 
 type App interface {
 	Run() error
-	Expose(name string, handler any)
-	Resolve(name string, params any)
-	Emit(topic string, data any)
-	On(topic string, handler func(data any)) func()
+
+	Evt() *event.Event
+	Cmd() *command.Command
 
 	Close()
 	Show()
 
 	plugin.App
 }
-
-// todo: using ExposeHandlerFunc
-type ExposeHandlerFunc func(ctx context.Context, arg interface{}) (interface{}, error)

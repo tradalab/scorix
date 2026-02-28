@@ -2,30 +2,28 @@ package kernel
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"net"
 	"net/http"
 	"os"
-	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tradalab/scorix/kernel/core/config"
 	"github.com/tradalab/scorix/kernel/core/extension"
 	_ "github.com/tradalab/scorix/kernel/core/extensions"
-	"github.com/tradalab/scorix/kernel/core/ipc"
-	"github.com/tradalab/scorix/kernel/core/ipc/event"
-	"github.com/tradalab/scorix/kernel/core/ipc/invoke"
-	"github.com/tradalab/scorix/kernel/core/ipc/resolve"
+	"github.com/tradalab/scorix/kernel/core/messaging/command"
+	"github.com/tradalab/scorix/kernel/core/messaging/event"
 	"github.com/tradalab/scorix/kernel/core/plugin"
 	"github.com/tradalab/scorix/kernel/core/state"
+	"github.com/tradalab/scorix/kernel/internal/ipc"
 	"github.com/tradalab/scorix/kernel/internal/logger"
 	"github.com/tradalab/scorix/kernel/internal/sandbox"
 	"github.com/tradalab/scorix/kernel/internal/window"
 	"github.com/tradalab/scorix/kernel/internal/wv"
-	"github.com/tradalab/scorix/kernel/internal/ze"
 )
 
 type app struct {
@@ -37,6 +35,10 @@ type app struct {
 	server  *http.Server
 	store   *state.Store
 	plugins []plugin.Plugin
+	ipc     *ipc.IPC
+	cmd     *command.Command
+	evt     *event.Event
+	id      atomic.Int64
 }
 
 func New(initOpts []InitOption, appOpts ...AppOption) (App, error) {
@@ -79,7 +81,7 @@ func New(initOpts []InitOption, appOpts ...AppOption) (App, error) {
 		store:  state.New(),
 	}
 
-	if err := a.setupIPC(); err != nil {
+	if err := setupIPC(a); err != nil {
 		return nil, err
 	}
 
@@ -87,7 +89,7 @@ func New(initOpts []InitOption, appOpts ...AppOption) (App, error) {
 	a.ctx = context.WithValue(a.ctx, extension.KeyConfig, a.cfg.Raw)
 	a.ctx = context.WithValue(a.ctx, extension.KeyApp, a)
 
-	if err := extension.LoadExtensions(a.ctx); err != nil {
+	if err := extension.LoadExtensions(a.ctx, a.cmd); err != nil {
 		return nil, err
 	}
 
@@ -120,6 +122,12 @@ func (a *app) Cfg() *config.Config { return a.cfg }
 func (a *app) Store() *state.Store { return a.store }
 
 func (a *app) Run() error {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error(fmt.Sprintf("panic: %v", r))
+		}
+	}()
+
 	// 1. Start embedded server with sandbox middleware
 	addr, srv, err := a.startEmbeddedServer()
 	if err != nil {
@@ -136,68 +144,12 @@ func (a *app) Run() error {
 	return nil
 }
 
-func (a *app) On(topic string, handler func(data any)) func() {
-	return event.Subscribe(topic, handler)
+func (a *app) Cmd() *command.Command {
+	return a.cmd
 }
 
-func (a *app) Expose(name string, handler any) {
-	hv := reflect.ValueOf(handler)
-	ht := hv.Type()
-
-	// 1. Validate function signature
-	if ht.Kind() != reflect.Func {
-		panic("app expose: handler must be a function")
-	}
-	if ht.NumIn() != 2 {
-		panic("app expose: handler must have 2 arguments: (context.Context, args)")
-	}
-	if ht.NumOut() != 2 {
-		panic("app expose: handler must return (any, error)")
-	}
-
-	// in0 must be context.Context
-	if ht.In(0) != reflect.TypeOf((*context.Context)(nil)).Elem() {
-		panic("app expose: first argument must be context.Context")
-	}
-
-	// out1 must be error
-	if ht.Out(1) != reflect.TypeOf((*error)(nil)).Elem() {
-		panic("app expose: second return value must be error")
-	}
-
-	argType := ht.In(1)
-
-	// 2. Wrapper for invoke system
-	wrapped := func(ctx context.Context, raw json.RawMessage) (any, error) {
-		// decode args to real type
-		argVal, err := ze.DecodeArg(raw, argType)
-		if err != nil {
-			return nil, err
-		}
-
-		// call handler(ctx, args)
-		res := hv.Call([]reflect.Value{
-			reflect.ValueOf(ctx),
-			argVal,
-		})
-
-		// return (value, error)
-		if !res[1].IsNil() {
-			return nil, res[1].Interface().(error)
-		}
-		return res[0].Interface(), nil
-	}
-
-	// 3. Register invoke
-	invoke.Register(name, wrapped)
-}
-
-func (a *app) Resolve(name string, params any) {
-	resolve.CallJS(a.window, name, params)
-}
-
-func (a *app) Emit(topic string, data any) {
-	event.PublishJS(a.window, topic, data)
+func (a *app) Evt() *event.Event {
+	return a.evt
 }
 
 func (a *app) Close() {
@@ -230,42 +182,6 @@ func (a *app) Close() {
 
 func (a *app) Show() {
 	a.window.Show()
-}
-
-func (a *app) setupIPC() error {
-	//bridgeJS, err := fs.ReadFile(a.assets, "core/ipc/bridge.js")
-	//if err != nil {
-	//	return err
-	//}
-	//
-	//a.window.OnNavigated(func() {
-	//	a.window.Eval(string(bridgeJS))
-	//})
-
-	a.window.Bind("__scorix_bind_invoke", func(payload string) any {
-		logger.Info("invoke - payload: " + payload)
-
-		ctx := context.Background()
-		var envelope ipc.Envelope
-		if err := json.Unmarshal([]byte(payload), &envelope); err != nil {
-			return nil
-		}
-
-		switch envelope.Type {
-		case "invoke":
-			result, err := invoke.HandleSync(ctx, []byte(payload))
-			if err != nil {
-				return map[string]string{"error": err.Error()}
-			}
-			return result
-		case "event":
-			event.HandleJS(a.window, []byte(payload))
-			return nil
-		}
-		return nil
-	})
-
-	return nil
 }
 
 func (a *app) startEmbeddedServer() (string, *http.Server, error) {

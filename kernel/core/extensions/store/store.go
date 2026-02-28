@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/tradalab/scorix/kernel/core/extension"
+	"github.com/tradalab/scorix/kernel/core/messaging/command"
 	"github.com/tradalab/scorix/kernel/internal/logger"
 )
 
@@ -20,7 +21,7 @@ type StoreExt struct {
 
 func (e *StoreExt) Name() string { return "store" }
 
-func (e *StoreExt) Init(ctx context.Context) error {
+func (e *StoreExt) Init(ctx context.Context, cmd *command.Command) error {
 	logger.Info("[store] init")
 
 	e.data = make(map[string]interface{})

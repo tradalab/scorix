@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"embed"
+	"time"
 
 	scorix "github.com/tradalab/scorix/kernel"
 )
@@ -13,12 +14,12 @@ var embeddedPublic embed.FS
 //go:embed etc/app.yaml
 var configFile []byte
 
-type SendArgs struct {
+type Args struct {
 	User    string `json:"user"`
 	Message string `json:"message"`
 }
 
-type SendResult struct {
+type Result struct {
 	Message string `json:"message"`
 }
 
@@ -30,8 +31,15 @@ func main() {
 		scorix.WithAssets(embeddedPublic, "frontend"),
 	)
 
-	app.Expose("send", func(ctx context.Context, args SendArgs) (SendResult, error) {
-		return SendResult{Message: args.Message}, nil
+	app.Cmd().Handle("cmd-send", func(ctx context.Context, args Args) (Result, error) {
+		return Result{Message: args.Message}, nil
+	})
+
+	app.Evt().On("event:send", func(ctx context.Context, args Args) {
+		for i := 0; i < 5; i++ {
+			time.Sleep(2 * time.Second)
+			app.Evt().Emit(ctx, "", "event:send", Result{Message: args.Message})
+		}
 	})
 
 	if err := app.Run(); err != nil {

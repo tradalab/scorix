@@ -7,6 +7,7 @@ import (
 	"runtime"
 
 	"github.com/tradalab/scorix/kernel/core/extension"
+	"github.com/tradalab/scorix/kernel/core/messaging/command"
 	"github.com/tradalab/scorix/kernel/internal/logger"
 )
 
@@ -16,7 +17,7 @@ type FSExt struct {
 
 func (e *FSExt) Name() string { return "fs" }
 
-func (e *FSExt) Init(ctx context.Context) error {
+func (e *FSExt) Init(ctx context.Context, cmd *command.Command) error {
 	logger.Info("[fs] init")
 	if v, ok := extension.GetConfigPath(ctx, "app.name"); ok {
 		e.appName = v.(string)

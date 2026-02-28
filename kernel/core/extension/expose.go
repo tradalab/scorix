@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"reflect"
 
-	"github.com/tradalab/scorix/kernel/core/ipc/invoke"
+	"github.com/tradalab/scorix/kernel/core/messaging/command"
 	"github.com/tradalab/scorix/kernel/internal/ze"
 )
 
-func Expose(ext Extension, method string) {
+func Expose(ext Extension, method string, cmd *command.Command) {
 	v := reflect.ValueOf(ext)
 	m := v.MethodByName(method)
 	if !m.IsValid() {
@@ -73,5 +73,5 @@ func Expose(ext Extension, method string) {
 		return res[0].Interface(), nil
 	}
 
-	invoke.Register("ext:"+ext.Name()+":"+method, handler)
+	cmd.Handle("ext:"+ext.Name()+":"+method, handler)
 }

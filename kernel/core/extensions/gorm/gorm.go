@@ -8,6 +8,7 @@ import (
 
 	"github.com/tradalab/scorix/kernel/core/extension"
 	"github.com/tradalab/scorix/kernel/core/extensions/fs"
+	"github.com/tradalab/scorix/kernel/core/messaging/command"
 	"github.com/tradalab/scorix/kernel/internal/logger"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -21,7 +22,7 @@ func (e *GormExt) Name() string {
 	return "gorm"
 }
 
-func (e *GormExt) Init(ctx context.Context) error {
+func (e *GormExt) Init(ctx context.Context, cmd *command.Command) error {
 	logger.Info("[gorm] init")
 
 	// Get config from context
@@ -50,8 +51,7 @@ func (e *GormExt) Init(ctx context.Context) error {
 
 	logger.Info("[gorm] connected to sqlite: " + dbPath)
 
-	extension.Expose(e, "Query")
-	extension.Expose(e, "DB")
+	extension.Expose(e, "Query", cmd)
 
 	return nil
 }

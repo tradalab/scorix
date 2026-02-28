@@ -3,13 +3,14 @@ package extension
 import (
 	"context"
 
+	"github.com/tradalab/scorix/kernel/core/messaging/command"
 	"github.com/tradalab/scorix/kernel/internal/logger"
 )
 
 // LoadExtensions calls Init() for all extension
-func LoadExtensions(ctx context.Context) error {
+func LoadExtensions(ctx context.Context, cmd *command.Command) error {
 	for _, ext := range All() {
-		if err := ext.Init(ctx); err != nil {
+		if err := ext.Init(ctx, cmd); err != nil {
 			logger.Info("[extension] failed init " + ext.Name() + ": " + err.Error())
 			return err
 		}

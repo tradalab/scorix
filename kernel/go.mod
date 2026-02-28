@@ -1,9 +1,10 @@
 module github.com/tradalab/scorix/kernel
 
-go 1.24.10
+go 1.26.0
 
 require (
 	github.com/go-playground/validator/v10 v10.30.1
+	github.com/google/uuid v1.6.0
 	github.com/webview/webview_go v0.0.0-20240831120633-6173450d4dd6
 	go.uber.org/zap v1.27.1
 	golang.org/x/mod v0.33.0

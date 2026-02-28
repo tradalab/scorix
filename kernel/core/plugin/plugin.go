@@ -2,6 +2,8 @@ package plugin
 
 import (
 	"github.com/tradalab/scorix/kernel/core/config"
+	"github.com/tradalab/scorix/kernel/core/messaging/command"
+	"github.com/tradalab/scorix/kernel/core/messaging/event"
 	"github.com/tradalab/scorix/kernel/core/state"
 )
 
@@ -19,10 +21,8 @@ type Context struct {
 }
 
 type App interface {
-	Expose(name string, handler any)
-	Resolve(name string, params any)
-	Emit(topic string, data any)
-	On(topic string, handler func(data any)) func()
+	Evt() *event.Event
+	Cmd() *command.Command
 
 	Cfg() *config.Config
 	Store() *state.Store

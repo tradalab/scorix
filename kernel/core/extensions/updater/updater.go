@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/tradalab/scorix/kernel/core/extension"
+	"github.com/tradalab/scorix/kernel/core/messaging/command"
 	"github.com/tradalab/scorix/kernel/internal/logger"
 	"golang.org/x/mod/semver"
 )
@@ -28,7 +29,7 @@ func (e *UpdaterExt) Name() string {
 	return "updater"
 }
 
-func (e *UpdaterExt) Init(ctx context.Context) (err error) {
+func (e *UpdaterExt) Init(ctx context.Context, cmd *command.Command) (err error) {
 	logger.Info("[updater] init")
 
 	if v, ok := extension.GetConfigPath(ctx, "extensions.updater"); ok {
@@ -38,8 +39,8 @@ func (e *UpdaterExt) Init(ctx context.Context) (err error) {
 		}
 	}
 
-	extension.Expose(e, "CheckForUpdate")
-	extension.Expose(e, "FullUpdate")
+	extension.Expose(e, "CheckForUpdate", cmd)
+	extension.Expose(e, "FullUpdate", cmd)
 
 	return nil
 }

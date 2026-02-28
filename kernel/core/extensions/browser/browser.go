@@ -7,6 +7,7 @@ import (
 	"runtime"
 
 	"github.com/tradalab/scorix/kernel/core/extension"
+	"github.com/tradalab/scorix/kernel/core/messaging/command"
 	"github.com/tradalab/scorix/kernel/internal/logger"
 )
 
@@ -17,10 +18,10 @@ func (e *BrowserExt) Name() string {
 	return "browser"
 }
 
-func (e *BrowserExt) Init(ctx context.Context) error {
+func (e *BrowserExt) Init(ctx context.Context, cmd *command.Command) error {
 	logger.Info("[browser] init")
 
-	extension.Expose(e, "OpenUrl")
+	extension.Expose(e, "OpenUrl", cmd)
 
 	return nil
 }
