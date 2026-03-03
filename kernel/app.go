@@ -74,18 +74,22 @@ func New(initOpts []InitOption, appOpts ...AppOption) (App, error) {
 		return nil, err
 	}
 
+	bridge := ipc.NewJSBridge(wnd)
+	ipcIns := ipc.New(&bridge)
+	ipcIns.Start()
+
+	// 5. Init app
 	a := &app{
 		ctx:    context.Background(),
 		cfg:    cfg,
 		window: wnd,
 		store:  state.New(),
+		ipc:    ipcIns,
+		cmd:    command.New(ipcIns),
+		evt:    event.New(ipcIns),
 	}
 
-	if err := setupIPC(a); err != nil {
-		return nil, err
-	}
-
-	// 5. Load extensions
+	// 6. Load extensions
 	a.ctx = context.WithValue(a.ctx, extension.KeyConfig, a.cfg.Raw)
 	a.ctx = context.WithValue(a.ctx, extension.KeyApp, a)
 
