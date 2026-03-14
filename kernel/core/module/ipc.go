@@ -12,8 +12,9 @@ const ipcKind = "command" // must match what the JS bridge sends (kind: "command
 
 // ModuleIPC provides a namespaced IPC surface for a single module.
 // All handler names are registered as "command" kind, namespaced as
-// "<module>:<handlerName>" so they are addressable from JS via:
-//   scorix.invoke("gorm:Query", payload)
+// "mod:<module>:<handlerName>" so they are addressable from JS via:
+//
+//	scorix.invoke("mod:gorm:Query", payload)
 type ModuleIPC struct {
 	moduleName string
 	ipc        *ipc.IPC
@@ -29,11 +30,11 @@ func NewModuleIPC(name string, core *ipc.IPC) *ModuleIPC {
 
 // topic returns the fully-qualified IPC handler name "<module>:<name>".
 func (m *ModuleIPC) topic(name string) string {
-	return fmt.Sprintf("%s:%s", m.moduleName, name)
+	return fmt.Sprintf("mod:%s:%s", m.moduleName, name)
 }
 
-// Handle registers a handler for the IPC command "<module>:<name>".
-// From JS: scorix.invoke("<module>:<name>", payload)
+// Handle registers a handler for the IPC command "mod:<module>:<name>".
+// From JS: scorix.invoke("mod:<module>:<name>", payload)
 func (m *ModuleIPC) Handle(name string, exec func(context.Context, json.RawMessage) (any, error)) {
 	handler := ipc.Handler{
 		Kind: ipcKind, // "command" — must match JS bridge
@@ -56,7 +57,7 @@ func (m *ModuleIPC) Invoke(ctx context.Context, name string, payload any) (ipc.M
 }
 
 // EmitEvent broadcasts an event to the frontend.
-// Received in JS via: scorix.on("<module>:<name>", handler)
+// Received in JS via: scorix.on("mod:<module>:<name>", handler)
 func (m *ModuleIPC) EmitEvent(ctx context.Context, name string, payload any) error {
 	data, _ := json.Marshal(payload)
 	msg := ipc.Message{
