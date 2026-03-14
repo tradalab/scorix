@@ -3,7 +3,7 @@ package state
 import (
 	"sync"
 
-	"github.com/tradalab/scorix/kernel/internal/logger"
+	"github.com/tradalab/scorix/logger"
 )
 
 type Store struct {

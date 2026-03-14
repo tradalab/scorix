@@ -3,7 +3,7 @@ package sandbox
 import (
 	"fmt"
 
-	"github.com/tradalab/scorix/kernel/internal/logger"
+	"github.com/tradalab/scorix/logger"
 )
 
 // Validate — call before IPC

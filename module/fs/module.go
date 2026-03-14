@@ -9,7 +9,8 @@ package fs
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"github.com/tradalab/scorix/logger"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -35,7 +36,7 @@ func (m *FSModule) Version() string { return "1.0.0" }
 // ////////// Lifecycle ////////// ////////// ////////// ////////// ////////// //////////
 
 func (m *FSModule) OnLoad(ctx *module.Context) error {
-	log.Printf("[fs] loading (v%s)", m.Version())
+	logger.Info(fmt.Sprintf("[fs] loading (v%s)", m.Version()))
 
 	// Grab the app name from the context to construct paths.
 	m.appName = ctx.AppName

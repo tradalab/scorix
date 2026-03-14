@@ -4,7 +4,7 @@ import (
 	"io/fs"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/tradalab/scorix/kernel/internal/logger"
+	"github.com/tradalab/scorix/logger"
 )
 
 type Config struct {

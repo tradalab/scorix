@@ -20,7 +20,8 @@ package template
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"github.com/tradalab/scorix/logger"
 
 	"github.com/tradalab/scorix/kernel/core/module"
 )
@@ -61,7 +62,7 @@ func (m *TemplateModule) Version() string { return "1.0.0" }
 // - Open connections / initialise resources
 // - Register IPC handlers via module.Expose(m, "MethodName", ctx.IPC)
 func (m *TemplateModule) OnLoad(ctx *module.Context) error {
-	log.Printf("[%s] loading (v%s)", m.Name(), m.Version())
+	logger.Info(fmt.Sprintf("[%s] loading (v%s)", m.Name(), m.Version()))
 
 	m.ctx = ctx
 
@@ -78,7 +79,7 @@ func (m *TemplateModule) OnLoad(ctx *module.Context) error {
 	// This binds Hello() as "template:Hello", callable from JS:
 	//   scorix.invoke("template:Hello", payload)
 
-	log.Printf("[%s] loaded", m.Name())
+	logger.Info(fmt.Sprintf("[%s] loaded", m.Name()))
 	return nil
 }
 
@@ -86,7 +87,7 @@ func (m *TemplateModule) OnLoad(ctx *module.Context) error {
 // Use it for tasks that depend on other modules being ready,
 // or for starting background goroutines.
 func (m *TemplateModule) OnStart() error {
-	log.Printf("[%s] started", m.Name())
+	logger.Info(fmt.Sprintf("[%s] started", m.Name()))
 	// TODO: start background work here (goroutines, timers, etc.)
 	return nil
 }
@@ -94,7 +95,7 @@ func (m *TemplateModule) OnStart() error {
 // OnStop is called during graceful shutdown (reverse order of OnStart).
 // Close connections, cancel contexts, stop goroutines.
 func (m *TemplateModule) OnStop() error {
-	log.Printf("[%s] stopping", m.Name())
+	logger.Info(fmt.Sprintf("[%s] stopping", m.Name()))
 	// TODO: stop background work, close resources.
 	return nil
 }
@@ -102,7 +103,7 @@ func (m *TemplateModule) OnStop() error {
 // OnUnload is called after OnStop.
 // Release any remaining state.
 func (m *TemplateModule) OnUnload() error {
-	log.Printf("[%s] unloaded", m.Name())
+	logger.Info(fmt.Sprintf("[%s] unloaded", m.Name()))
 	return nil
 }
 

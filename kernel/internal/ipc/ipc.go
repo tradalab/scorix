@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 
-	log "github.com/tradalab/scorix/kernel/internal/logger"
+	"github.com/tradalab/scorix/logger"
 )
 
 type Handler struct {
@@ -61,7 +61,7 @@ func (i *IPC) loop() {
 func (i *IPC) handle(env envelope) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Error("IPC:handle - recovered", log.Any("error", r))
+			logger.Error("IPC:handle - recovered", logger.Any("error", r))
 			_ = i.bridge.Emit(env.ctx, Message{
 				Id:    env.msg.Id,
 				Kind:  env.msg.Kind,
@@ -151,7 +151,7 @@ func (i *IPC) UnregisterPending(id string) {
 }
 
 func (i *IPC) On(ctx context.Context, msg Message) Message {
-	log.Info("IPC:On()", log.Any("msg", msg))
+	logger.Info("IPC:On()", logger.Any("msg", msg))
 	switch msg.State {
 	case StateDone, StateError, StateChunk:
 		ch := i.getPending(msg.Id)
@@ -168,7 +168,7 @@ func (i *IPC) On(ctx context.Context, msg Message) Message {
 	select {
 	case i.queue <- envelope{ctx: ctx, msg: msg}:
 	default:
-		log.Error("IPC queue full")
+		logger.Error("IPC queue full")
 		return Message{
 			Id:    msg.Id,
 			Kind:  msg.Kind,

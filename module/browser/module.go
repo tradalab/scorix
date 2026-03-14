@@ -10,7 +10,7 @@ package browser
 import (
 	"context"
 	"fmt"
-	"log"
+	"github.com/tradalab/scorix/logger"
 	"os/exec"
 	"runtime"
 
@@ -33,7 +33,7 @@ func (m *BrowserModule) Version() string { return "1.0.0" }
 // ////////// Lifecycle ////////// ////////// ////////// ////////// ////////// //////////
 
 func (m *BrowserModule) OnLoad(ctx *module.Context) error {
-	log.Printf("[browser] loading (v%s)", m.Version())
+	logger.Info(fmt.Sprintf("[browser] loading (v%s)", m.Version()))
 
 	// Register IPC handlers.
 	module.Expose(m, "OpenUrl", ctx.IPC)

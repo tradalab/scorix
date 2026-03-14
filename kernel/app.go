@@ -18,7 +18,7 @@ import (
 	"github.com/tradalab/scorix/kernel/core/module"
 	"github.com/tradalab/scorix/kernel/core/state"
 	"github.com/tradalab/scorix/kernel/internal/ipc"
-	"github.com/tradalab/scorix/kernel/internal/logger"
+	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/kernel/internal/sandbox"
 	"github.com/tradalab/scorix/kernel/internal/window"
 	"github.com/tradalab/scorix/kernel/internal/wv"

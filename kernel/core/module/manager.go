@@ -9,7 +9,7 @@ import (
 
 	"github.com/tradalab/scorix/kernel/core/config"
 	"github.com/tradalab/scorix/kernel/internal/ipc"
-	"github.com/tradalab/scorix/kernel/internal/logger"
+	"github.com/tradalab/scorix/logger"
 )
 
 // Manager handles the full lifecycle of registered modules.

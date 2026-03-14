@@ -22,7 +22,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
+	"github.com/tradalab/scorix/logger"
 	"os"
 	"path/filepath"
 	"sync"
@@ -191,7 +191,7 @@ func (m *GormModule) DB() *gorm.DB {
 // ////////// Lifecycle ////////// ////////// ////////// ////////// ////////// //////////
 
 func (m *GormModule) OnLoad(ctx *module.Context) error {
-	log.Printf("[gorm] loading (v%s)", m.Version())
+	logger.Info(fmt.Sprintf("[gorm] loading (v%s)", m.Version()))
 
 	// Decode and apply defaults.
 	if err := ctx.Decode(&m.cfg); err != nil {
@@ -201,7 +201,7 @@ func (m *GormModule) OnLoad(ctx *module.Context) error {
 
 	// Build GORM logger.
 	glog := gormlogger.New(
-		log.Default(),
+		gormLogAdapter{},
 		gormlogger.Config{
 			SlowThreshold:             time.Duration(m.cfg.SlowThresholdMs) * time.Millisecond,
 			LogLevel:                  m.cfg.gormLogLevel(),
@@ -267,7 +267,7 @@ func (m *GormModule) OnLoad(ctx *module.Context) error {
 	m.db = db
 	m.mu.Unlock()
 
-	log.Printf("[gorm] connected: %s (pool max_open=%d max_idle=%d log=%s)", dbDesc, m.cfg.MaxOpenConns, m.cfg.MaxIdleConns, m.cfg.LogLevel)
+	logger.Info(fmt.Sprintf("[gorm] connected: %s (pool max_open=%d max_idle=%d log=%s)", dbDesc, m.cfg.MaxOpenConns, m.cfg.MaxIdleConns, m.cfg.LogLevel))
 
 	// AutoMigrate registered models.
 	m.mu.RLock()
@@ -275,10 +275,10 @@ func (m *GormModule) OnLoad(ctx *module.Context) error {
 	m.mu.RUnlock()
 	if len(models) > 0 {
 		if err := db.AutoMigrate(models...); err != nil {
-			log.Println("[gorm] migrate failed: ", err)
+			logger.Error(fmt.Sprintf("[gorm] migrate failed: %v", err))
 			return fmt.Errorf("[gorm] auto-migrate: %w", err)
 		}
-		log.Printf("[gorm] auto-migrated %d model(s)", len(models))
+		logger.Info(fmt.Sprintf("[gorm] auto-migrated %d model(s)", len(models)))
 	}
 
 	// Register IPC handlers.
@@ -291,16 +291,16 @@ func (m *GormModule) OnLoad(ctx *module.Context) error {
 }
 
 func (m *GormModule) OnStart() error {
-	log.Println("[gorm] started")
+	logger.Info("[gorm] started")
 	if m.seedFn != nil {
-		log.Println("[gorm] running seed function")
+		logger.Info("[gorm] running seed function")
 		m.seedFn(m.db)
 	}
 	return nil
 }
 
 func (m *GormModule) OnStop() error {
-	log.Println("[gorm] stopping")
+	logger.Info("[gorm] stopping")
 	m.mu.RLock()
 	db := m.db
 	m.mu.RUnlock()
@@ -313,17 +313,23 @@ func (m *GormModule) OnStop() error {
 		return nil
 	}
 	if cerr := sqlDB.Close(); cerr != nil {
-		log.Printf("[gorm] close error: %v", cerr)
+		logger.Error(fmt.Sprintf("[gorm] close error: %v", cerr))
 	}
 	return nil
 }
 
 func (m *GormModule) OnUnload() error {
-	log.Println("[gorm] unloaded")
+	logger.Info("[gorm] unloaded")
 	return nil
 }
 
 // ////////// Helpers ////////// ////////// ////////// ////////// ////////// //////////
+
+type gormLogAdapter struct{}
+
+func (gormLogAdapter) Printf(format string, args ...interface{}) {
+	logger.Info(fmt.Sprintf(format, args...))
+}
 
 func (m *GormModule) readDB() (*gorm.DB, error) {
 	m.mu.RLock()
