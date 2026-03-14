@@ -16,7 +16,6 @@ import (
 	"github.com/tradalab/scorix/kernel/core/messaging/command"
 	"github.com/tradalab/scorix/kernel/core/messaging/event"
 	"github.com/tradalab/scorix/kernel/core/module"
-	"github.com/tradalab/scorix/kernel/core/plugin"
 	"github.com/tradalab/scorix/kernel/core/state"
 	"github.com/tradalab/scorix/kernel/internal/ipc"
 	"github.com/tradalab/scorix/kernel/internal/logger"
@@ -33,7 +32,6 @@ type app struct {
 	window  window.Window
 	server  *http.Server
 	store   *state.Store
-	plugins []plugin.Plugin
 	ipc     *ipc.IPC
 	cmd     *command.Command
 	evt     *event.Event
@@ -64,7 +62,7 @@ func New(initOpts []InitOption, appOpts ...AppOption) (App, error) {
 	sandbox.Init(sandbox.Config{
 		CSP:             cfg.Security.CSP,
 		AllowRightClick: cfg.Security.AllowRightClick,
-		Allowlist:       sandbox.Allowlist{
+		Allowlist: sandbox.Allowlist{
 			// TODO rewrite
 		},
 	})
