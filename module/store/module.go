@@ -12,7 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"github.com/tradalab/scorix/logger"
 	"os"
 	"path/filepath"
 	"sync"
@@ -48,7 +48,7 @@ func (m *StoreModule) Version() string { return "1.0.0" }
 // ////////// Lifecycle ////////// ////////// ////////// ////////// ////////// //////////
 
 func (m *StoreModule) OnLoad(ctx *module.Context) error {
-	log.Printf("[store] loading (v%s)", m.Version())
+	logger.Info(fmt.Sprintf("[store] loading (v%s)", m.Version()))
 
 	if err := ctx.Decode(&m.cfg); err != nil {
 		return fmt.Errorf("decode config: %w", err)
@@ -65,10 +65,10 @@ func (m *StoreModule) OnLoad(ctx *module.Context) error {
 	}
 
 	if err := m.loadFromFile(); err != nil {
-		log.Printf("[store] failed to load file %s: %v", m.filePath, err)
+		logger.Error(fmt.Sprintf("[store] failed to load file %s: %v", m.filePath, err))
 		// we don't return error here so that fresh installations can start
 	} else {
-		log.Printf("[store] loaded data from %s", m.filePath)
+		logger.Info(fmt.Sprintf("[store] loaded data from %s", m.filePath))
 	}
 
 	// Register IPC handlers
@@ -83,7 +83,7 @@ func (m *StoreModule) OnLoad(ctx *module.Context) error {
 func (m *StoreModule) OnStart() error { return nil }
 
 func (m *StoreModule) OnStop() error {
-	log.Println("[store] stopping, saving data...")
+	logger.Info("[store] stopping, saving data...")
 	if err := m.saveToFile(); err != nil {
 		return fmt.Errorf("error saving store data: %w", err)
 	}
@@ -160,7 +160,7 @@ func (m *StoreModule) Set(ctx context.Context, req map[string]interface{}) (inte
 	m.mu.Unlock()
 
 	if err := m.saveToFile(); err != nil {
-		log.Println("[store] save failed:", err)
+		logger.Error(fmt.Sprintf("[store] save failed: %v", err))
 	}
 
 	return "ok", nil
@@ -197,7 +197,7 @@ func (m *StoreModule) Delete(ctx context.Context, req map[string]interface{}) (i
 	m.mu.Unlock()
 
 	if err := m.saveToFile(); err != nil {
-		log.Println("[store] save failed:", err)
+		logger.Error(fmt.Sprintf("[store] save failed: %v", err))
 	}
 
 	return "ok", nil

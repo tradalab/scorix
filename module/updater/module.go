@@ -22,7 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"github.com/tradalab/scorix/logger"
 	"net/http"
 	"os"
 	"os/exec"
@@ -86,7 +86,7 @@ func (m *UpdaterModule) Version() string { return "1.0.0" }
 // ////////// Lifecycle ////////// ////////// ////////// ////////// ////////// //////////
 
 func (m *UpdaterModule) OnLoad(ctx *module.Context) error {
-	log.Printf("[updater] loading (v%s)", m.Version())
+	logger.Info(fmt.Sprintf("[updater] loading (v%s)", m.Version()))
 
 	if err := ctx.Decode(&m.cfg); err != nil {
 		return fmt.Errorf("decode config: %w", err)
@@ -98,10 +98,11 @@ func (m *UpdaterModule) OnLoad(ctx *module.Context) error {
 
 	if m.cfg.Provider == "github" {
 		m.provider = NewGitHubProvider(m.cfg.GitHubRepo)
-		log.Printf("[updater] using GitHub provider: repo=%s, platform=%s", m.cfg.GitHubRepo, m.cfg.PlatformKey)
+		logger.Info(fmt.Sprintf("[updater] using GitHub provider: repo=%s, platform=%s", m.cfg.GitHubRepo, m.cfg.PlatformKey))
 	} else {
-		m.provider = NewAppcastProvider(m.cfg.AppcastURL)
-		log.Printf("[updater] using Appcast provider: url=%s, platform=%s", m.cfg.AppcastURL, m.cfg.PlatformKey)
+		// Default to appcast
+		m.provider = &AppcastProvider{appcastURL: m.cfg.AppcastURL}
+		logger.Info(fmt.Sprintf("[updater] using Appcast provider: url=%s, platform=%s", m.cfg.AppcastURL, m.cfg.PlatformKey))
 	}
 
 	module.Expose(m, "CheckForUpdate", ctx.IPC)
@@ -191,9 +192,9 @@ func (m *UpdaterModule) Download(ctx context.Context, c *http.Client, url string
 
 			if total > 0 {
 				percent := float64(downloaded) / float64(total) * 100
-				log.Printf("[updater] Downloading... %.2f%%", percent)
+				logger.Info(fmt.Sprintf("[updater] Downloading... %.2f%%", percent))
 			} else {
-				log.Printf("[updater] Downloading... %d bytes", downloaded)
+				logger.Info(fmt.Sprintf("[updater] Downloading... %d bytes", downloaded))
 			}
 		}
 		if err != nil {
@@ -203,7 +204,7 @@ func (m *UpdaterModule) Download(ctx context.Context, c *http.Client, url string
 			return "", fmt.Errorf("read body: %w", err)
 		}
 	}
-	log.Println("[updater] Download completed!")
+	logger.Info("[updater] Download completed!")
 
 	return tmpFile.Name(), nil
 }
@@ -303,7 +304,7 @@ func (m *UpdaterModule) FullUpdate(ctx context.Context) (*Result, error) {
 	// 	return res, err
 	// }
 
-	log.Printf("[updater] Running installer at: %s", localPath)
+	logger.Info(fmt.Sprintf("[updater] Running installer at: %s", localPath))
 	if err := RunInstaller(ctx, localPath, res.Elevate); err != nil {
 		return res, err
 	}

@@ -1,6 +1,6 @@
 package sandbox
 
-import "github.com/tradalab/scorix/kernel/internal/logger"
+import "github.com/tradalab/scorix/logger"
 
 var cfg Config
 

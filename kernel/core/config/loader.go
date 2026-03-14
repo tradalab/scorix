@@ -5,7 +5,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/tradalab/scorix/kernel/internal/logger"
+	"github.com/tradalab/scorix/logger"
 	"gopkg.in/yaml.v3"
 )
 
