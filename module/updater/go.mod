@@ -3,7 +3,7 @@ module github.com/tradalab/scorix/module/updater
 go 1.26.0
 
 require (
-	github.com/tradalab/scorix/kernel v0.0.0
+	github.com/tradalab/scorix/kernel v0.0.0-20260314105317-a63f5e003917
 	golang.org/x/mod v0.33.0
 )
 
@@ -22,5 +22,3 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/tradalab/scorix/kernel => ../../kernel

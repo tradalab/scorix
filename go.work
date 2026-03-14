@@ -4,10 +4,4 @@ use (
 	cli
 	examples/ipcconsole
 	kernel
-	module/browser
-	module/fs
-	module/gorm
-	module/store
-	module/template
-	module/updater
 )
