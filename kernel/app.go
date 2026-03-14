@@ -62,7 +62,7 @@ func New(initOpts []InitOption, appOpts ...AppOption) (App, error) {
 	sandbox.Init(sandbox.Config{
 		CSP:             cfg.Security.CSP,
 		AllowRightClick: cfg.Security.AllowRightClick,
-		Allowlist: sandbox.Allowlist{
+		Allowlist:       sandbox.Allowlist{
 			// TODO rewrite
 		},
 	})
