@@ -102,7 +102,7 @@ func (m *TemplateModule) OnUnload() error {
 	return nil
 }
 
-// ─── IPC Handler Examples ─────────────────────────────────────────────────────
+// ////////// IPC Handler Examples ////////// ////////// ////////// ////////// ////////// //////////
 // Each exported method below can be exposed as an IPC handler via
 // module.Expose(m, "MethodName", ctx.IPC) inside OnLoad.
 //
