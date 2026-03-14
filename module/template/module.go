@@ -34,6 +34,8 @@ type Config struct {
 	//   DSN     string `json:"dsn"`
 }
 
+// ////////// Module ////////// ////////// ////////// ////////// ////////// //////////
+
 // TemplateModule is a minimal scorix module skeleton.
 // Rename to match your module's domain.
 type TemplateModule struct {
@@ -51,6 +53,8 @@ func (m *TemplateModule) Name() string { return "template" }
 
 // Version is the module's semantic version string.
 func (m *TemplateModule) Version() string { return "1.0.0" }
+
+// ////////// Lifecycle ////////// ////////// ////////// ////////// ////////// //////////
 
 // OnLoad is called once when the module is loaded.
 // - Decode config from ctx
@@ -70,7 +74,7 @@ func (m *TemplateModule) OnLoad(ctx *module.Context) error {
 	// e.g. open a DB, connect to a service, etc.
 
 	// Register IPC handlers:
-	//   module.Expose(m, "Hello", ctx.IPC)
+	module.Expose(m, "Hello", ctx.IPC)
 	// This binds Hello() as "template:Hello", callable from JS:
 	//   scorix.invoke("template:Hello", payload)
 
@@ -102,7 +106,7 @@ func (m *TemplateModule) OnUnload() error {
 	return nil
 }
 
-// ////////// IPC Handler Examples ////////// ////////// ////////// ////////// ////////// //////////
+// ////////// IPC Handler ////////// ////////// ////////// ////////// ////////// //////////
 // Each exported method below can be exposed as an IPC handler via
 // module.Expose(m, "MethodName", ctx.IPC) inside OnLoad.
 //
