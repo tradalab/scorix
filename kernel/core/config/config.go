@@ -23,6 +23,17 @@ type Config struct {
 
 	Plugins map[string]PluginConfig `yaml:"plugins" json:"plugins"`
 
+	// Modules holds per-module config blocks.
+	// Each key is the module name; the value is a free-form map
+	// so module packages can define their own config shape.
+	//
+	// Example app.yaml:
+	//   modules:
+	//     gorm:
+	//       enabled: true
+	//       dsn: app.dat
+	Modules map[string]any `yaml:"modules" json:"modules"`
+
 	Extensions struct {
 		Updater struct {
 			AppcastURL      string `yaml:"appcast_url" json:"appcast_url"`
@@ -41,10 +52,10 @@ type Config struct {
 }
 
 type WindowConfig struct {
-	Title  string `yaml:"title" json:"title" json:"title"`
-	Width  int    `yaml:"width" json:"width" json:"width"`
-	Height int    `yaml:"height" json:"height" json:"height"`
-	Debug  bool   `yaml:"debug" json:"debug" json:"debug"`
+	Title  string `yaml:"title" json:"title"`
+	Width  int    `yaml:"width" json:"width"`
+	Height int    `yaml:"height" json:"height"`
+	Debug  bool   `yaml:"debug" json:"debug"`
 }
 
 type LoggerConfig struct {

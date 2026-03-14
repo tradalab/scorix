@@ -1,4 +1,5 @@
 .idea
 **/.scorix
 /etc
-README.md
+
+*.exe
