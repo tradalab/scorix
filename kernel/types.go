@@ -1,10 +1,10 @@
 package kernel
 
 import (
+	"github.com/tradalab/scorix/kernel/core/config"
 	"github.com/tradalab/scorix/kernel/core/messaging/command"
 	"github.com/tradalab/scorix/kernel/core/messaging/event"
 	"github.com/tradalab/scorix/kernel/core/module"
-	"github.com/tradalab/scorix/kernel/core/plugin"
 )
 
 type App interface {
@@ -19,6 +19,5 @@ type App interface {
 
 	Close()
 	Show()
-
-	plugin.App
+	Cfg() *config.Config
 }
