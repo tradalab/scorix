@@ -13,9 +13,11 @@ import (
 	"time"
 
 	"github.com/tradalab/scorix/kernel/core/config"
+	"github.com/tradalab/scorix/kernel/core/extension"
+	_ "github.com/tradalab/scorix/kernel/core/extensions"
 	"github.com/tradalab/scorix/kernel/core/messaging/command"
 	"github.com/tradalab/scorix/kernel/core/messaging/event"
-	"github.com/tradalab/scorix/kernel/core/module"
+	"github.com/tradalab/scorix/kernel/core/plugin"
 	"github.com/tradalab/scorix/kernel/core/state"
 	"github.com/tradalab/scorix/kernel/internal/ipc"
 	"github.com/tradalab/scorix/kernel/internal/logger"
@@ -32,11 +34,11 @@ type app struct {
 	window  window.Window
 	server  *http.Server
 	store   *state.Store
+	plugins []plugin.Plugin
 	ipc     *ipc.IPC
 	cmd     *command.Command
 	evt     *event.Event
 	id      atomic.Int64
-	modules *module.Manager
 }
 
 func New(initOpts []InitOption, appOpts ...AppOption) (App, error) {
@@ -72,19 +74,34 @@ func New(initOpts []InitOption, appOpts ...AppOption) (App, error) {
 		return nil, err
 	}
 
+	bridge := ipc.NewJSBridge(wnd)
+	ipcIns := ipc.New(&bridge)
+	ipcIns.Start()
+
+	// 5. Init app
 	a := &app{
 		ctx:    context.Background(),
 		cfg:    cfg,
 		window: wnd,
 		store:  state.New(),
+		ipc:    ipcIns,
+		cmd:    command.New(ipcIns),
+		evt:    event.New(ipcIns),
 	}
 
-	if err := setupIPC(a); err != nil {
+	// 6. Load extensions
+	a.ctx = context.WithValue(a.ctx, extension.KeyConfig, a.cfg.Raw)
+	a.ctx = context.WithValue(a.ctx, extension.KeyApp, a)
+
+	if err := extension.LoadExtensions(a.ctx, a.cmd); err != nil {
 		return nil, err
 	}
 
-	// 5. Init module manager (extension system is kept but NOT activated)
-	a.modules = module.NewManager(cfg, a.ipc)
+	//// 6. Load plugins // todo rewrite
+	//plugin.GlobalRegistry.App = a
+	//if err := plugin.GlobalRegistry.StartAll(); err != nil {
+	//	return nil, err
+	//}
 
 	return a, nil
 }
@@ -108,8 +125,6 @@ func (a *app) Cfg() *config.Config { return a.cfg }
 
 func (a *app) Store() *state.Store { return a.store }
 
-func (a *app) Modules() *module.Manager { return a.modules }
-
 func (a *app) Run() error {
 	defer func() {
 		if r := recover(); r != nil {
@@ -117,25 +132,17 @@ func (a *app) Run() error {
 		}
 	}()
 
-	// 1. Load & start all enabled modules
-	if err := a.modules.LoadAll(); err != nil {
-		return err
-	}
-	if err := a.modules.StartAll(); err != nil {
-		return err
-	}
-
-	// 2. Start embedded server with sandbox middleware
+	// 1. Start embedded server with sandbox middleware
 	addr, srv, err := a.startEmbeddedServer()
 	if err != nil {
 		return err
 	}
 	a.server = srv
 
-	// 3. Load URL
+	// 2. Load URL
 	a.window.LoadURL("http://" + addr + "/")
 
-	// 4. Run window (blocks until window is closed)
+	// 3. Run window
 	a.window.Run()
 
 	return nil
@@ -169,9 +176,9 @@ func (a *app) Close() {
 		a.window.Close()
 	}
 
-	// Stop & unload all modules (reverse order)
-	a.modules.StopAll()
-	a.modules.UnloadAll()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	extension.StopExtensions(ctx)
 
 	logger.Info("app closed")
 	os.Exit(0)

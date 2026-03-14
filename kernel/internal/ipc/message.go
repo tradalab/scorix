@@ -17,7 +17,7 @@ const (
 
 type Message struct {
 	Id    string          `json:"id"`   // uuid
-	Kind  string          `json:"kind"` // command | event | channel | ext
+	Kind  string          `json:"kind"` // command | event | channel | module
 	Name  string          `json:"name"` // action name | event name
 	State MessageState    `json:"state"`
 	Error string          `json:"error,omitempty"`
