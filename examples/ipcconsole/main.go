@@ -6,6 +6,11 @@ import (
 	"time"
 
 	scorix "github.com/tradalab/scorix/kernel"
+	browsermod "github.com/tradalab/scorix/module/browser"
+	fsmod "github.com/tradalab/scorix/module/fs"
+	gormmod "github.com/tradalab/scorix/module/gorm"
+	storemod "github.com/tradalab/scorix/module/store"
+	updatemod "github.com/tradalab/scorix/module/updater"
 )
 
 //go:embed frontend/*
@@ -30,6 +35,13 @@ func main() {
 		},
 		scorix.WithAssets(embeddedPublic, "frontend"),
 	)
+
+	// Initialize and configure modules
+	app.Modules().Register(fsmod.New())
+	app.Modules().Register(browsermod.New())
+	app.Modules().Register(storemod.New())
+	app.Modules().Register(updatemod.New())
+	app.Modules().Register(gormmod.New())
 
 	app.Cmd().Handle("cmd-send", func(ctx context.Context, args Args) (Result, error) {
 		return Result{Message: args.Message}, nil

@@ -21,8 +21,6 @@ type Config struct {
 	Logger   LoggerConfig  `yaml:"logger" json:"logger"`
 	Security SandboxConfig `yaml:"security" json:"security"`
 
-	Plugins map[string]PluginConfig `yaml:"plugins" json:"plugins"`
-
 	// Modules holds per-module config blocks.
 	// Each key is the module name; the value is a free-form map
 	// so module packages can define their own config shape.
@@ -33,16 +31,6 @@ type Config struct {
 	//       enabled: true
 	//       dsn: app.dat
 	Modules map[string]any `yaml:"modules" json:"modules"`
-
-	Extensions struct {
-		Updater struct {
-			AppcastURL      string `yaml:"appcast_url" json:"appcast_url"`
-			PublicKeyBase64 string `yaml:"public_key_base_64" json:"public_key_base_64"`
-			PlatformKey     string `yaml:"platform_key" json:"platform_key"`
-			ForceElevate    bool   `yaml:"force_elevate" json:"force_elevate"`
-			CurrentVersion  string `yaml:"current_version" json:"current_version"`
-		} `yaml:"updater" json:"updater"`
-	} `yaml:"extensions" json:"extensions"`
 
 	Raw map[string]any `yaml:",inline" json:",inline"`
 
@@ -81,24 +69,12 @@ type SandboxConfig struct {
 	Allowlist       Allowlist `yaml:"allowlist" json:"allowlist"`
 }
 
-type PluginConfig struct {
-	Enabled bool           `yaml:"enabled" json:"enabled"`
-	Config  map[string]any `yaml:"config" json:"config"`
-}
-
 func (c *Config) Validate() error {
 	v := validator.New()
 	if err := v.Struct(c); err != nil {
 		return err
 	}
 	logger.Info("config validated")
-	return nil
-}
-
-func (c *Config) GetPluginConfig(name string) map[string]any {
-	if p, ok := c.Plugins[name]; ok && p.Enabled {
-		return p.Config
-	}
 	return nil
 }
 

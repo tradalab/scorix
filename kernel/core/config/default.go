@@ -16,7 +16,6 @@ func DefaultConfig() *Config {
 	//	"shell": false,
 	//	"http":  true,
 	//}
-	cfg.Plugins = make(map[string]PluginConfig)
 	cfg.path = "etc/scorix.yaml"
 	return cfg
 }
