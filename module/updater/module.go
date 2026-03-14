@@ -5,6 +5,8 @@
 //	modules:
 //	  updater:
 //	    enabled: true
+//	    provider: github                 # appcast | github. Default: appcast.
+//	    github_repo: tradalab/scorix     # For github provider
 //	    appcast_url: "https://your-server.com/appcast.json"
 //	    public_key_base_64: "..."
 //	    platform_key: "windows-amd64"
@@ -17,7 +19,6 @@ import (
 	"crypto/ed25519"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -35,32 +36,18 @@ import (
 
 // Config holds the updater module configuration.
 type Config struct {
-	AppcastURL      string `json:"appcast_url"`
+	Provider        string `json:"provider"`    // "appcast" or "github"
+	GitHubRepo      string `json:"github_repo"` // user/repo for github provider
+	AppcastURL      string `json:"appcast_url"` // URL for appcast provider
 	PublicKeyBase64 string `json:"public_key_base_64"`
-	PlatformKey     string `json:"platform_key"`
+	PlatformKey     string `json:"platform_key"` // Leave empty for auto `{os}-{arch}`
 	ForceElevate    bool   `json:"force_elevate"`
 	CurrentVersion  string `json:"current_version"`
 }
 
-type StaticAppcast struct {
-	Version   string                      `json:"version"`
-	PubDate   string                      `json:"pub_date,omitempty"`
-	Notes     string                      `json:"notes,omitempty"`
-	Platforms map[string]PlatformArtifact `json:"platforms"`
-}
-
-type PlatformArtifact struct {
-	URL              string `json:"url"`
-	SignatureBase64  string `json:"signature,omitempty"`
-	WithElevatedTask bool   `json:"with_elevated_task,omitempty"`
-}
-
-type DynamicAppcast struct {
-	URL             string `json:"url"`
-	Version         string `json:"version"`
-	PubDate         string `json:"pub_date,omitempty"`
-	Notes           string `json:"notes,omitempty"`
-	SignatureBase64 string `json:"signature,omitempty"`
+// UpdateProvider abstracts the version checking mechanism (GitHub vs Appcast).
+type UpdateProvider interface {
+	CheckForUpdate(ctx context.Context, currentVersion, platformKey string) (*Result, error)
 }
 
 type Result struct {
@@ -84,7 +71,8 @@ var (
 
 // UpdaterModule provides auto-updating capabilities.
 type UpdaterModule struct {
-	cfg Config
+	cfg      Config
+	provider UpdateProvider
 }
 
 // New creates a new UpdaterModule.
@@ -104,6 +92,18 @@ func (m *UpdaterModule) OnLoad(ctx *module.Context) error {
 		return fmt.Errorf("decode config: %w", err)
 	}
 
+	if m.cfg.PlatformKey == "" {
+		m.cfg.PlatformKey = fmt.Sprintf("%s-%s", runtime.GOOS, runtime.GOARCH) // e.g. windows-amd64
+	}
+
+	if m.cfg.Provider == "github" {
+		m.provider = NewGitHubProvider(m.cfg.GitHubRepo)
+		log.Printf("[updater] using GitHub provider: repo=%s, platform=%s", m.cfg.GitHubRepo, m.cfg.PlatformKey)
+	} else {
+		m.provider = NewAppcastProvider(m.cfg.AppcastURL)
+		log.Printf("[updater] using Appcast provider: url=%s, platform=%s", m.cfg.AppcastURL, m.cfg.PlatformKey)
+	}
+
 	module.Expose(m, "CheckForUpdate", ctx.IPC)
 	module.Expose(m, "FullUpdate", ctx.IPC)
 
@@ -120,9 +120,13 @@ func defaultClient() *http.Client {
 	return &http.Client{Timeout: 30 * time.Second}
 }
 
-func httpGet(ctx context.Context, c *http.Client, url string) ([]byte, error) {
+func httpGet(ctx context.Context, c *http.Client, url string, headers map[string]string) ([]byte, error) {
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	req.Header.Set("User-Agent", "Scorix-Module-Updater/1.0")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
 	resp, err := c.Do(req)
 	if err != nil {
 		return nil, err
@@ -259,50 +263,21 @@ func RunInstaller(ctx context.Context, path string, elevate bool) error {
 // CheckForUpdate calls the appcast URL and checks if a newer version is available.
 // JS: scorix.invoke("mod:updater:CheckForUpdate", null)
 func (m *UpdaterModule) CheckForUpdate(ctx context.Context) (*Result, error) {
-	if m.cfg.AppcastURL == "" {
-		return nil, fmt.Errorf("appcast_url not configured")
+	if m.provider == nil {
+		return nil, fmt.Errorf("update provider not initialized")
 	}
 
-	body, err := httpGet(ctx, defaultClient(), m.cfg.AppcastURL)
+	res, err := m.provider.CheckForUpdate(ctx, m.cfg.CurrentVersion, m.cfg.PlatformKey)
 	if err != nil {
-		return nil, err
+		return res, err
 	}
 
-	var stat StaticAppcast
-	if json.Unmarshal(body, &stat) == nil && stat.Version != "" && len(stat.Platforms) > 0 {
-		plat, ok := stat.Platforms[m.cfg.PlatformKey]
-		if !ok {
-			return nil, fmt.Errorf("platform %s not found in appcast", m.cfg.PlatformKey)
-		}
-		if !isNewer(stat.Version, m.cfg.CurrentVersion) {
-			return &Result{HasUpdate: false}, ErrNoUpdate
-		}
-		return &Result{
-			HasUpdate:   true,
-			NewVersion:  stat.Version,
-			Notes:       stat.Notes,
-			ArtifactURL: plat.URL,
-			SigBase64:   plat.SignatureBase64,
-			Elevate:     m.cfg.ForceElevate || plat.WithElevatedTask,
-		}, nil
+	// Apply global configuration overrides
+	if m.cfg.ForceElevate {
+		res.Elevate = true
 	}
 
-	var dyn DynamicAppcast
-	if json.Unmarshal(body, &dyn) == nil && dyn.URL != "" && dyn.Version != "" {
-		if !isNewer(dyn.Version, m.cfg.CurrentVersion) {
-			return &Result{HasUpdate: false}, ErrNoUpdate
-		}
-		return &Result{
-			HasUpdate:   true,
-			NewVersion:  dyn.Version,
-			Notes:       dyn.Notes,
-			ArtifactURL: dyn.URL,
-			SigBase64:   dyn.SignatureBase64,
-			Elevate:     m.cfg.ForceElevate,
-		}, nil
-	}
-
-	return nil, ErrUnknownAppcastType
+	return res, nil
 }
 
 // FullUpdate runs the full update flow: check -> download -> verfiy -> run installer.
