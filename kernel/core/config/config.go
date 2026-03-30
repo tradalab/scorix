@@ -17,6 +17,13 @@ type Config struct {
 		HotReload bool `yaml:"hot_reload" json:"hot_reload"`
 	} `yaml:"dev" json:"dev"`
 
+	Mode string `yaml:"mode" json:"mode"` // app, web
+
+	Web struct {
+		Host string `yaml:"host" json:"host"`
+		Port int    `yaml:"port" json:"port"`
+	} `yaml:"web" json:"web"`
+
 	Window   WindowConfig  `yaml:"window" json:"window"`
 	Logger   LoggerConfig  `yaml:"logger" json:"logger"`
 	Security SandboxConfig `yaml:"security" json:"security"`

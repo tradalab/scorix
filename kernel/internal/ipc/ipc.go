@@ -38,6 +38,10 @@ func New(bridge Bridge) *IPC {
 	}
 }
 
+func (i *IPC) Bridge() Bridge {
+	return i.bridge
+}
+
 func (i *IPC) AddHandlers(hs []Handler) {
 	i.mu.Lock()
 	defer i.mu.Unlock()

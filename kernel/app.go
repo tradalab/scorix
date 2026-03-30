@@ -59,20 +59,28 @@ func New(initOpts []InitOption, appOpts ...AppOption) (App, error) {
 
 	// 4. init logger, sandbox, wv, setup-ipc
 	logger.New(logger.Config(cfg.Logger))
-	sandbox.Init(sandbox.Config{
-		CSP:             cfg.Security.CSP,
-		AllowRightClick: cfg.Security.AllowRightClick,
-		Allowlist:       sandbox.Allowlist{
-			// TODO rewrite
-		},
-	})
 
-	wnd, err := wv.New(window.Config(cfg.Window))
-	if err != nil {
-		return nil, err
+	var wnd window.Window
+	var bridge ipc.Bridge
+
+	if cfg.Mode == "web" {
+		bridge = ipc.NewWebBridge()
+	} else {
+		sandbox.Init(sandbox.Config{
+			CSP:             cfg.Security.CSP,
+			AllowRightClick: cfg.Security.AllowRightClick,
+			Allowlist:       sandbox.Allowlist{
+				// TODO rewrite
+			},
+		})
+
+		wnd, err = wv.New(window.Config(cfg.Window))
+		if err != nil {
+			return nil, err
+		}
+		bridge = ipc.NewAppBridge(wnd)
 	}
 
-	bridge := ipc.NewAppBridge(wnd)
 	ipcIns := ipc.New(bridge)
 	ipcIns.Start()
 
@@ -135,11 +143,17 @@ func (a *app) Run() error {
 	}
 	a.server = srv
 
-	// 2. Load URL
-	a.window.LoadURL("http://" + addr + "/")
+	if a.cfg.Mode == "web" {
+		// wait
+		logger.Info("app running in web mode", logger.Str("addr", addr))
+		select {}
+	} else {
+		// 2. Load URL
+		a.window.LoadURL("http://" + addr + "/")
 
-	// 3. Run window
-	a.window.Run()
+		// 3. Run window
+		a.window.Run()
+	}
 
 	return nil
 }
@@ -185,7 +199,11 @@ func (a *app) Show() {
 }
 
 func (a *app) startEmbeddedServer() (string, *http.Server, error) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	host := a.cfg.Web.Host
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, a.cfg.Web.Port))
 	if err != nil {
 		return "", nil, err
 	}
@@ -199,16 +217,22 @@ func (a *app) startEmbeddedServer() (string, *http.Server, error) {
 		}
 	}
 
-	handler := sandbox.SecurityMiddleware(http.FileServer(http.FS(assetFs)))
+	mux := http.NewServeMux()
+	mux.Handle("/", sandbox.SecurityMiddleware(http.FileServer(http.FS(assetFs))))
+
+	// route /ipc to WebBridge
+	if webBridge, ok := a.ipc.Bridge().(*ipc.WebBridge); ok {
+		mux.Handle("/ipc", webBridge)
+	}
 
 	server := &http.Server{
-		Handler:           handler,
+		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	go func() {
 		url := "http://" + addr
-		logger.Info("embedded server running", logger.Str("url", url))
+		logger.Info("server running", logger.Str("url", url), logger.Str("mode", a.cfg.Mode))
 		if err := server.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Fatal("server failed", logger.Err(err))
 		}
