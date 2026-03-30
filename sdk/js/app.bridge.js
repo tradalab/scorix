@@ -76,15 +76,16 @@ const scorix = {
   _receive(raw) {
     try {
       const msg = typeof raw === "string" ? JSON.parse(raw) : raw
+      if (!msg) return
+
       const { id, kind, name, data, state, error } = msg
-      console.debug({ fn: "_receive", msg })
+      console.debug("Scorix IPC Receive:", { id, kind, name, state })
 
       // ----- lifecycle for invoke -----
       if (id && this._pending.has(id)) {
         const pending = this._pending.get(id)
         switch (state) {
           case "received":
-            break
           case "processing":
             break
           case "chunk":
@@ -110,18 +111,17 @@ const scorix = {
       if (kind === "event") {
         const listeners = this._events.get(name)
         if (listeners) {
-          switch (state) {
+          const eventState = state || "dispatch"
+          switch (eventState) {
             case "dispatch":
             case "error":
               listeners.forEach(fn => {
                 try {
                   fn(data, error)
                 } catch (e) {
-                  console.error("Event handler error:", e)
+                  console.error("Scorix Event handler error:", e)
                 }
               })
-              break
-            default:
               break
           }
         }
@@ -131,7 +131,10 @@ const scorix = {
       // ----- Go calls JS -----
       if (kind === "resolve") {
         const handler = this._handlers[name]
-        if (!handler) return
+        if (!handler) {
+          console.warn("Scorix IPC: no handler for resolve:", name)
+          return
+        }
         Promise.resolve()
           .then(() => handler(data))
           .then(result => {
