@@ -1,4 +1,4 @@
-const scorix = {
+const AppBridge = {
   _pending: new Map(), // id -> { resolve, reject, onChunk }
   _events: new Map(),
   _handlers: {},
@@ -8,30 +8,27 @@ const scorix = {
     return "app_" + ++this._id + "_" + Date.now()
   },
 
+  async init() {
+    console.debug("Scorix AppBridge: Initialized")
+    return Promise.resolve()
+  },
+
   async invoke(method, params, options = {}) {
     const id = this._next_id()
-
     const envelope = { id, kind: "command", name: method, data: params, state: "start" }
-
     console.debug({ fn: "invoke", envelope })
-
     const pending = {}
-
     const promise = new Promise((resolve, reject) => {
       pending.resolve = resolve
       pending.reject = reject
       pending.onChunk = options.onChunk
     })
-
     this._pending.set(id, pending)
-
     try {
       // JS -> Go binding
       const resultRaw = await window.__scorix__ipc_emit?.(JSON.stringify(envelope))
       const result = typeof resultRaw === "string" ? JSON.parse(resultRaw) : resultRaw
-
       console.debug({ fn: "invoke", result })
-
       if (result && result.state === "error") {
         throw new Error(result.error)
       }
@@ -61,9 +58,7 @@ const scorix = {
     if (!this._events.has(topic)) {
       this._events.set(topic, new Set())
     }
-
     this._events.get(topic).add(callback)
-
     return () => {
       this._events.get(topic)?.delete(callback)
     }
@@ -77,7 +72,6 @@ const scorix = {
     try {
       const msg = typeof raw === "string" ? JSON.parse(raw) : raw
       if (!msg) return
-
       const { id, kind, name, data, state, error } = msg
       console.debug("Scorix IPC Receive:", { id, kind, name, state })
 
@@ -153,12 +147,11 @@ const scorix = {
 }
 
 if (typeof window !== "undefined") {
-  window.scorix = scorix
-  // Go side must call this
-  window.__scorix__ipc_receive = msg => {
-    scorix._receive(msg)
-  }
-  window.__scorix__ipc_resolve = msg => {
-    scorix._receive(msg)
-  }
+  window.__scorix__ipc_receive = msg => AppBridge._receive(msg)
+  window.__scorix__ipc_resolve = msg => AppBridge._receive(msg)
+}
+
+const scorix = AppBridge;
+if (typeof window !== "undefined") {
+  window.scorix = scorix;
 }

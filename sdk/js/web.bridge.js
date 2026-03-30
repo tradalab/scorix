@@ -1,4 +1,4 @@
-const scorix = {
+const WebBridge = {
   _pending: new Map(), // id -> { resolve, reject, onChunk }
   _events: new Map(),
   _handlers: {},
@@ -169,6 +169,7 @@ const scorix = {
   },
 }
 
+const scorix = WebBridge;
 if (typeof window !== "undefined") {
-  window.scorix = scorix
+  window.scorix = scorix;
 }
