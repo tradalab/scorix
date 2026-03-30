@@ -5,7 +5,7 @@ const scorix = {
   _id: 0,
 
   _next_id() {
-    return "js_" + ++this._id + "_" + Date.now()
+    return "app_" + ++this._id + "_" + Date.now()
   },
 
   async invoke(method, params, options = {}) {

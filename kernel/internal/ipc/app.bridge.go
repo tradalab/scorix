@@ -7,23 +7,23 @@ import (
 	"github.com/tradalab/scorix/kernel/internal/window"
 )
 
-type JSBridge struct {
+type AppBridge struct {
 	name string
 	wnd  window.Window
 }
 
-func NewJSBridge(wnd window.Window) JSBridge {
-	return JSBridge{
+func NewAppBridge(wnd window.Window) *AppBridge {
+	return &AppBridge{
 		name: "__scorix__",
 		wnd:  wnd,
 	}
 }
 
-func (b *JSBridge) Name() string {
+func (b *AppBridge) Name() string {
 	return b.name
 }
 
-func (b *JSBridge) OnMessage(exec func(ctx context.Context, msg Message) Message) error {
+func (b *AppBridge) OnMessage(exec func(ctx context.Context, msg Message) Message) error {
 	return b.wnd.Bind(b.name+"ipc_emit", func(raw string) any {
 		ctx := context.Background()
 
@@ -44,7 +44,7 @@ func (b *JSBridge) OnMessage(exec func(ctx context.Context, msg Message) Message
 	})
 }
 
-func (b *JSBridge) Emit(ctx context.Context, msg Message) error {
+func (b *AppBridge) Emit(ctx context.Context, msg Message) error {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return err

@@ -72,8 +72,8 @@ func New(initOpts []InitOption, appOpts ...AppOption) (App, error) {
 		return nil, err
 	}
 
-	bridge := ipc.NewJSBridge(wnd)
-	ipcIns := ipc.New(&bridge)
+	bridge := ipc.NewAppBridge(wnd)
+	ipcIns := ipc.New(bridge)
 	ipcIns.Start()
 
 	// 5. Init app (with module manager)
