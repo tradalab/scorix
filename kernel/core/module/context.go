@@ -7,6 +7,15 @@ import (
 	"github.com/tradalab/scorix/kernel/internal/ipc"
 )
 
+// AppController provides optional app-level control for modules.
+// Modules that manage desktop features (systray, notifications) can use this
+// to show/close the application window.
+// It is nil in headless/web mode.
+type AppController interface {
+	Show()
+	Close()
+}
+
 // Context is passed to a module during OnLoad.
 // It provides access to IPC, config, and app-level metadata.
 type Context struct {
@@ -19,16 +28,21 @@ type Context struct {
 	// DataDir is the platform-specific data directory for this app.
 	DataDir string
 
+	// App provides optional access to app-level actions (Show, Close).
+	// It is nil when running in web/server mode.
+	App AppController
+
 	// rawConfig is the raw config map (modules.<name> section).
 	rawConfig map[string]any
 }
 
 // newContext creates a Context for a given module.
-func newContext(name string, ipcCore *ipc.IPC, appName, dataDir string, rawModuleCfg map[string]any) *Context {
+func newContext(name string, ipcCore *ipc.IPC, appName, dataDir string, rawModuleCfg map[string]any, appCtrl AppController) *Context {
 	return &Context{
 		IPC:       NewModuleIPC(name, ipcCore),
 		AppName:   appName,
 		DataDir:   dataDir,
+		App:       appCtrl,
 		rawConfig: rawModuleCfg,
 	}
 }

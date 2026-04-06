@@ -18,10 +18,10 @@ import (
 	"github.com/tradalab/scorix/kernel/core/module"
 	"github.com/tradalab/scorix/kernel/core/state"
 	"github.com/tradalab/scorix/kernel/internal/ipc"
-	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/kernel/internal/sandbox"
 	"github.com/tradalab/scorix/kernel/internal/window"
 	"github.com/tradalab/scorix/kernel/internal/wv"
+	"github.com/tradalab/scorix/logger"
 )
 
 type app struct {
@@ -95,7 +95,13 @@ func New(initOpts []InitOption, appOpts ...AppOption) (App, error) {
 		evt:    event.New(ipcIns),
 	}
 
-	a.modules = module.NewManager(cfg, a.ipc)
+	// 6. in web mode, window is nil so app-level Show/Close are not available
+	var appCtrl module.AppController
+	if cfg.Mode != "web" {
+		appCtrl = a
+	}
+
+	a.modules = module.NewManager(cfg, a.ipc, appCtrl)
 
 	return a, nil
 }

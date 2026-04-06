@@ -21,15 +21,17 @@ type Manager struct {
 	states   map[string]State
 	order    []string // registration order
 	mu       sync.RWMutex
+	appCtrl  AppController
 }
 
 // NewManager creates a Manager wired with app config and IPC.
-func NewManager(cfg *config.Config, ipcCore *ipc.IPC) *Manager {
+func NewManager(cfg *config.Config, ipcCore *ipc.IPC, appCtrl AppController) *Manager {
 	return &Manager{
 		registry: NewRegistry(),
 		cfg:      cfg,
 		ipcCore:  ipcCore,
 		states:   make(map[string]State),
+		appCtrl:  appCtrl,
 	}
 }
 
@@ -103,7 +105,7 @@ func (m *Manager) Load(name string) error {
 	}
 
 	appName := m.cfg.App.Name
-	ctx := newContext(name, m.ipcCore, appName, dataDir(appName), m.moduleSectionCfg(name))
+	ctx := newContext(name, m.ipcCore, appName, dataDir(appName), m.moduleSectionCfg(name), m.appCtrl)
 
 	if err := mod.OnLoad(ctx); err != nil {
 		return fmt.Errorf("module %s OnLoad: %w", name, err)
