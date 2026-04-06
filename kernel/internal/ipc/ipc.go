@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/tradalab/scorix/kernel/internal/sandbox"
 	"github.com/tradalab/scorix/logger"
 )
 
@@ -92,6 +93,18 @@ func (i *IPC) handle(env envelope) {
 			Name:  msg.Name,
 			State: StateError,
 			Error: "handler not found",
+		})
+		return
+	}
+
+	methodForSandbox := fmt.Sprintf("%s.%s", msg.Kind, msg.Name)
+	if err := sandbox.Validate(methodForSandbox); err != nil {
+		_ = i.bridge.Emit(ctx, Message{
+			Id:    msg.Id,
+			Kind:  msg.Kind,
+			Name:  msg.Name,
+			State: StateError,
+			Error: err.Error(),
 		})
 		return
 	}

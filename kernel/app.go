@@ -71,7 +71,11 @@ func New(initOpts []InitOption, appOpts ...AppOption) (App, error) {
 			CSP:             cfg.Security.CSP,
 			AllowRightClick: cfg.Security.AllowRightClick,
 			Allowlist:       sandbox.Allowlist{
-				// TODO rewrite
+				FS:           cfg.Security.Allowlist.FS,
+				Shell:        cfg.Security.Allowlist.Shell,
+				HTTP:         cfg.Security.Allowlist.HTTP,
+				Clipboard:    cfg.Security.Allowlist.Clipboard,
+				Notification: cfg.Security.Allowlist.Notification,
 			},
 		})
 
@@ -231,7 +235,11 @@ func (a *app) startEmbeddedServer() (string, *http.Server, error) {
 	}
 	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, a.cfg.Web.Port))
 	if err != nil {
-		return "", nil, err
+		logger.Warn("configured port bind failed, falling back to random port", logger.Err(err))
+		ln, err = net.Listen("tcp", fmt.Sprintf("%s:0", host))
+		if err != nil {
+			return "", nil, err
+		}
 	}
 	addr := ln.Addr().String()
 
@@ -260,7 +268,8 @@ func (a *app) startEmbeddedServer() (string, *http.Server, error) {
 		url := "http://" + addr
 		logger.Info("server running", logger.Str("url", url), logger.Str("mode", a.cfg.Mode))
 		if err := server.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Fatal("server failed", logger.Err(err))
+			logger.Error("server failed asynchronously", logger.Err(err))
+			a.Close() // Gracefully shutdown the app if the embedded server dies
 		}
 	}()
 
