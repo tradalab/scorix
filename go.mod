@@ -3,11 +3,13 @@ module github.com/tradalab/scorix
 go 1.26.0
 
 require (
+	github.com/atotto/clipboard v0.1.4
 	github.com/energye/systray v1.0.3
 	github.com/go-playground/validator/v10 v10.30.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/spf13/cobra v1.10.2
+	github.com/sqweek/dialog v0.0.0-20260123140253-64c163d53aac
 	github.com/webview/webview_go v0.0.0-20240831120633-6173450d4dd6
 	go.uber.org/zap v1.27.1
 	golang.org/x/mod v0.34.0
@@ -18,6 +20,7 @@ require (
 )
 
 require (
+	github.com/TheTitanrain/w32 v0.0.0-20180517000239-4f5cfb03fabf // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
