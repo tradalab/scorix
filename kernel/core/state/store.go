@@ -1,15 +1,19 @@
 package state
 
 import (
+	"encoding/json"
+	"os"
 	"sync"
+	"path/filepath"
 
 	"github.com/tradalab/scorix/logger"
 )
 
 type Store struct {
-	mu   sync.RWMutex
-	data map[string]any
-	subs map[string][]func(any)
+	mu       sync.RWMutex
+	data     map[string]any
+	subs     map[string][]func(any)
+	savePath string
 }
 
 func New() *Store {
@@ -17,6 +21,59 @@ func New() *Store {
 		data: make(map[string]any),
 		subs: make(map[string][]func(any)),
 	}
+}
+
+// SetSavePath sets the file path where the state will be persisted.
+func (s *Store) SetSavePath(path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.savePath = path
+}
+
+// Load reads the state from the JSON file at savePath.
+func (s *Store) Load() error {
+	s.mu.Lock()
+	path := s.savePath
+	s.mu.Unlock()
+
+	if path == "" {
+		return nil
+	}
+
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return json.Unmarshal(b, &s.data)
+}
+
+// Save writes the state to the JSON file at savePath.
+func (s *Store) Save() error {
+	s.mu.RLock()
+	path := s.savePath
+	data := s.data
+	s.mu.RUnlock()
+
+	if path == "" {
+		return nil
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+
+	b, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(path, b, 0644)
 }
 
 // Set value + notify
@@ -44,7 +101,7 @@ func (s *Store) On(key string, fn func(any)) func() {
 	s.subs[key] = append(s.subs[key], fn)
 	s.mu.Unlock()
 
-	// Gọi ngay lần đầu
+	// first call
 	if v := s.Get(key); v != nil {
 		go fn(v)
 	}
