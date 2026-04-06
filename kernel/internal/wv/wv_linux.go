@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux && cgo && !server
 
 package wv
 

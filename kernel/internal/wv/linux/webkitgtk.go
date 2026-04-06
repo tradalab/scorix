@@ -36,5 +36,6 @@ func (w *webkitgtk) SetSize(width, heigh int)              { w.wv.SetSize(width,
 func (w *webkitgtk) Show()                                 { /* Linux always visible */ }
 func (w *webkitgtk) Hide()                                 { /* Not supported */ }
 func (w *webkitgtk) Center()                               { /* Not supported */ }
+func (w *webkitgtk) SetHideOnClose(enable bool)            { /* Not supported yet on Linux */ }
 func (w *webkitgtk) Bind(name string, f interface{}) error { return w.wv.Bind(name, f) }
 func (w *webkitgtk) Unbind(name string) error              { return w.wv.Unbind(name) }

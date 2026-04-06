@@ -12,13 +12,15 @@ type Window interface {
 	Show()
 	Hide()
 	Center()
+	SetHideOnClose(enable bool)
 	Bind(name string, f interface{}) error
 	Unbind(name string) error
 }
 
 type Config struct {
-	Title  string `yaml:"title" json:"title"`
-	Width  int    `yaml:"width" json:"width"`
-	Height int    `yaml:"height" json:"height"`
-	Debug  bool   `yaml:"debug" json:"debug"`
+	Title       string `yaml:"title" json:"title"`
+	Width       int    `yaml:"width" json:"width"`
+	Height      int    `yaml:"height" json:"height"`
+	Debug       bool   `yaml:"debug" json:"debug"`
+	HideOnClose bool   `yaml:"hide_on_close" json:"hide_on_close"`
 }

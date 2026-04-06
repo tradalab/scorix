@@ -9,8 +9,10 @@ import (
 
 type Config struct {
 	App struct {
-		Name    string `yaml:"name" json:"name"`
-		Version string `yaml:"version" json:"version"`
+		Name           string `yaml:"name" json:"name"`
+		Version        string `yaml:"version" json:"version"`
+		Identifier     string `yaml:"identifier" json:"identifier"`
+		SingleInstance bool   `yaml:"single_instance" json:"single_instance"`
 	} `yaml:"app" json:"app"`
 
 	Dev struct {
@@ -47,10 +49,11 @@ type Config struct {
 }
 
 type WindowConfig struct {
-	Title  string `yaml:"title" json:"title"`
-	Width  int    `yaml:"width" json:"width"`
-	Height int    `yaml:"height" json:"height"`
-	Debug  bool   `yaml:"debug" json:"debug"`
+	Title       string `yaml:"title" json:"title"`
+	Width       int    `yaml:"width" json:"width"`
+	Height      int    `yaml:"height" json:"height"`
+	Debug       bool   `yaml:"debug" json:"debug"`
+	HideOnClose bool   `yaml:"hide_on_close" json:"hide_on_close"`
 }
 
 type LoggerConfig struct {

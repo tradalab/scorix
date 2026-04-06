@@ -36,5 +36,6 @@ func (w *webkit) SetSize(width, heigh int)              { w.wv.SetSize(width, he
 func (w *webkit) Show()                                 { /* macOS always visible */ }
 func (w *webkit) Hide()                                 { /* Not supported */ }
 func (w *webkit) Center()                               { /* Not supported */ }
+func (w *webkit) SetHideOnClose(enable bool)            { /* Not supported yet on macOS */ }
 func (w *webkit) Bind(name string, f interface{}) error { return w.wv.Bind(name, f) }
 func (w *webkit) Unbind(name string) error              { return w.wv.Unbind(name) }

@@ -19,6 +19,7 @@ import (
 	"github.com/tradalab/scorix/kernel/core/state"
 	"github.com/tradalab/scorix/kernel/internal/ipc"
 	"github.com/tradalab/scorix/kernel/internal/sandbox"
+	"github.com/tradalab/scorix/kernel/internal/syslock"
 	"github.com/tradalab/scorix/kernel/internal/window"
 	"github.com/tradalab/scorix/kernel/internal/wv"
 	"github.com/tradalab/scorix/logger"
@@ -142,7 +143,20 @@ func (a *app) Run() error {
 		return err
 	}
 
-	// 1. Start embedded server with sandbox middleware
+	// 1. Check Single Instance Lock
+	if a.cfg.App.SingleInstance {
+		isPrimary := syslock.Acquire(a.cfg.App.Identifier, func() {
+			if a.window != nil {
+				a.window.Show()
+			}
+		})
+		if !isPrimary {
+			// A secondary instance just forwarded FOCUS to primary. Exit cleanly.
+			os.Exit(0)
+		}
+	}
+
+	// 2. Start embedded server with sandbox middleware
 	addr, srv, err := a.startEmbeddedServer()
 	if err != nil {
 		return err
@@ -157,7 +171,12 @@ func (a *app) Run() error {
 		// 2. Load URL
 		a.window.LoadURL("http://" + addr + "/")
 
-		// 3. Run window
+		// 3. Set Hide on close
+		if a.cfg.Window.HideOnClose {
+			a.window.SetHideOnClose(true)
+		}
+
+		// 4. Run window
 		a.window.Run()
 	}
 
@@ -189,6 +208,7 @@ func (a *app) Close() {
 	}
 
 	if a.window != nil {
+		a.window.SetHideOnClose(false)
 		a.window.Close()
 	}
 
