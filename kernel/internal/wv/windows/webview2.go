@@ -4,7 +4,9 @@ package windows
 
 import (
 	"fmt"
+	"os"
 	"syscall"
+	"unsafe"
 
 	"github.com/tradalab/scorix/kernel/internal/window"
 	webviewgo "github.com/webview/webview_go"
@@ -12,9 +14,14 @@ import (
 
 var (
 	user32              = syscall.NewLazyDLL("user32.dll")
+	kernel32            = syscall.NewLazyDLL("kernel32.dll")
+	shell32             = syscall.NewLazyDLL("shell32.dll")
 	setForegroundWindow = user32.NewProc("SetForegroundWindow")
 	showWindow          = user32.NewProc("ShowWindow")
 	callWindowProc      = user32.NewProc("CallWindowProcW")
+	sendMessage         = user32.NewProc("SendMessageW")
+	getModuleHandle     = kernel32.NewProc("GetModuleHandleW")
+	extractIcon         = shell32.NewProc("ExtractIconW")
 	setWindowLongPtr    *syscall.LazyProc
 )
 
@@ -71,6 +78,20 @@ func New(cfg window.Config) (window.Window, error) {
 
 	instance := &webview2{wv: wv}
 	currentWV = instance
+
+	hwnd := uintptr(wv.Window())
+	if hwnd != 0 {
+		exePath, err := os.Executable()
+		if err == nil {
+			hInst, _, _ := getModuleHandle.Call(0)
+			hIcon, _, _ := extractIcon.Call(hInst, uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr(exePath))), 0)
+			if hIcon != 0 {
+				sendMessage.Call(hwnd, 0x0080 /* WM_SETICON */, 0 /* ICON_SMALL */, hIcon)
+				sendMessage.Call(hwnd, 0x0080 /* WM_SETICON */, 1 /* ICON_BIG */, hIcon)
+			}
+		}
+	}
+
 	return instance, nil
 }
 
