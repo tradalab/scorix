@@ -16,7 +16,8 @@
 
     async invoke(method, params, options = {}) {
       const id = this._next_id()
-      const envelope = { id, kind: "command", name: method, data: params, state: "start" }
+      const data = params || {}
+      const envelope = { id, kind: "command", name: method, data, state: "start" }
       console.debug({ fn: "invoke", envelope })
       const pending = {}
       const promise = new Promise((resolve, reject) => {
@@ -28,6 +29,9 @@
       try {
         // JS -> Go binding
         const resultRaw = await window.__scorix__ipc_emit?.(JSON.stringify(envelope))
+        if (resultRaw === undefined || resultRaw === "") {
+          throw new Error("IPC protocol error: empty response from backend")
+        }
         const result = typeof resultRaw === "string" ? JSON.parse(resultRaw) : resultRaw
         console.debug({ fn: "invoke", result })
         if (result && result.state === "error") {

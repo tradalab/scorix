@@ -24,23 +24,25 @@ func (b *AppBridge) Name() string {
 }
 
 func (b *AppBridge) OnMessage(exec func(ctx context.Context, msg Message) Message) error {
-	return b.wnd.Bind(b.name+"ipc_emit", func(raw string) any {
+	return b.wnd.Bind(b.name+"ipc_emit", func(raw string) string {
 		ctx := context.Background()
 
 		var msg Message
 		if err := json.Unmarshal([]byte(raw), &msg); err != nil {
-			return Message{
+			res := Message{
 				Id:    msg.Id,
 				Kind:  msg.Kind,
 				Name:  msg.Name,
 				State: StateError,
 				Error: err.Error(),
 			}
+			data, _ := json.Marshal(res)
+			return string(data)
 		}
 
 		result := exec(ctx, msg)
-
-		return result
+		data, _ := json.Marshal(result)
+		return string(data)
 	})
 }
 

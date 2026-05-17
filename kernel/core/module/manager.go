@@ -107,7 +107,7 @@ func (m *Manager) Load(name string) error {
 	appName := m.cfg.App.Name
 	ctx := newContext(name, m.ipcCore, appName, dataDir(appName), m.moduleSectionCfg(name), m.appCtrl)
 
-	if err := mod.OnLoad(ctx); err != nil {
+	if err := safeOnLoad(mod, ctx); err != nil {
 		return fmt.Errorf("module %s OnLoad: %w", name, err)
 	}
 
@@ -150,7 +150,7 @@ func (m *Manager) Start(name string) error {
 		return nil
 	}
 
-	if err := mod.OnStart(); err != nil {
+	if err := safeOnStart(mod); err != nil {
 		return fmt.Errorf("module %s OnStart: %w", name, err)
 	}
 
@@ -192,9 +192,7 @@ func (m *Manager) Stop(name string) error {
 		return nil
 	}
 
-	if err := mod.OnStop(); err != nil {
-		logger.Info(fmt.Sprintf("[module] %s OnStop error: %v", name, err))
-	}
+	safeOnStop(mod)
 
 	m.mu.Lock()
 	m.states[name] = StateStopped
@@ -232,9 +230,7 @@ func (m *Manager) Unload(name string) error {
 		return nil
 	}
 
-	if err := mod.OnUnload(); err != nil {
-		logger.Info(fmt.Sprintf("[module] %s OnUnload error: %v", name, err))
-	}
+	safeOnUnload(mod)
 
 	m.mu.Lock()
 	delete(m.states, name)

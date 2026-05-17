@@ -139,14 +139,6 @@ func (a *app) Run() error {
 		}
 	}()
 
-	// 0. Load & start all enabled modules
-	if err := a.modules.LoadAll(); err != nil {
-		return err
-	}
-	if err := a.modules.StartAll(); err != nil {
-		return err
-	}
-
 	// 1. Check Single Instance Lock
 	if a.cfg.App.SingleInstance {
 		isPrimary := syslock.Acquire(a.cfg.App.Identifier, func() {
@@ -156,8 +148,19 @@ func (a *app) Run() error {
 		})
 		if !isPrimary {
 			// A secondary instance just forwarded FOCUS to primary. Exit cleanly.
+			if a.window != nil {
+				a.window.Close()
+			}
 			os.Exit(0)
 		}
+	}
+
+	// 2. Load & start all enabled modules
+	if err := a.modules.LoadAll(); err != nil {
+		return err
+	}
+	if err := a.modules.StartAll(); err != nil {
+		return err
 	}
 
 	// 2. Start embedded server with sandbox middleware

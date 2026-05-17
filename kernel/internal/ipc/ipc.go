@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"runtime/debug"
 	"sync"
 
 	"github.com/tradalab/scorix/kernel/internal/sandbox"
@@ -66,13 +67,20 @@ func (i *IPC) loop() {
 func (i *IPC) handle(env envelope) {
 	defer func() {
 		if r := recover(); r != nil {
-			logger.Error("IPC:handle - recovered", logger.Any("error", r))
+			// Stack trace logged — per-request goroutine panics would
+			// otherwise vanish without leaving a trail.
+			logger.Error("IPC:handle - recovered",
+				logger.Any("error", r),
+				logger.Str("handler", env.msg.Name),
+				logger.Str("msg_id", env.msg.Id),
+				logger.Str("stack", string(debug.Stack())),
+			)
 			_ = i.bridge.Emit(env.ctx, Message{
 				Id:    env.msg.Id,
 				Kind:  env.msg.Kind,
 				Name:  env.msg.Name,
 				State: StateError,
-				Error: fmt.Sprintf("panic: %v", r),
+				Error: fmt.Sprintf("internal: handler %q panicked: %v", env.msg.Name, r),
 			})
 		}
 	}()
@@ -168,7 +176,11 @@ func (i *IPC) UnregisterPending(id string) {
 }
 
 func (i *IPC) On(ctx context.Context, msg Message) Message {
-	logger.Info("IPC:On()", logger.Any("msg", msg))
+	logMsg := msg
+	if len(logMsg.Data) > 1024 {
+		logMsg.Data = []byte(fmt.Sprintf("%s... (truncated %d bytes)", string(logMsg.Data[:1024]), len(logMsg.Data)-1024))
+	}
+	logger.Info("IPC:On()", logger.Any("msg", logMsg))
 	switch msg.State {
 	case StateDone, StateError, StateChunk:
 		ch := i.getPending(msg.Id)
