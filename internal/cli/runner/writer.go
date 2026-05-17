@@ -10,7 +10,7 @@ import (
 	"strings"
 	"text/template"
 
-	scorix_template "github.com/tradalab/scorix/cli/template"
+	scorix_template "github.com/tradalab/scorix/internal/cli/template"
 )
 
 func writeGeneratedFile(f generatedFile) (string, error) {

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/tradalab/scorix/cli/runner/dialect"
+	"github.com/tradalab/scorix/internal/cli/runner/dialect"
 )
 
 const testSchema = `

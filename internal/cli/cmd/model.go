@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/tradalab/scorix/cli/runner"
+	"github.com/tradalab/scorix/internal/cli/runner"
 )
 
 var generateModelCmd = &cobra.Command{

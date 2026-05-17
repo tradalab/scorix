@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/tradalab/scorix/cli/template"
+	"github.com/tradalab/scorix/internal/cli/template"
 )
 
 type InitOptions struct {

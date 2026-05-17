@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tradalab/scorix/cli/runner/dialect"
+	"github.com/tradalab/scorix/internal/cli/runner/dialect"
 )
 
 // parseInline writes the SQL to a temp file under t.TempDir() and parses it.

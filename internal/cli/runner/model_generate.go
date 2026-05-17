@@ -9,8 +9,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/tradalab/scorix/cli/runner/dialect"
-	"github.com/tradalab/scorix/cli/template"
+	"github.com/tradalab/scorix/internal/cli/runner/dialect"
+	"github.com/tradalab/scorix/internal/cli/template"
 	"gopkg.in/yaml.v3"
 )
 

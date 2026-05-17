@@ -3,7 +3,7 @@ package runner
 import (
 	"strings"
 
-	"github.com/tradalab/scorix/cli/runner/dialect"
+	"github.com/tradalab/scorix/internal/cli/runner/dialect"
 )
 
 // tableSQL holds the precomputed SQL strings + field lists the model template

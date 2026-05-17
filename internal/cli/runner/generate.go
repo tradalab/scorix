@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/tradalab/scorix/cli/template"
+	"github.com/tradalab/scorix/internal/cli/template"
 )
 
 func GenerateProto(ctx context.Context, opt GenerateProtoOptions) error {

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tradalab/scorix/cli/runner/dialect"
-	"github.com/tradalab/scorix/cli/template"
+	"github.com/tradalab/scorix/internal/cli/runner/dialect"
+	"github.com/tradalab/scorix/internal/cli/template"
 )
 
 // renderModelGen invokes the full template→go-format pipeline used by

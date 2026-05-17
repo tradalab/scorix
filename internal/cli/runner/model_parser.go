@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/tradalab/scorix/cli/runner/dialect"
+	"github.com/tradalab/scorix/internal/cli/runner/dialect"
 )
 
 func toCamelCase(s string) string {

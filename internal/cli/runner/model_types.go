@@ -1,6 +1,6 @@
 package runner
 
-import "github.com/tradalab/scorix/cli/runner/dialect"
+import "github.com/tradalab/scorix/internal/cli/runner/dialect"
 
 type GenerateModelOptions struct {
 	Schema  string
