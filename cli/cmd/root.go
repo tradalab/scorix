@@ -24,9 +24,7 @@ var rootCmd = &cobra.Command{
 	Short: "Scorix CLI – build native apps with Go + WebUI",
 	Long:  "Scorix CLI.\nBuild, scaffold and manage Scorix applications.",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		// Global init
-		ctx := context.Background()
-		cmd.SetContext(ctx)
+		cmd.SetContext(context.Background())
 		return nil
 	},
 }

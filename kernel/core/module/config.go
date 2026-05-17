@@ -4,7 +4,7 @@ package module
 // Example config:
 //
 //	modules:
-//	  gorm:
+//	  sqlx:
 //	    enabled: true
 //	    dsn: app.dat
 type ModuleConfig struct {

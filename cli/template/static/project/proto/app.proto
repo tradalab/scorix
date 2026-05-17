@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package {{ .Package }};
+
+option go_package = "./types";
+
+message PingRequest {}
+
+message PingReply {
+  string status = 1;
+}
+
+// @middleware Auth
+service Healthz {
+  rpc Ping (PingRequest) returns (PingReply);
+}

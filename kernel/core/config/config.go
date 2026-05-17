@@ -36,7 +36,7 @@ type Config struct {
 	//
 	// Example app.yaml:
 	//   modules:
-	//     gorm:
+	//     sqlx:
 	//       enabled: true
 	//       dsn: app.dat
 	Modules map[string]any `yaml:"modules" json:"modules"`

@@ -14,7 +14,7 @@ const ipcKind = "command" // must match what the JS bridge sends (kind: "command
 // All handler names are registered as "command" kind, namespaced as
 // "mod:<module>:<handlerName>" so they are addressable from JS via:
 //
-//	scorix.invoke("mod:gorm:Query", payload)
+//	scorix.invoke("mod:sqlx:Query", payload)
 type ModuleIPC struct {
 	moduleName string
 	ipc        *ipc.IPC

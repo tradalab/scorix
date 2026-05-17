@@ -7,12 +7,16 @@ import (
 
 var devCmd = &cobra.Command{
 	Use:   "dev",
-	Short: "Start dev server",
+	Short: "Start the project in development mode",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runner.Dev(cmd.Context())
+		dir, _ := cmd.Flags().GetString("dir")
+		return runner.Dev(cmd.Context(), runner.DevOptions{
+			Dir: dir,
+		})
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(devCmd)
+	devCmd.Flags().StringP("dir", "d", ".", "project root directory")
 }
