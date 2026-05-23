@@ -50,6 +50,7 @@ func (m *DialogModule) OnLoad(ctx *module.Context) error {
 
 	// Register IPC handlers.
 	module.Expose(m, "OpenFile", ctx.IPC)
+	module.Expose(m, "OpenDirectory", ctx.IPC)
 	module.Expose(m, "SaveFile", ctx.IPC)
 	module.Expose(m, "Message", ctx.IPC)
 
@@ -80,6 +81,29 @@ func (m *DialogModule) OpenFile(_ context.Context, req OpenFileRequest) (string,
 	path, err := b.Load()
 	if err != nil {
 		// sqweek/dialog can return "Cancelled" text on user abort.
+		if err.Error() == "Cancelled" {
+			return "", nil
+		}
+		return "", err
+	}
+	return path, nil
+}
+
+// OpenDirectoryRequest represents an IPC request to open a folder selection dialog.
+type OpenDirectoryRequest struct {
+	Title string `json:"title"`
+	Dir   string `json:"dir,omitempty"` // optional starting directory
+}
+
+// OpenDirectory opens a native OS dialog to pick a folder.
+// JS: scorix.invoke("mod:dialog:OpenDirectory", { title: "Pick folder", dir: "/Users/foo" })
+func (m *DialogModule) OpenDirectory(_ context.Context, req OpenDirectoryRequest) (string, error) {
+	b := dialog.Directory().Title(req.Title)
+	if req.Dir != "" {
+		b = b.SetStartDir(req.Dir)
+	}
+	path, err := b.Browse()
+	if err != nil {
 		if err.Error() == "Cancelled" {
 			return "", nil
 		}

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 type DevOptions struct {
@@ -22,7 +23,8 @@ func Dev(ctx context.Context, opt DevOptions) error {
 		return err
 	}
 
-	if _, err := os.Stat(filepath.Join(root, "scorix.yaml")); os.IsNotExist(err) {
+	cfgPath := filepath.Join(root, "scorix.yaml")
+	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
 		return fmt.Errorf("scorix.yaml not found in %s", root)
 	}
 
@@ -38,8 +40,14 @@ func Dev(ctx context.Context, opt DevOptions) error {
 		}
 	}
 
+	args := []string{"run"}
+	if cfg, _ := loadProjectConfig(cfgPath); cfg != nil && cfg.Build != nil && len(cfg.Build.Tags) > 0 {
+		args = append(args, "-tags", strings.Join(cfg.Build.Tags, ","))
+	}
+	args = append(args, ".", "-mode", "app")
+
 	fmt.Println("==> Starting Scorix in dev mode (app)...")
-	cmd := exec.CommandContext(ctx, "go", "run", ".", "-mode", "app")
+	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = root
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

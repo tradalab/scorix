@@ -17,11 +17,17 @@ import (
 type ProjectConfig struct {
 	Name  string       `yaml:"name"`
 	Model *ModelConfig `yaml:"model"`
+	Build *BuildConfig `yaml:"build"`
 }
 
 type ModelConfig struct {
 	Schema  string `yaml:"schema"`
 	Dialect string `yaml:"dialect"` // sqlite | mysql | postgres
+}
+
+// BuildConfig carries options that `scorix dev` / `scorix build` should pass to `go run` / `go build`.
+type BuildConfig struct {
+	Tags []string `yaml:"tags"`
 }
 
 func loadProjectConfig(path string) (*ProjectConfig, error) {
