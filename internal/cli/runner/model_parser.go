@@ -169,16 +169,52 @@ func parseSQLSchema(schemaPath string, d dialect.Dialect) ([]sqlTable, error) {
 		return nil, fmt.Errorf("read schema: %w", err)
 	}
 
-	matches := tableRegex.FindAllStringSubmatch(string(b), -1)
+	// Match on sanitized text so CREATE TABLE inside a string literal is ignored; read body from raw to keep DEFAULT values.
+	sanitized := blankStringLiterals(string(b))
+	matches := tableRegex.FindAllStringSubmatchIndex(sanitized, -1)
 
+	seen := make(map[string]bool)
 	var tables []sqlTable
-	for _, match := range matches {
-		if len(match) < 3 {
+	for _, m := range matches {
+		if len(m) < 6 {
 			continue
 		}
-		tables = append(tables, parseTable(unquoteIdent(match[1]), match[2], d))
+		name := unquoteIdent(string(b[m[2]:m[3]]))
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		tables = append(tables, parseTable(name, string(b[m[4]:m[5]]), d))
 	}
 	return tables, nil
+}
+
+// blankStringLiterals fills single-quoted contents with spaces (length-preserving) so regexes skip embedded SQL.
+func blankStringLiterals(s string) string {
+	buf := []byte(s)
+	for i := 0; i < len(buf); i++ {
+		if buf[i] != '\'' {
+			continue
+		}
+		j := i + 1
+		for j < len(buf) {
+			if buf[j] == '\'' {
+				if j+1 < len(buf) && buf[j+1] == '\'' {
+					buf[j] = ' '
+					buf[j+1] = ' '
+					j += 2
+					continue
+				}
+				break
+			}
+			if buf[j] != '\n' && buf[j] != '\r' && buf[j] != '\t' {
+				buf[j] = ' '
+			}
+			j++
+		}
+		i = j
+	}
+	return string(buf)
 }
 
 func parseTable(tableName, body string, d dialect.Dialect) sqlTable {

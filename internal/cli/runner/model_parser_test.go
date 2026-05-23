@@ -248,3 +248,84 @@ CREATE TABLE IF NOT EXISTS post (
 		t.Fatalf("want 1 table with 2 cols, got %+v", tables)
 	}
 }
+
+// Regression: CREATE TABLE inside a string literal (sqlite_master migration) must not become a real table.
+func TestParseSQLSchema_IgnoresCreateTableInsideStringLiteral(t *testing.T) {
+	path := writeTempSchema(t, `
+CREATE TABLE IF NOT EXISTS chats (
+    id      TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),
+    title   TEXT NOT NULL DEFAULT 'New Chat',
+    pinned  INTEGER NOT NULL DEFAULT 0
+);
+
+PRAGMA writable_schema = ON;
+UPDATE sqlite_master
+SET sql = 'CREATE TABLE chats (
+    id      TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),
+    title   TEXT NOT NULL DEFAULT ''New Chat'',
+    pinned  INTEGER NOT NULL DEFAULT 0
+)'
+WHERE type = 'table' AND name = 'chats' AND sql NOT LIKE '%pinned%';
+PRAGMA writable_schema = RESET;
+
+CREATE INDEX IF NOT EXISTS idx_chats_pinned ON chats(pinned DESC);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id      TEXT PRIMARY KEY,
+    chat_id TEXT NOT NULL
+);
+`)
+	tables, err := parseSQLSchema(path, dialect.MustNew("sqlite"))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(tables) != 2 {
+		t.Fatalf("want 2 tables (chats + messages), got %d: %+v", len(tables), tables)
+	}
+	if tables[0].Name != "chats" {
+		t.Errorf("first table = %q, want chats", tables[0].Name)
+	}
+	if tables[1].Name != "messages" {
+		t.Errorf("second table = %q, want messages", tables[1].Name)
+	}
+	for _, c := range tables[0].Columns {
+		switch c.Name {
+		case "WHERE", "PRAGMA", "UPDATE", "CREATE":
+			t.Errorf("chats has spurious column %q from migration text bleed", c.Name)
+		}
+	}
+	if len(tables[0].Columns) != 3 {
+		t.Errorf("chats cols = %d, want 3 (id, title, pinned); got %+v", len(tables[0].Columns), tables[0].Columns)
+	}
+}
+
+// Two real CREATE TABLE with the same name dedup (first wins).
+func TestParseSQLSchema_DedupesDuplicateTableNames(t *testing.T) {
+	path := writeTempSchema(t, `
+CREATE TABLE IF NOT EXISTS foo (
+    id TEXT PRIMARY KEY,
+    a  TEXT
+);
+
+CREATE TABLE IF NOT EXISTS foo (
+    id TEXT PRIMARY KEY,
+    b  TEXT
+);
+`)
+	tables, err := parseSQLSchema(path, dialect.MustNew("sqlite"))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(tables) != 1 {
+		t.Fatalf("want 1 deduped table, got %d", len(tables))
+	}
+	var hasA bool
+	for _, c := range tables[0].Columns {
+		if c.Name == "a" {
+			hasA = true
+		}
+	}
+	if !hasA {
+		t.Error("first occurrence should win — column `a` missing")
+	}
+}

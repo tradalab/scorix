@@ -68,19 +68,21 @@ const scorix: ScorixAPI = {
   
   on(topic: string, callback: (data: any, error: string) => void): () => void {
     if (typeof window === "undefined") return () => {};
-    
-    // Fast path: if already available
-    if (window.scorix) return window.scorix.on(topic, callback);
-    
-    // Slow path: wait and subscribe
+
+    // window.scorix.on returns Promise<unsubscribe> (orchestrator _call is async) — normalize to sync cleanup.
     let cancelled = false;
     let cleanup: (() => void) | null = null;
 
-    getScorix().then(api => {
-      if (cancelled) return;
-      cleanup = api.on(topic, callback);
-    }).catch(console.error);
-    
+    Promise.resolve(window.scorix ? window.scorix.on(topic, callback) : getScorix().then(api => api.on(topic, callback)))
+      .then(result => {
+        if (cancelled) {
+          if (typeof result === "function") result();
+          return;
+        }
+        cleanup = typeof result === "function" ? result : null;
+      })
+      .catch(console.error);
+
     return () => {
       cancelled = true;
       if (cleanup) cleanup();
