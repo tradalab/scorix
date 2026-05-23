@@ -90,17 +90,25 @@ func (m *DialogModule) OpenFile(_ context.Context, req OpenFileRequest) (string,
 
 // SaveFileRequest represents an IPC request to open a file save dialog.
 type SaveFileRequest struct {
-	Title  string `json:"title"`
-	Filter string `json:"filter"`
-	Ext    string `json:"ext"`
+	Title    string `json:"title"`
+	Filter   string `json:"filter"`
+	Ext      string `json:"ext"`
+	FileName string `json:"fileName,omitempty"`
+	Dir      string `json:"dir,omitempty"`
 }
 
 // SaveFile opens a native OS dialog to select a path for saving a file.
-// JS: scorix.invoke("mod:dialog:SaveFile", { title: "Save File", filter: "Text Files", ext: "txt" })
+// JS: scorix.invoke("mod:dialog:SaveFile", { title, filter, ext, fileName, dir })
 func (m *DialogModule) SaveFile(_ context.Context, req SaveFileRequest) (string, error) {
 	b := dialog.File().Title(req.Title)
 	if req.Filter != "" || req.Ext != "" {
 		b = b.Filter(req.Filter, req.Ext)
+	}
+	if req.Dir != "" {
+		b = b.SetStartDir(req.Dir)
+	}
+	if req.FileName != "" {
+		b = b.SetStartFile(req.FileName)
 	}
 
 	path, err := b.Save()
