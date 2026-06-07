@@ -67,7 +67,7 @@ func TestRenderModelGen_SQLite(t *testing.T) {
 		`connectionFindManySQL`, `connectionInsertSQL`,
 		`connectionUpdateSQL`, `connectionDeleteSQL`,
 		// Soft delete: DeleteSQL is an UPDATE, not DELETE FROM
-		`= "UPDATE ` + "`connection` SET `deleted_at`",
+		`= "UPDATE `+"`connection` SET `deleted_at`",
 		// SQLite ? placeholder
 		"`id` = ?",
 		// interface methods
@@ -154,8 +154,8 @@ CREATE TABLE IF NOT EXISTS account (
 	)
 
 	mustNotContain(t, got,
-		"uuid.NewString()",       // INTEGER PK, no UUID hook
-		"time.Now(), id",         // no soft-delete time arg
+		"uuid.NewString()", // INTEGER PK, no UUID hook
+		"time.Now(), id",   // no soft-delete time arg
 		`"github.com/google/uuid"`,
 	)
 

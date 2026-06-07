@@ -21,13 +21,14 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 	"github.com/tradalab/scorix/logger"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/tradalab/scorix/kernel/core/module"
@@ -173,7 +174,10 @@ func (m *UpdaterModule) Download(ctx context.Context, c *http.Client, url string
 	}
 
 	total := resp.ContentLength
-	tmpFile, err := os.CreateTemp("", filepath.Base(req.URL.Path)+"-*")
+	// Preserve the artifact extension — msiexec rejects a file that doesn't end
+	// in .msi (os.CreateTemp puts the random suffix where the last '*' is).
+	ext := filepath.Ext(filepath.Base(req.URL.Path))
+	tmpFile, err := os.CreateTemp("", "scorix-update-*"+ext)
 	if err != nil {
 		return "", fmt.Errorf("create temp file: %w", err)
 	}
@@ -238,25 +242,204 @@ func (m *UpdaterModule) VerifyEd25519(publicKeyB64, signatureB64 string, payload
 	return nil
 }
 
+// RunInstaller applies a downloaded, verified update for the current platform:
+//   - windows: hands the .msi to msiexec (which closes/relaunches the app).
+//   - darwin:  mounts the .dmg, swaps the running .app, relaunches, exits.
+//   - linux:   replaces the running AppImage, relaunches, exits.
+//
+// The darwin/linux paths self-replace and call os.Exit after scheduling a
+// relaunch, so this function does not return on those platforms on success.
 func RunInstaller(ctx context.Context, path string, elevate bool) error {
-	if runtime.GOOS != "windows" {
-		return fmt.Errorf("installer run only implemented for Windows")
+	switch runtime.GOOS {
+	case "windows":
+		return runInstallerWindows(ctx, path, elevate)
+	case "darwin":
+		return runInstallerDarwin(ctx, path)
+	case "linux":
+		return runInstallerLinux(ctx, path)
+	default:
+		return fmt.Errorf("auto-install not supported on %s", runtime.GOOS)
 	}
+}
 
+func runInstallerWindows(ctx context.Context, path string, elevate bool) error {
 	args := []string{"/i", path, "/norestart"}
-
 	if !elevate {
 		cmd := exec.CommandContext(ctx, "msiexec.exe", args...)
 		cmd.Dir = filepath.Dir(path)
 		return cmd.Run()
 	}
-
 	ps := fmt.Sprintf(`Start-Process -FilePath "msiexec.exe" -ArgumentList '%s' -Verb RunAs -Wait`,
 		`/i "`+path+`" /norestart`,
 	)
 	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps)
 	cmd.Dir = filepath.Dir(path)
 	return cmd.Run()
+}
+
+// runInstallerDarwin mounts the .dmg, swaps the running .app bundle for the new
+// one (rename-based, with rollback), then relaunches after this process exits.
+func runInstallerDarwin(ctx context.Context, dmgPath string) error {
+	appPath, err := currentMacAppBundle()
+	if err != nil {
+		return err
+	}
+
+	mount, err := hdiutilAttach(ctx, dmgPath)
+	if err != nil {
+		return err
+	}
+	defer hdiutilDetach(mount)
+
+	newApp, err := findAppBundle(mount)
+	if err != nil {
+		return err
+	}
+
+	staged := appPath + ".new"
+	_ = os.RemoveAll(staged)
+	// `ditto` preserves bundle symlinks, code-signing and resource forks.
+	if out, derr := exec.CommandContext(ctx, "ditto", newApp, staged).CombinedOutput(); derr != nil {
+		return fmt.Errorf("copy new app: %w (%s)", derr, strings.TrimSpace(string(out)))
+	}
+
+	backup := appPath + ".old"
+	_ = os.RemoveAll(backup)
+	if err := os.Rename(appPath, backup); err != nil {
+		_ = os.RemoveAll(staged)
+		return fmt.Errorf("move current app aside: %w", err)
+	}
+	if err := os.Rename(staged, appPath); err != nil {
+		_ = os.Rename(backup, appPath) // rollback
+		return fmt.Errorf("install new app: %w", err)
+	}
+	_ = os.RemoveAll(backup)
+
+	hdiutilDetach(mount) // explicit: os.Exit below skips the deferred detach
+	relaunchAfterExit("open", appPath)
+	logger.Info("[updater] update installed; relaunching")
+	os.Exit(0)
+	return nil
+}
+
+// runInstallerLinux replaces the running AppImage file with the new one, then
+// relaunches after this process exits.
+func runInstallerLinux(ctx context.Context, newPath string) error {
+	_ = ctx
+	target := currentLinuxAppImage()
+	if target == "" {
+		return fmt.Errorf("auto-install requires running as an AppImage (the $APPIMAGE path is not set)")
+	}
+	if err := os.Chmod(newPath, 0o755); err != nil {
+		return err
+	}
+
+	backup := target + ".old"
+	_ = os.Remove(backup)
+	if err := os.Rename(target, backup); err != nil {
+		return fmt.Errorf("move current AppImage aside: %w", err)
+	}
+	if err := copyFileTo(newPath, target); err != nil {
+		_ = os.Rename(backup, target) // rollback
+		return fmt.Errorf("install new AppImage: %w", err)
+	}
+	_ = os.Chmod(target, 0o755)
+	_ = os.Remove(backup)
+
+	relaunchAfterExit(target)
+	logger.Info("[updater] update installed; relaunching")
+	os.Exit(0)
+	return nil
+}
+
+// ////////// Install helpers ////////// ////////// ////////// ////////// //////////
+
+// currentMacAppBundle returns the absolute path to the running .app bundle, or
+// an error if the binary is not running from inside one (e.g. a dev build).
+func currentMacAppBundle() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	if resolved, e := filepath.EvalSymlinks(exe); e == nil {
+		exe = resolved
+	}
+	marker := ".app/Contents/MacOS/"
+	if i := strings.Index(exe, marker); i >= 0 {
+		return exe[:i+len(".app")], nil
+	}
+	return "", fmt.Errorf("not running from a .app bundle — cannot self-update (path: %s)", exe)
+}
+
+// currentLinuxAppImage returns the path of the running AppImage (set in $APPIMAGE
+// by the AppImage runtime), or "" if not running as an AppImage.
+func currentLinuxAppImage() string {
+	if p := os.Getenv("APPIMAGE"); p != "" {
+		return p
+	}
+	return ""
+}
+
+func hdiutilAttach(ctx context.Context, dmg string) (string, error) {
+	out, err := exec.CommandContext(ctx, "hdiutil", "attach", "-nobrowse", "-readonly", dmg).Output()
+	if err != nil {
+		return "", fmt.Errorf("hdiutil attach: %w", err)
+	}
+	// The mount point is the last whitespace-separated field that starts with /Volumes/.
+	for _, line := range strings.Split(string(out), "\n") {
+		if i := strings.Index(line, "/Volumes/"); i >= 0 {
+			return strings.TrimRight(line[i:], " \t\r"), nil
+		}
+	}
+	return "", fmt.Errorf("could not determine dmg mount point")
+}
+
+func hdiutilDetach(mount string) {
+	_ = exec.Command("hdiutil", "detach", "-quiet", mount).Run()
+}
+
+func findAppBundle(dir string) (string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", err
+	}
+	for _, e := range entries {
+		if e.IsDir() && strings.HasSuffix(e.Name(), ".app") {
+			return filepath.Join(dir, e.Name()), nil
+		}
+	}
+	return "", fmt.Errorf("no .app bundle found in %s", dir)
+}
+
+func copyFileTo(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
+}
+
+// relaunchAfterExit spawns a detached shell that waits for this process to exit,
+// then runs the given command — so the new app starts only after the old one
+// releases the single-instance lock. Best-effort.
+func relaunchAfterExit(args ...string) {
+	quoted := make([]string, len(args))
+	for i, a := range args {
+		quoted[i] = "'" + strings.ReplaceAll(a, "'", `'\''`) + "'"
+	}
+	script := fmt.Sprintf("while kill -0 %d 2>/dev/null; do sleep 0.2; done; %s",
+		os.Getpid(), strings.Join(quoted, " "))
+	cmd := exec.Command("sh", "-c", script)
+	_ = cmd.Start() // detached; orphaned to init after we exit
 }
 
 // ////////// IPC Handlers ////////// ////////// ////////// ////////// ////////// //////////
@@ -298,11 +481,17 @@ func (m *UpdaterModule) FullUpdate(ctx context.Context) (*Result, error) {
 	}
 	res.LocalPath = localPath
 
-	// TODO verify data
-	// data, _ := os.ReadFile(localPath)
-	// if err := m.VerifyEd25519(m.cfg.PublicKeyBase64, res.SigBase64, data); err != nil {
-	// 	return res, err
-	// }
+	if m.cfg.PublicKeyBase64 == "" {
+		return res, fmt.Errorf("updater: refusing to run an unverified update — set modules.updater.public_key_base_64 and sign releases with `scorix appcast`")
+	}
+	data, err := os.ReadFile(localPath)
+	if err != nil {
+		return res, fmt.Errorf("updater: read downloaded artifact: %w", err)
+	}
+	if err := m.VerifyEd25519(m.cfg.PublicKeyBase64, res.SigBase64, data); err != nil {
+		return res, fmt.Errorf("updater: signature verification failed (refusing to install): %w", err)
+	}
+	logger.Info("[updater] signature verified")
 
 	logger.Info(fmt.Sprintf("[updater] Running installer at: %s", localPath))
 	if err := RunInstaller(ctx, localPath, res.Elevate); err != nil {

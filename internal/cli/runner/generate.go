@@ -173,7 +173,7 @@ func GenerateProto(ctx context.Context, opt GenerateProtoOptions) error {
 		if err != nil {
 			return err
 		}
-		
+
 		if action != "skipped" {
 			fmt.Printf("      %s: %s\n", action, filepath.Base(f.Path))
 		}

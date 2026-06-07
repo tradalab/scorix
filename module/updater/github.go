@@ -62,8 +62,7 @@ func (p *GitHubProvider) CheckForUpdate(ctx context.Context, currentVersion, pla
 	var sigURL string
 
 	for _, asset := range release.Assets {
-		// e.g. "MyApp-windows-amd64.exe" contains "windows-amd64"
-		if strings.Contains(strings.ToLower(asset.Name), strings.ToLower(platformKey)) {
+		if assetMatchesPlatform(asset.Name, platformKey) {
 			if strings.HasSuffix(asset.Name, ".sig") {
 				sigURL = asset.BrowserDownloadURL
 			} else if artifactURL == "" {
@@ -94,4 +93,56 @@ func (p *GitHubProvider) CheckForUpdate(ctx context.Context, currentVersion, pla
 	}
 
 	return res, nil
+}
+
+// assetMatchesPlatform reports whether a release asset filename corresponds to
+// the given platform key ({GOOS}-{GOARCH}, e.g. "darwin-arm64"). It tolerates
+// the common naming variants the packager emits: the OS may appear as "macos"
+// (darwin) or "win" (windows), the arch may use x86_64/aarch64, and a
+// "universal" macOS artifact serves every darwin arch.
+func assetMatchesPlatform(name, platformKey string) bool {
+	n := strings.ToLower(name)
+	pk := strings.ToLower(platformKey)
+	if strings.Contains(n, pk) {
+		return true
+	}
+
+	os, arch, found := strings.Cut(pk, "-")
+	if !found {
+		return false
+	}
+
+	osTokens := map[string][]string{
+		"darwin":  {"darwin", "macos", "osx"},
+		"windows": {"windows", "win"},
+		"linux":   {"linux"},
+	}
+	tokens, ok := osTokens[os]
+	if !ok {
+		tokens = []string{os}
+	}
+	osMatch := false
+	for _, t := range tokens {
+		if strings.Contains(n, t) {
+			osMatch = true
+			break
+		}
+	}
+	if !osMatch {
+		return false
+	}
+
+	archTokens := []string{arch, "universal"}
+	switch arch {
+	case "amd64":
+		archTokens = append(archTokens, "x86_64", "x64")
+	case "arm64":
+		archTokens = append(archTokens, "aarch64")
+	}
+	for _, t := range archTokens {
+		if strings.Contains(n, t) {
+			return true
+		}
+	}
+	return false
 }

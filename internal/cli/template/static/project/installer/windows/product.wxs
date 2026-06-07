@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+  Default Scorix WiX (MSI) installer.
+  `scorix package` supplies these preprocessor variables via `-d`:
+    ProductName, Manufacturer, ProductVersion, ProductDesc, UpgradeCode, BinPath
+  Customize freely — this file is yours once scaffolded.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <Package
+    Name="$(var.ProductName)"
+    Manufacturer="$(var.Manufacturer)"
+    Version="$(var.ProductVersion)"
+    UpgradeCode="$(var.UpgradeCode)"
+    Scope="perMachine">
+
+    <UIRef Id="ScorixInstallerUI"/>
+
+    <WixVariable Id="WixUILicenseRtf" Value="installer/windows/license.rtf"/>
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed."/>
+
+    <MediaTemplate EmbedCab="yes"/>
+
+    <Property Id="ARPPRODUCTICON" Value="AppIcon"/>
+    <Property Id="ARPNOREPAIR" Value="1"/>
+
+    <Icon Id="AppIcon" SourceFile="$(var.BinPath)\$(var.ProductName).ico"/>
+
+    <CustomAction
+      Id="LaunchApplication"
+      FileRef="AppExe"
+      ExeCommand=""
+      Execute="immediate"
+      Return="asyncNoWait"
+      Impersonate="yes"/>
+
+    <util:CloseApplication
+      Id="CloseApp"
+      Target="$(var.ProductName).exe"
+      CloseMessage="yes"
+      RebootPrompt="no"/>
+
+    <util:BroadcastEnvironmentChange/>
+
+    <StandardDirectory Id="ProgramFilesFolder">
+      <Directory Id="COMPANYFOLDER" Name="$(var.Manufacturer)">
+        <Directory Id="INSTALLFOLDER" Name="$(var.ProductName)"/>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="CompanyProgramsFolder" Name="$(var.Manufacturer)">
+        <Directory Id="AppProgramsFolder" Name="$(var.ProductName)"/>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder"/>
+
+    <Component Id="MainExecutable" Directory="INSTALLFOLDER" Guid="*">
+      <File Id="AppExe" Source="$(var.BinPath)\$(var.ProductName).exe" KeyPath="yes"/>
+      <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall"/>
+    </Component>
+
+    <Component Id="StartMenuShortcut" Directory="AppProgramsFolder" Guid="*">
+      <Shortcut
+        Id="StartMenuShortcutExe"
+        Name="$(var.ProductName)"
+        Description="$(var.ProductDesc)"
+        Target="[INSTALLFOLDER]$(var.ProductName).exe"
+        WorkingDirectory="INSTALLFOLDER"
+        Icon="AppIcon"/>
+      <RemoveFolder Id="RemoveProgramsFolder" Directory="AppProgramsFolder" On="uninstall"/>
+      <RegistryValue
+        Root="HKCU"
+        Key="Software\$(var.Manufacturer)\$(var.ProductName)"
+        Name="StartMenuInstalled"
+        Type="integer"
+        Value="1"
+        KeyPath="yes"/>
+    </Component>
+
+    <Component Id="DesktopShortcut" Directory="DesktopFolder" Guid="*">
+      <Shortcut
+        Id="DesktopShortcutExe"
+        Name="$(var.ProductName)"
+        Description="$(var.ProductDesc)"
+        Target="[INSTALLFOLDER]$(var.ProductName).exe"
+        WorkingDirectory="INSTALLFOLDER"
+        Icon="AppIcon"/>
+      <RegistryValue
+        Root="HKCU"
+        Key="Software\$(var.Manufacturer)\$(var.ProductName)"
+        Name="DesktopShortcut"
+        Type="integer"
+        Value="1"
+        KeyPath="yes"/>
+    </Component>
+
+    <ComponentGroup Id="ProductComponents">
+      <ComponentRef Id="MainExecutable"/>
+      <ComponentRef Id="StartMenuShortcut"/>
+      <ComponentRef Id="DesktopShortcut"/>
+    </ComponentGroup>
+
+    <Feature Id="MainFeature" Title="$(var.ProductName)" Level="1">
+      <ComponentGroupRef Id="ProductComponents"/>
+    </Feature>
+  </Package>
+
+</Wix>
