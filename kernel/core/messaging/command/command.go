@@ -3,6 +3,7 @@ package command
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 
@@ -123,7 +124,7 @@ func (c *Command) Invoke(ctx context.Context, id string, name string, payload an
 	}
 
 	if resp.State == ipc.StateError {
-		return nil, fmt.Errorf(resp.Error)
+		return nil, errors.New(resp.Error)
 	}
 
 	return resp.Data, nil

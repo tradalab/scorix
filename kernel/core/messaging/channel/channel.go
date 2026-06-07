@@ -3,7 +3,7 @@ package channel
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 
 	"github.com/tradalab/scorix/kernel/internal/ipc"
 )
@@ -53,7 +53,7 @@ func (c *Channel) Open(ctx context.Context, id string, name string, payload any,
 			case ipc.StateDone:
 				return nil
 			case ipc.StateError:
-				return fmt.Errorf(m.Error)
+				return errors.New(m.Error)
 			}
 		case <-ctx.Done():
 			return ctx.Err()
