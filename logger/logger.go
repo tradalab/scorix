@@ -3,24 +3,24 @@ package logger
 import (
 	"io"
 	"os"
+	"sync"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
 var (
-	log   *zap.Logger
-	sugar *zap.SugaredLogger
+	log         *zap.Logger
+	sugar       *zap.SugaredLogger
+	defaultOnce sync.Once
 )
 
 func New(cfg Config) {
-	// Level
 	level := zap.InfoLevel
 	if err := level.UnmarshalText([]byte(cfg.Level)); err != nil {
 		level = zap.InfoLevel
 	}
 
-	// Encoder
 	var encoder zapcore.Encoder
 	if cfg.Format == "json" {
 		encoder = zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
@@ -30,7 +30,6 @@ func New(cfg Config) {
 		encoder = zapcore.NewConsoleEncoder(config)
 	}
 
-	// Writer
 	var writer io.Writer
 	if cfg.Output == "both" {
 		writer = io.MultiWriter(os.Stdout, fileWriter(cfg))
@@ -38,7 +37,6 @@ func New(cfg Config) {
 		writer = fileWriter(cfg)
 	}
 
-	// Core
 	core := zapcore.NewCore(encoder, zapcore.AddSync(writer), level)
 
 	log = zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
@@ -46,7 +44,10 @@ func New(cfg Config) {
 }
 
 func ensure() {
-	if log == nil {
+	if log != nil {
+		return
+	}
+	defaultOnce.Do(func() {
 		New(Config{
 			Level:   "info",
 			Format:  "console",
@@ -55,5 +56,5 @@ func ensure() {
 			MaxSize: 10,
 			MaxAge:  7,
 		})
-	}
+	})
 }

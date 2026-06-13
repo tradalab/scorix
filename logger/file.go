@@ -12,11 +12,15 @@ func fileWriter(cfg Config) io.Writer {
 		return os.Stdout
 	}
 	if cfg.Output == "file" || cfg.Output == "both" {
+		maxBackups := cfg.MaxBackups
+		if maxBackups <= 0 {
+			maxBackups = 3 // preserve historical default when unset
+		}
 		return &lumberjack.Logger{
 			Filename:   cfg.File,
 			MaxSize:    cfg.MaxSize, // MB
 			MaxAge:     cfg.MaxAge,  // days
-			MaxBackups: 3,
+			MaxBackups: maxBackups,
 			LocalTime:  true,
 			Compress:   true,
 		}
