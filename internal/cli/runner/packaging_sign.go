@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // SignConfig is the optional `package.sign` block. Secrets are never stored
@@ -46,34 +47,59 @@ type LinuxSign struct {
 	GPGKeyEnv string `yaml:"gpg_key_env"` // or via env
 }
 
+func (bc *BuildContext) gracefulSkip(platform string, haveCreds bool) bool {
+	if bc.ForceSign || haveCreds {
+		return false
+	}
+	unsignedWarn.Do(func() {
+		fmt.Printf("==> warning: %s code signing is enabled but no credentials found — producing an UNSIGNED build.\n"+
+			"    Set the signing secrets to sign, or pass --skip-sign to silence this (--sign would make it a hard error).\n", platform)
+	})
+	return true
+}
+
+var unsignedWarn sync.Once
+
 func (bc *BuildContext) winSign() *WindowsSign {
 	if bc.SkipSign || bc.pkg.Sign == nil {
 		return nil
 	}
-	if w := bc.pkg.Sign.Windows; w != nil && (w.Enabled || bc.ForceSign) {
-		return w
+	w := bc.pkg.Sign.Windows
+	if w == nil || !(w.Enabled || bc.ForceSign) {
+		return nil
 	}
-	return nil
+	if bc.gracefulSkip("windows", w.Thumbprint != "" || envVal(w.CertEnv) != "") {
+		return nil
+	}
+	return w
 }
 
 func (bc *BuildContext) macSign() *MacOSSign {
 	if bc.SkipSign || bc.pkg.Sign == nil {
 		return nil
 	}
-	if m := bc.pkg.Sign.MacOS; m != nil && (m.Enabled || bc.ForceSign) {
-		return m
+	m := bc.pkg.Sign.MacOS
+	if m == nil || !(m.Enabled || bc.ForceSign) {
+		return nil
 	}
-	return nil
+	if bc.gracefulSkip("macos", firstNonEmpty(m.Identity, envVal(m.IdentityEnv)) != "") {
+		return nil
+	}
+	return m
 }
 
 func (bc *BuildContext) linuxSign() *LinuxSign {
 	if bc.SkipSign || bc.pkg.Sign == nil {
 		return nil
 	}
-	if l := bc.pkg.Sign.Linux; l != nil && (l.Enabled || bc.ForceSign) {
-		return l
+	l := bc.pkg.Sign.Linux
+	if l == nil || !(l.Enabled || bc.ForceSign) {
+		return nil
 	}
-	return nil
+	if bc.gracefulSkip("linux", hasTool("gpg")) {
+		return nil
+	}
+	return l
 }
 
 // signWindows code-signs a file (exe or msi) with signtool or osslsigncode.
