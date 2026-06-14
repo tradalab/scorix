@@ -106,7 +106,7 @@ var (
 		putAddArgs:     windows.NewCallback(optPutStub),
 		getLanguage:    windows.NewCallback(optStringGetter),
 		putLanguage:    windows.NewCallback(optPutStub),
-		getTargetVer:   windows.NewCallback(optStringGetter),
+		getTargetVer:   windows.NewCallback(optTargetVerGetter),
 		putTargetVer:   windows.NewCallback(optPutStub),
 		getAllowSSO:    windows.NewCallback(optBoolGetter),
 		putAllowSSO:    windows.NewCallback(optPutStub),
@@ -173,6 +173,13 @@ func buildEnvOptions(schemes []string) unsafe.Pointer {
 func optStringGetter(_, out uintptr) uintptr {
 	if out != 0 {
 		*(*uintptr)(unsafe.Pointer(out)) = 0 // NULL => default
+	}
+	return sOK
+}
+
+func optTargetVerGetter(_, out uintptr) uintptr {
+	if out != 0 {
+		*(*uintptr)(unsafe.Pointer(out)) = coTaskMemDupUTF16("86.0.616.0")
 	}
 	return sOK
 }

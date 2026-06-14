@@ -258,6 +258,7 @@ func (a *App) Run() error {
 			URL:    mainURL,
 		})
 		if err != nil {
+			logger.Error("app: failed to open main window — quitting", "err", err)
 			rt.Quit()
 			return
 		}
