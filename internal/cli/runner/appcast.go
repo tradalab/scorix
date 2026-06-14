@@ -17,9 +17,8 @@ import (
 	"time"
 )
 
-// UpdateConfig is the optional `package.update` block. It drives `scorix appcast`,
-// which signs release artifacts (Ed25519), writes SHA256SUMS and an appcast.json
-// manifest consumed by the updater module.
+// UpdateConfig is the optional `package.update` block driving `scorix appcast`:
+// Ed25519-sign artifacts, write SHA256SUMS and an appcast.json for the updater.
 type UpdateConfig struct {
 	Appcast    bool   `yaml:"appcast"`      // emit appcast.json
 	BaseURL    string `yaml:"base_url"`     // artifacts are served under this URL
@@ -29,7 +28,7 @@ type UpdateConfig struct {
 	Notes      string `yaml:"notes"`        // optional release notes
 }
 
-// appcast manifest shapes — mirror module/updater StaticAppcast/PlatformArtifact.
+// Mirrors module/updater StaticAppcast/PlatformArtifact.
 type staticAppcast struct {
 	Version   string                      `json:"version"`
 	PubDate   string                      `json:"pub_date,omitempty"`
@@ -43,14 +42,12 @@ type platformArtifact struct {
 	WithElevatedTask bool   `json:"with_elevated_task,omitempty"`
 }
 
-// AppcastOptions controls `scorix appcast`.
 type AppcastOptions struct {
 	Dir          string
 	ArtifactsDir string
 	BaseURL      string // overrides package.update.base_url
 }
 
-// Appcast signs the installer artifacts, writes SHA256SUMS and appcast.json.
 func Appcast(ctx context.Context, opt AppcastOptions) error {
 	root, err := filepath.Abs(orDefault(opt.Dir, "."))
 	if err != nil {
@@ -152,10 +149,26 @@ func Appcast(ctx context.Context, opt AppcastOptions) error {
 			return err
 		}
 		out := filepath.Join(artDir, "appcast.json")
-		if err := os.WriteFile(out, append(data, '\n'), 0o644); err != nil {
+		// Sign the exact bytes written to disk (newline included) so the updater
+		// verifies the same payload it fetches.
+		manifest := append(data, '\n')
+		if err := os.WriteFile(out, manifest, 0o644); err != nil {
 			return err
 		}
 		fmt.Printf("==> wrote %s (%d platform entries)\n", out, len(platforms))
+
+		// Sign the manifest itself (anti-tamper/anti-rollback): else an attacker
+		// controlling it could advertise a high version pointing at an OLD,
+		// still-validly-signed artifact. Updater verifies this over the raw bytes
+		// before trusting any field.
+		if priv != nil {
+			manifestSig := base64.StdEncoding.EncodeToString(ed25519.Sign(priv, manifest))
+			sigOut := out + ".sig"
+			if err := os.WriteFile(sigOut, []byte(manifestSig), 0o644); err != nil {
+				return err
+			}
+			fmt.Printf("==> signed appcast.json -> appcast.json.sig\n")
+		}
 	}
 	return nil
 }

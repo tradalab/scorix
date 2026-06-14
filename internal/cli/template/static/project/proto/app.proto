@@ -4,13 +4,27 @@ package {{ .Package }};
 
 option go_package = "./types";
 
+message Empty {}
+
 message PingRequest {}
 
 message PingReply {
   string status = 1;
 }
 
+// Payload for the sample server-push event below.
+message TickEvent {
+  int64 seq = 1;
+}
+
 // @middleware Auth
 service Healthz {
   rpc Ping (PingRequest) returns (PingReply);
+
+  // The annotation below marks Tick as a one-way typed event, not a command.
+  // Direction: default = Go -> JS push (Go: events.EmitHealthzTickCtx,
+  // TS: events.onHealthzTick / useHealthzTickEvent); append " in" for JS -> Go
+  // (Go: events.OnX, TS: events.emitX).
+  // @event
+  rpc Tick (TickEvent) returns (Empty);
 }

@@ -1,7 +1,7 @@
 //go:build darwin
 
 // Package wkwebview is the macOS native driver: AppKit window + WKWebView via
-// the Objective-C runtime through purego (no CGO).
+// the Objective-C runtime through purego.
 //
 // EXPERIMENTAL: not yet hardware-validated — objc_msgSend ABI paths (NSRect
 // struct args on amd64) need on-device checks.
@@ -23,7 +23,6 @@ type nsRect struct {
 	Size   nsSize
 }
 
-// AppKit / WebKit constants.
 const (
 	nsWindowStyleTitled         uint64 = 1 << 0
 	nsWindowStyleClosable       uint64 = 1 << 1
@@ -60,7 +59,6 @@ var (
 	msgSendSetFrame  func(objc.ID, objc.SEL, nsRect, bool) // setFrame:display:
 )
 
-// initObjC is idempotent.
 func initObjC() error {
 	objcOnce.Do(func() {
 		flags := purego.RTLD_GLOBAL | purego.RTLD_NOW
@@ -115,7 +113,6 @@ var (
 	taskMap = map[uintptr]func(){}
 )
 
-// dispatchMain queues fn onto the GCD main queue (the AppKit run loop thread).
 func dispatchMain(fn func()) {
 	taskMu.Lock()
 	taskSeq++

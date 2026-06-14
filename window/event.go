@@ -14,8 +14,7 @@ const (
 	EventReady    Event = "ready"
 )
 
-// EventData carries window event details. PreventDefault is non-nil only for
-// cancelable events (currently EventClose).
+// PreventDefault is non-nil only for cancelable events (currently EventClose).
 type EventData struct {
 	Window         ID
 	W, H           int

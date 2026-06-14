@@ -14,9 +14,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// PackageConfig is the optional `package:` block in scorix.yaml. It drives
-// `scorix build` and `scorix package`. Secrets (certs, signing keys) are never
-// stored here — only the names of environment variables that carry them.
+// PackageConfig is the optional `package:` block in scorix.yaml, driving
+// `scorix build`/`package`. Secrets are never stored here — only the names of
+// the env vars that carry them.
 type PackageConfig struct {
 	Manufacturer string          `yaml:"manufacturer"`
 	Description  string          `yaml:"description"`
@@ -30,21 +30,18 @@ type PackageConfig struct {
 	Update       *UpdateConfig   `yaml:"update"`
 }
 
-// PackageTarget is one os/arch/format the app should be packaged for.
 type PackageTarget struct {
 	OS     string `yaml:"os"`     // windows | darwin | linux
 	Arch   string `yaml:"arch"`   // amd64 | arm64 | universal (darwin)
 	Format string `yaml:"format"` // msi | dmg | appimage (defaults per-OS)
 }
 
-// WindowsPackage carries Windows/MSI-specific packaging options.
 type WindowsPackage struct {
-	// UpgradeCode is the stable MSI UpgradeCode GUID. If empty it is derived
-	// deterministically from the app identifier so major-upgrades keep working
-	// across builds.
+	// UpgradeCode is the stable MSI UpgradeCode GUID; if empty it is derived
+	// deterministically from the app identifier so major-upgrades keep working.
 	UpgradeCode string `yaml:"upgrade_code"`
-	// Wxs lists the WiX source files. Defaults to installer/windows/product.wxs
-	// and installer/windows/ui.wxs, scaffolded on first package if missing.
+	// Wxs lists the WiX source files (default: installer/windows/{product,ui}.wxs,
+	// scaffolded on first package if missing).
 	Wxs []string `yaml:"wxs"`
 }
 
@@ -61,7 +58,6 @@ type appMetadata struct {
 	} `yaml:"app"`
 }
 
-// BuildContext is everything resolved for a single build/package target.
 type BuildContext struct {
 	Root         string
 	ModulePath   string
@@ -96,7 +92,6 @@ type BuildContext struct {
 	pkg *PackageConfig
 }
 
-// BuildOptions controls `scorix build`.
 type BuildOptions struct {
 	Dir          string
 	OS           string
@@ -330,7 +325,7 @@ func goBuildArch(ctx context.Context, bc *BuildContext, goarch, out string) erro
 	env := append(os.Environ(), "GOOS="+bc.OS, "GOARCH="+goarch)
 	if bc.OS == "darwin" {
 		// CGO (sqlite/webkit) is required; allow a per-arch CC override for
-		// cross-arch builds (e.g. CC_amd64 / CC_arm64), matching the old script.
+		// cross-arch builds (CC_amd64 / CC_arm64).
 		env = append(env, "CGO_ENABLED=1")
 		if cc := os.Getenv("CC_" + goarch); cc != "" {
 			env = append(env, "CC="+cc)

@@ -13,14 +13,25 @@ import (
 	scorix_template "github.com/tradalab/scorix/internal/cli/template"
 )
 
-func writeGeneratedFile(f generatedFile) (string, error) {
+// stagedFile is a rendered generatedFile held in memory: the action plus the
+// bytes, so a batch can render everything before committing any (all-or-nothing).
+type stagedFile struct {
+	Path       string
+	Content    []byte
+	Action     string // "created" | "updated" | "skipped"
+	NeedsWrite bool
+}
+
+// renderGeneratedFile resolves the create/update/skip action and renders into
+// memory without touching the filesystem, so an error aborts before any write.
+func renderGeneratedFile(f generatedFile) (stagedFile, error) {
 	_, statErr := os.Stat(f.Path)
 	exists := statErr == nil
 	if exists && !f.Force {
-		return "skipped", nil
+		return stagedFile{Path: f.Path, Action: "skipped"}, nil
 	}
 	if statErr != nil && !os.IsNotExist(statErr) {
-		return "", statErr
+		return stagedFile{}, statErr
 	}
 
 	var buf bytes.Buffer
@@ -34,31 +45,92 @@ func writeGeneratedFile(f generatedFile) (string, error) {
 		},
 	}).Parse(f.Template)
 	if err != nil {
-		return "", err
+		return stagedFile{}, err
 	}
 	if err := tpl.Execute(&buf, f.Data); err != nil {
-		return "", err
+		return stagedFile{}, err
 	}
 
 	content := buf.Bytes()
 	if f.Go {
 		formatted, err := format.Source(content)
 		if err != nil {
-			return "", fmt.Errorf("format %s: %w\n%s", f.Path, err, content)
+			return stagedFile{}, fmt.Errorf("format %s: %w\n%s", f.Path, err, content)
 		}
 		content = formatted
 	}
 
-	if err := os.MkdirAll(filepath.Dir(f.Path), 0755); err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(f.Path, content, 0644); err != nil {
-		return "", err
-	}
+	action := "created"
 	if exists {
-		return "updated", nil
+		action = "updated"
 	}
-	return "created", nil
+	return stagedFile{Path: f.Path, Content: content, Action: action, NeedsWrite: true}, nil
+}
+
+// normalizeNewlines strips CR so a git autocrlf checkout on Windows can't
+// produce false drift against the LF bytes the generator renders.
+func normalizeNewlines(b []byte) []byte {
+	return bytes.ReplaceAll(b, []byte("\r"), nil)
+}
+
+// driftOf compares a staged render against disk without writing: "" (in sync),
+// "missing", or "out of date".
+func driftOf(s stagedFile) (string, error) {
+	if !s.NeedsWrite {
+		return "", nil
+	}
+	disk, err := os.ReadFile(s.Path)
+	if os.IsNotExist(err) {
+		return "missing", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if bytes.Equal(normalizeNewlines(disk), normalizeNewlines(s.Content)) {
+		return "", nil
+	}
+	return "out of date", nil
+}
+
+func reportDrift(root, regenCmd string, drifted []string) error {
+	if len(drifted) == 0 {
+		fmt.Println("==> Check passed: generated code is in sync.")
+		return nil
+	}
+	for _, d := range drifted {
+		fmt.Printf("      drift: %s\n", d)
+	}
+	return fmt.Errorf("generated code is out of sync with its sources (%d file(s)) — run `%s` and commit the result", len(drifted), regenCmd)
+}
+
+func driftLabel(root, path, reason string) string {
+	if rel, err := filepath.Rel(root, path); err == nil {
+		path = filepath.ToSlash(rel)
+	}
+	return path + " (" + reason + ")"
+}
+
+func commitStagedFile(s stagedFile) error {
+	if !s.NeedsWrite {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(s.Path), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(s.Path, s.Content, 0644)
+}
+
+// writeGeneratedFile renders and immediately writes one file — for callers
+// (writeTemplateFS) that emit independently, not as an all-or-nothing batch.
+func writeGeneratedFile(f generatedFile) (string, error) {
+	staged, err := renderGeneratedFile(f)
+	if err != nil {
+		return "", err
+	}
+	if err := commitStagedFile(staged); err != nil {
+		return "", err
+	}
+	return staged.Action, nil
 }
 
 func writeTemplateFS(srcDir, destDir string, data any) error {

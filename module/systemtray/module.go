@@ -1,14 +1,6 @@
-//go:build !server
+//go:build !server && (windows || linux)
 
-// Package systemtray provides a system tray integration module for scorix applications.
-//
-// Enable in app.yaml:
-//
-//	modules:
-//	  systemtray:
-//	    enabled: true
-//	    title: "MyApp"
-//	    tooltip: "My Application"
+// Package systemtray is a system tray integration module.
 package systemtray
 
 import (
@@ -16,36 +8,42 @@ import (
 	"fmt"
 
 	"github.com/energye/systray"
-	"github.com/tradalab/scorix/kernel/core/module"
+	"github.com/tradalab/scorix/module"
 	"github.com/tradalab/scorix/logger"
 )
 
-// Config holds the config block for this module.
 // Fields are read from app.yaml → modules.systemtray.*
 type Config struct {
 	Title   string `json:"title"`
 	Tooltip string `json:"tooltip"`
 }
 
-// ////////// Module ////////// ////////// ////////// ////////// ////////// //////////
-
-// SystemTrayModule provides system tray icon and menu functionality.
 type SystemTrayModule struct {
 	ctx  *module.Context
 	cfg  Config
 	icon []byte
+	menu []MenuItem // nil → default Open/Quit menu
 }
 
-// New creates a new SystemTrayModule.
-// icon is the tray icon data (typically from go:embed).
-func New(icon []byte) *SystemTrayModule {
-	return &SystemTrayModule{icon: icon}
+type Option func(*SystemTrayModule)
+
+// WithMenu replaces the default Open/Quit menu with the given items
+// (see Item and Separator). Click handlers run on the tray's goroutine —
+// hand long work off to another goroutine.
+func WithMenu(items ...MenuItem) Option {
+	return func(m *SystemTrayModule) { m.menu = items }
+}
+
+func New(icon []byte, opts ...Option) *SystemTrayModule {
+	m := &SystemTrayModule{icon: icon}
+	for _, o := range opts {
+		o(m)
+	}
+	return m
 }
 
 func (m *SystemTrayModule) Name() string    { return "systemtray" }
 func (m *SystemTrayModule) Version() string { return "1.0.0" }
-
-// ////////// Lifecycle ////////// ////////// ////////// ////////// ////////// //////////
 
 func (m *SystemTrayModule) OnLoad(ctx *module.Context) error {
 	logger.Info(fmt.Sprintf("[systemtray] loading (v%s)", m.Version()))
@@ -56,7 +54,6 @@ func (m *SystemTrayModule) OnLoad(ctx *module.Context) error {
 		return fmt.Errorf("decode config: %w", err)
 	}
 
-	// Fallback to app name if not configured.
 	if m.cfg.Title == "" {
 		m.cfg.Title = ctx.AppName
 	}
@@ -64,7 +61,6 @@ func (m *SystemTrayModule) OnLoad(ctx *module.Context) error {
 		m.cfg.Tooltip = ctx.AppName
 	}
 
-	// Register IPC handlers.
 	module.Expose(m, "SetIcon", ctx.IPC)
 	module.Expose(m, "SetTooltip", ctx.IPC)
 	module.Expose(m, "SetTitle", ctx.IPC)
@@ -88,8 +84,6 @@ func (m *SystemTrayModule) OnStop() error {
 
 func (m *SystemTrayModule) OnUnload() error { return nil }
 
-// ////////// System Tray Setup ////////// ////////// ////////// ////////// //////////
-
 func (m *SystemTrayModule) onReady() {
 	if len(m.icon) > 0 {
 		systray.SetIcon(m.icon)
@@ -97,7 +91,6 @@ func (m *SystemTrayModule) onReady() {
 	systray.SetTitle(m.cfg.Title)
 	systray.SetTooltip(m.cfg.Tooltip)
 
-	// Click handlers — show app on click/double-click.
 	systray.SetOnClick(func(menu systray.IMenu) {
 		if m.ctx.App != nil {
 			m.ctx.App.Show()
@@ -114,7 +107,20 @@ func (m *SystemTrayModule) onReady() {
 		}
 	})
 
-	// Built-in menu items.
+	if len(m.menu) > 0 {
+		for _, item := range m.menu {
+			if item.Separator {
+				systray.AddSeparator()
+				continue
+			}
+			mi := systray.AddMenuItem(item.Title, item.Tooltip)
+			if item.OnClick != nil {
+				mi.Click(item.OnClick)
+			}
+		}
+		return
+	}
+
 	systray.AddMenuItem("Open", "Open Application").Click(func() {
 		if m.ctx.App != nil {
 			m.ctx.App.Show()
@@ -131,14 +137,10 @@ func (m *SystemTrayModule) onExit() {
 	logger.Info("[systemtray] tray exited")
 }
 
-// ////////// IPC Handlers ////////// ////////// ////////// ////////// ////////// //////////
-
-// SetIconRequest is the IPC payload for SetIcon.
 type SetIconRequest struct {
 	Icon []byte `json:"icon"`
 }
 
-// SetIcon updates the tray icon at runtime.
 // JS: scorix.invoke("mod:systemtray:SetIcon", { icon: <base64-encoded-bytes> })
 func (m *SystemTrayModule) SetIcon(_ context.Context, req SetIconRequest) (interface{}, error) {
 	if len(req.Icon) == 0 {
@@ -148,24 +150,20 @@ func (m *SystemTrayModule) SetIcon(_ context.Context, req SetIconRequest) (inter
 	return "ok", nil
 }
 
-// SetTooltipRequest is the IPC payload for SetTooltip.
 type SetTooltipRequest struct {
 	Tooltip string `json:"tooltip"`
 }
 
-// SetTooltip updates the tray tooltip at runtime.
 // JS: scorix.invoke("mod:systemtray:SetTooltip", { tooltip: "New tooltip" })
 func (m *SystemTrayModule) SetTooltip(_ context.Context, req SetTooltipRequest) (interface{}, error) {
 	systray.SetTooltip(req.Tooltip)
 	return "ok", nil
 }
 
-// SetTitleRequest is the IPC payload for SetTitle.
 type SetTitleRequest struct {
 	Title string `json:"title"`
 }
 
-// SetTitle updates the tray title at runtime.
 // JS: scorix.invoke("mod:systemtray:SetTitle", { title: "New Title" })
 func (m *SystemTrayModule) SetTitle(_ context.Context, req SetTitleRequest) (interface{}, error) {
 	systray.SetTitle(req.Title)

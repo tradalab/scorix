@@ -7,10 +7,12 @@ type GenerateModelOptions struct {
 	Dir     string
 	Force   bool
 	Dialect string // sqlite | mysql | postgres. Empty falls back to scorix.yaml / "sqlite".
+	// Check renders in memory and diffs against disk instead of writing, erroring
+	// on drift (CI guard, see GenerateProtoOptions).
+	Check bool
 }
 
-// sqlTable is one CREATE TABLE post-parse. Per-table CRUD only — callers
-// stitch relations in internal/logic/.
+// sqlTable: per-table CRUD only — callers stitch relations in internal/logic/.
 type sqlTable struct {
 	Name      string
 	GoName    string
@@ -32,7 +34,7 @@ type sqlTable struct {
 type sqlColumn struct {
 	Name      string
 	GoName    string
-	ParamName string // unexported camelCase for func params
+	ParamName string
 	SQLType   string
 	GoType    string
 
@@ -56,9 +58,8 @@ type modelTemplateData struct {
 	SQL     tableSQL
 }
 
-// schemaTemplateData drives the schema_gen.go that //go:embeds the raw
-// schema.sql. Lives in schema.sql's directory because //go:embed only
-// resolves siblings/descendants.
+// schemaTemplateData drives the schema_gen.go that //go:embeds raw schema.sql
+// (emitted in schema.sql's dir, since //go:embed only resolves siblings/descendants).
 type schemaTemplateData struct {
 	Package    string
 	SchemaFile string

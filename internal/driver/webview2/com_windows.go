@@ -74,8 +74,7 @@ func comCallStr(this unsafe.Pointer, index int, s string, extra ...uintptr) uint
 // The trampolines below convert the raw uintptr args the OS hands us into Go
 // pointers. go vet's unsafeptr heuristic flags those conversions, but they are
 // safe: `this` is one of our pinned *handler objects and a/b are C-owned COM
-// pointers — neither is a movable Go heap pointer. These few conversions are the
-// irreducible C boundary of no-CGO COM interop.
+// pointers — neither is a movable Go heap pointer.
 
 type comVtbl struct {
 	queryInterface uintptr

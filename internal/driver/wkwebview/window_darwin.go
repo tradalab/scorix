@@ -118,7 +118,6 @@ func (m *manager) Count() int {
 	return len(m.byID)
 }
 
-// remove returns how many windows remain.
 func (m *manager) remove(id window.ID) int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -272,7 +271,6 @@ func registerWinDelegate(w *win) {
 						w := v.(*win)
 						winByDelegate.Delete(self)
 						w.fire(window.EventClose)
-						// Quit when the last window closes.
 						if w.rt.manager.remove(w.id) == 0 {
 							w.rt.Quit()
 						}

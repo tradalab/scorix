@@ -4,6 +4,9 @@ type GenerateProtoOptions struct {
 	Proto string
 	Dir   string
 	Force bool
+	// Check renders in memory and diffs against disk instead of writing, erroring
+	// on drift — CI guard against editing proto (or generated files) without regen.
+	Check bool
 }
 
 type protoFile struct {
@@ -35,7 +38,8 @@ type protoService struct {
 	Name        string
 	Package     string
 	Middlewares []string
-	RPCs        []protoRPC
+	RPCs        []protoRPC // request/reply commands only (events are split out)
+	Events      []protoRPC // rpcs annotated @event / @event in
 }
 
 type protoRPC struct {
@@ -51,12 +55,22 @@ type protoRPC struct {
 	ResultGoType  string
 	RequestTSType string
 	ResultTSType  string
+
+	// Event fields — set when the rpc carries an @event annotation. The request
+	// message is the event payload; the response type is ignored.
+	IsEvent     bool
+	EventDir    string // "out" (Go -> JS push, default) | "in" (JS -> Go one-way)
+	EventName   string // wire topic, e.g. "monitor:message"
+	EventGoName string // service-prefixed identifier, e.g. "MonitorMessage"
 }
 
 type protoTemplateData struct {
-	Module   string
-	Proto    protoFile
-	Services []protoService
+	Module    string
+	Proto     protoFile
+	Services  []protoService
+	OutEvents []protoRPC
+	InEvents  []protoRPC
+	HasEvents bool
 }
 
 type logicTemplateData struct {

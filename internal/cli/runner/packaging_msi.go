@@ -113,8 +113,8 @@ func scaffoldWindowsInstaller(bc *BuildContext) error {
 
 func ensureWixExtensions(ctx context.Context, wixPath string) {
 	for _, ext := range []string{"WixToolset.UI.wixext", "WixToolset.Util.wixext"} {
-		// Best-effort: if the extension is already present or offline, the
-		// subsequent `wix build` surfaces a clear error.
+		// Best-effort: if already present or offline, the later `wix build`
+		// surfaces a clear error.
 		cmd := exec.CommandContext(ctx, wixPath, "extension", "add", "-g", ext)
 		cmd.Stderr = os.Stderr
 		_ = cmd.Run()

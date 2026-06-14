@@ -14,6 +14,7 @@ var generateModelCmd = &cobra.Command{
 			Dir:     generateModelDir,
 			Force:   generateModelForce,
 			Dialect: generateModelDialect,
+			Check:   generateModelCheck,
 		})
 	},
 }
@@ -23,6 +24,7 @@ var (
 	generateModelDir     string
 	generateModelForce   bool
 	generateModelDialect string
+	generateModelCheck   bool
 )
 
 func init() {
@@ -32,4 +34,5 @@ func init() {
 	generateModelCmd.Flags().StringVarP(&generateModelDir, "dir", "d", ".", "project root directory")
 	generateModelCmd.Flags().BoolVarP(&generateModelForce, "force", "f", false, "overwrite existing implementation files")
 	generateModelCmd.Flags().StringVar(&generateModelDialect, "dialect", "", "DB dialect: sqlite | mysql | postgres (default: scorix.yaml model.dialect, else sqlite)")
+	generateModelCmd.Flags().BoolVar(&generateModelCheck, "check", false, "verify generated code is in sync without writing (CI drift guard)")
 }

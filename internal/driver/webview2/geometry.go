@@ -1,4 +1,4 @@
-// Package webview2 is the no-CGO Windows native window.Driver backed by WebView2.
+// Package webview2 is the Windows native window.Driver backed by WebView2.
 package webview2
 
 // centerPosition clamps a negative (oversize-window) origin to 0.

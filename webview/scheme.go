@@ -16,9 +16,8 @@ type Request struct {
 	Body   []byte
 }
 
-// Response is the asset returned to the webview. Status/Header must be complete
-// enough for the platform webview (content-type, and range headers when the
-// backend signals partial content).
+// Status/Header must be complete enough for the platform webview (content-type,
+// and range headers when the backend signals partial content).
 type Response struct {
 	Status int
 	Header http.Header

@@ -6,8 +6,6 @@ import (
 	"testing/fstest"
 )
 
-// fstest.MapFS lets us hand-craft a migrations directory in-memory without
-// touching the disk. Each entry uses the goose naming convention.
 func TestRunGooseUp_Idempotent(t *testing.T) {
 	fsys := fstest.MapFS{
 		"migrations/00001_init.sql": &fstest.MapFile{
@@ -29,7 +27,6 @@ DROP INDEX acct_balance_idx;
 	withInMemoryDB(t, func(m *Module) {
 		ctx := context.Background()
 
-		// First run — applies both migrations.
 		if err := runGooseUp(ctx, m.db.DB, "sqlite3", fsys, "migrations"); err != nil {
 			t.Fatalf("first up: %v", err)
 		}
@@ -38,12 +35,11 @@ DROP INDEX acct_balance_idx;
 			t.Errorf("acct should be empty after migration, got %v", rows[0]["n"])
 		}
 
-		// Second run — idempotent, no error, version unchanged.
+		// Second run must be idempotent: no error, version unchanged.
 		if err := runGooseUp(ctx, m.db.DB, "sqlite3", fsys, "migrations"); err != nil {
 			t.Fatalf("second up should be no-op: %v", err)
 		}
 
-		// Insert + Update across both migrations' artefacts works.
 		if _, err := m.Exec(ctx, SQLRequest{SQL: "INSERT INTO acct (id, balance) VALUES (?, ?)", Args: []any{1, 50}}); err != nil {
 			t.Fatal(err)
 		}
@@ -77,7 +73,6 @@ func TestWithMigrationsOption(t *testing.T) {
 		t.Errorf("nil fsys should not register an init script, got %d", len(m.initScripts))
 	}
 
-	// Non-nil → script registered.
 	fsys := fstest.MapFS{}
 	m = New(WithMigrations(fsys, "migrations"))
 	if len(m.initScripts) != 1 {

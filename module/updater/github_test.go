@@ -9,12 +9,10 @@ func TestAssetMatchesPlatform(t *testing.T) {
 		platform string
 		want     bool
 	}{
-		// Windows
 		{"win msi", "RedisHub-1.11.0-windows-amd64.msi", "windows-amd64", true},
 		{"win sig", "RedisHub-1.11.0-windows-amd64.msi.sig", "windows-amd64", true},
 		{"win vs linux", "RedisHub-1.11.0-windows-amd64.msi", "linux-amd64", false},
 
-		// Linux
 		{"linux appimage", "RedisHub-1.11.0-linux-amd64.AppImage", "linux-amd64", true},
 		{"linux x86_64 alias", "RedisHub-1.11.0-linux-x86_64.AppImage", "linux-amd64", true},
 		{"linux vs darwin", "RedisHub-1.11.0-linux-amd64.AppImage", "darwin-amd64", false},
@@ -28,7 +26,6 @@ func TestAssetMatchesPlatform(t *testing.T) {
 		{"darwin amd64 dmg NOT for arm64 user", "RedisHub-1.11.0-macos-amd64.dmg", "darwin-arm64", false},
 		{"macos dmg NOT for windows user", "RedisHub-1.11.0-macos-universal.dmg", "windows-amd64", false},
 
-		// Malformed key
 		{"no dash", "whatever.msi", "windows", false},
 	}
 	for _, c := range cases {

@@ -1,3 +1,7 @@
+# BUILD/PACKAGING MANIFEST — read by the scorix CLI (build, package, appcast),
+# NOT by your app at runtime. Runtime configuration lives in code
+# (app.Options in main.go, SetModuleConfig in svc). Keep overlapping values
+# (window size, security) in sync as documentation; code wins.
 app:
   name: {{ .Name }}
   version: 1.0.0

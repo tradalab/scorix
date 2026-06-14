@@ -65,24 +65,58 @@ func goFieldFromColumn(colName string) string {
 }
 
 // Identifier captures accept "x" / `x` / [x] / x — unquoteIdent strips wrappers post-match.
+// tableHeadRegex matches `CREATE TABLE [IF NOT EXISTS] <name>` up to the opening `(`.
 var (
-	tableRegex = regexp.MustCompile(`(?i)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?` +
+	tableHeadRegex = regexp.MustCompile(`(?i)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?` +
 		"(\"[a-zA-Z0-9_]+\"|`[a-zA-Z0-9_]+`|\\[[a-zA-Z0-9_]+\\]|[a-zA-Z0-9_]+)" +
-		`\s*\(([\s\S]*?)\);`)
+		`\s*`)
 	columnRegex = regexp.MustCompile(`(?i)^` +
-		"(\"[a-zA-Z0-9_]+\"|`[a-zA-Z0-9_]+`|\\[[a-zA-Z0-9_]+\\]|[a-zA-Z0-9_]+)" +
+		"(\"[^\"]+\"|`[^`]+`|\\[[^\\]]+\\]|[a-zA-Z0-9_]+)" +
 		`\s+([a-zA-Z0-9_]+)(?:\([0-9,]+\))?(.*)$`)
 
 	tablePKRegex     = regexp.MustCompile(`(?i)PRIMARY\s+KEY\s*\(\s*([a-zA-Z0-9_,\s]+?)\s*\)`)
 	tableUniqueRegex = regexp.MustCompile(`(?i)^UNIQUE\s*\(\s*([a-zA-Z0-9_,\s]+?)\s*\)`)
 )
 
+// isWordBoundary reports whether b is NOT part of a SQL identifier token, i.e.
+// it cannot be adjacent to a keyword like DEFAULT and still be the same word.
+func isWordBoundary(b byte) bool {
+	switch {
+	case b >= 'a' && b <= 'z', b >= 'A' && b <= 'Z', b >= '0' && b <= '9', b == '_':
+		return false
+	default:
+		return true
+	}
+}
+
+// indexKeyword returns the byte offset of the first whole-word occurrence of the
+// (uppercase) keyword in the caller-uppercased haystack, or -1. Whole-word (both
+// neighbours non-identifier bytes) so a column like `is_default` doesn't match DEFAULT.
+func indexKeyword(upper, keyword string) int {
+	from := 0
+	for {
+		rel := strings.Index(upper[from:], keyword)
+		if rel < 0 {
+			return -1
+		}
+		idx := from + rel
+		beforeOK := idx == 0 || isWordBoundary(upper[idx-1])
+		afterIdx := idx + len(keyword)
+		afterOK := afterIdx == len(upper) || isWordBoundary(upper[afterIdx])
+		if beforeOK && afterOK {
+			return idx
+		}
+		from = idx + 1
+	}
+}
+
 // extractDefaultValue returns the raw token after `DEFAULT` — a single-quoted
-// literal (preserving doubled-quote escapes), a paren-balanced expression, or
-// a bareword. Empty when no DEFAULT clause.
+// literal (doubled-quote escapes preserved), a paren-balanced expression, or a
+// bareword; empty when none. Whole-word match on string-blanked text so substrings
+// like `is_default` don't trigger.
 func extractDefaultValue(line string) string {
-	upper := strings.ToUpper(line)
-	idx := strings.Index(upper, "DEFAULT")
+	blanked := strings.ToUpper(blankStringLiterals(line))
+	idx := indexKeyword(blanked, "DEFAULT")
 	if idx < 0 {
 		return ""
 	}
@@ -169,24 +203,57 @@ func parseSQLSchema(schemaPath string, d dialect.Dialect) ([]sqlTable, error) {
 		return nil, fmt.Errorf("read schema: %w", err)
 	}
 
-	// Match on sanitized text so CREATE TABLE inside a string literal is ignored; read body from raw to keep DEFAULT values.
-	sanitized := blankStringLiterals(string(b))
-	matches := tableRegex.FindAllStringSubmatchIndex(sanitized, -1)
+	// Match on sanitized text so CREATE TABLE inside a string literal is ignored,
+	// and so parens inside string literals don't fool the body scanner; read the
+	// body and name from raw to keep DEFAULT values verbatim.
+	raw := string(b)
+	sanitized := blankStringLiterals(raw)
+	heads := tableHeadRegex.FindAllStringSubmatchIndex(sanitized, -1)
 
 	seen := make(map[string]bool)
 	var tables []sqlTable
-	for _, m := range matches {
-		if len(m) < 6 {
+	for _, m := range heads {
+		if len(m) < 4 {
 			continue
 		}
-		name := unquoteIdent(string(b[m[2]:m[3]]))
+		// m[1] is the end of the whole head match (just before the `(`).
+		open, close, ok := tableBodySpan(sanitized, m[1])
+		if !ok {
+			continue
+		}
+		name := unquoteIdent(raw[m[2]:m[3]])
 		if seen[name] {
 			continue
 		}
 		seen[name] = true
-		tables = append(tables, parseTable(name, string(b[m[4]:m[5]]), d))
+		tables = append(tables, parseTable(name, raw[open+1:close], d))
 	}
 	return tables, nil
+}
+
+// tableBodySpan returns the byte offsets of the CREATE TABLE body's opening and
+// matching closing parens, scanning paren depth over string-blanked text (so
+// parens inside literals don't shift depth). ok is false on no `(` or unbalanced
+// parens (malformed/truncated DDL) — skip rather than mis-parse.
+func tableBodySpan(blanked string, from int) (open, close int, ok bool) {
+	open = strings.IndexByte(blanked[from:], '(')
+	if open < 0 {
+		return 0, 0, false
+	}
+	open += from
+	depth := 0
+	for i := open; i < len(blanked); i++ {
+		switch blanked[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return open, i, true
+			}
+		}
+	}
+	return 0, 0, false
 }
 
 // blankStringLiterals fills single-quoted contents with spaces (length-preserving) so regexes skip embedded SQL.
@@ -217,6 +284,39 @@ func blankStringLiterals(s string) string {
 	return string(buf)
 }
 
+// splitTopLevelDefs splits a CREATE TABLE body on paren-depth-0 commas into
+// column/constraint defs; commas nested in parens — DECIMAL(10,2), CHECK (x IN
+// (1,2)), DEFAULT (json_array(...)), PRIMARY KEY (a, b) — stay within one def.
+// Splits run over the string-blanked copy (commas/parens in literals neutralised);
+// returned slices come from raw body so DEFAULT literals survive verbatim.
+func splitTopLevelDefs(body string) []string {
+	blanked := blankStringLiterals(body) // length-preserving → byte indices align with body
+	var defs []string
+	depth := 0
+	start := 0
+	for i, r := range blanked {
+		switch r {
+		case '(':
+			depth++
+		case ')':
+			if depth > 0 {
+				depth--
+			}
+		case ',':
+			if depth == 0 {
+				if def := strings.TrimSpace(body[start:i]); def != "" {
+					defs = append(defs, def)
+				}
+				start = i + 1
+			}
+		}
+	}
+	if def := strings.TrimSpace(body[start:]); def != "" {
+		defs = append(defs, def)
+	}
+	return defs
+}
+
 func parseTable(tableName, body string, d dialect.Dialect) sqlTable {
 	table := sqlTable{
 		Name:      tableName,
@@ -227,12 +327,14 @@ func parseTable(tableName, body string, d dialect.Dialect) sqlTable {
 	var tableLevelPKCols []string
 	var tableLevelUniqueCols []string
 
-	for _, raw := range strings.Split(body, "\n") {
-		line := strings.TrimSpace(raw)
+	for _, def := range splitTopLevelDefs(body) {
+		// A def may span lines (multi-line DEFAULT/CHECK) but columnRegex expects
+		// single-line input; flatten interior newlines, preserving other spacing
+		// so DEFAULT literals stay intact.
+		line := strings.NewReplacer("\n", " ", "\r", " ").Replace(def)
 		if line == "" || strings.HasPrefix(line, "--") {
 			continue
 		}
-		line = strings.TrimSuffix(line, ",")
 		upperLine := strings.ToUpper(line)
 
 		if strings.HasPrefix(upperLine, "FOREIGN KEY") {
@@ -328,7 +430,9 @@ func parseColumn(line string, d dialect.Dialect) (sqlColumn, bool) {
 	if strings.Contains(rest, " UNIQUE") || strings.HasSuffix(rest, " UNIQUE") || strings.Contains(rest, "\tUNIQUE") {
 		col.IsUnique = true
 	}
-	if strings.Contains(rest, "DEFAULT") {
+	// Whole-word DEFAULT on string-blanked remainder so `is_default` (or DEFAULT
+	// inside a literal) doesn't false-trigger; extractDefaultValue re-locates it.
+	if indexKeyword(strings.ToUpper(blankStringLiterals(restOriginal)), "DEFAULT") >= 0 {
 		col.DefaultValue = extractDefaultValue(restOriginal)
 	}
 

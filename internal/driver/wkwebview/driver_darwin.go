@@ -71,7 +71,6 @@ func (r *rt) Run() error {
 	r.app = objc.ID(cls("NSApplication")).Send(sel("sharedApplication"))
 	r.app.Send(sel("setActivationPolicy:"), nsApplicationActivationPolicyRegular)
 
-	// applicationDidFinishLaunching: → RuntimeReady (mirrors webview2).
 	delegate := newAppDelegate(r)
 	r.app.Send(sel("setDelegate:"), delegate)
 	r.app.Send(sel("activateIgnoringOtherApps:"), true)
@@ -119,8 +118,6 @@ func (r *rt) fire(evt window.RuntimeEvent) {
 		fn()
 	}
 }
-
-// ── NSApplicationDelegate (runtime-registered class) ─────────────────
 
 var appDelegateOnce sync.Once
 

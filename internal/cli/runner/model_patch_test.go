@@ -59,12 +59,16 @@ func TestPatchServiceContext_FreshProject(t *testing.T) {
 
 	mustContain(t, out,
 		`scorixsqlx "github.com/tradalab/scorix/module/sqlx"`,
+		`"github.com/jmoiron/sqlx"`,
+		`_ "modernc.org/sqlite"`,
 		`"example.com/app/internal/model"`,
 		`"example.com/app/etc"`,
 		`UserModel model.UserModel`,
 		`PostModel model.PostModel`,
 		`sqlxMod := scorixsqlx.New(scorixsqlx.WithSchema(etc.SchemaSQL))`,
-		`app.Modules().Register(sqlxMod)`,
+		`sqlxMod.RegisterDriver("sqlite",`,
+		`a.SetModuleConfig("sqlx", map[string]any{"driver": "sqlite", "dsn": "app.dat"})`,
+		`a.Module(sqlxMod)`,
 		`UserModel: model.NewUserModel(sqlxMod.Conn),`,
 		`PostModel: model.NewPostModel(sqlxMod.Conn),`,
 	)
@@ -129,8 +133,7 @@ func TestPatchAppYaml_FreshInsertPostgres(t *testing.T) {
 		"  sqlx:",
 		"    driver: pgx",
 		"    dsn: postgres://user:pass@",
-		// existing block survives
-		"  systray:",
+		"  systray:", // existing block survives
 	)
 }
 

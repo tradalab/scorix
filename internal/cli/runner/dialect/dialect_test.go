@@ -76,9 +76,9 @@ func TestPlaceholder(t *testing.T) {
 
 func TestPlaceholderList(t *testing.T) {
 	cases := []struct {
-		dialect    Dialect
-		start, n   int
-		want       string
+		dialect  Dialect
+		start, n int
+		want     string
 	}{
 		{SQLite{}, 1, 0, ""},
 		{SQLite{}, 1, 1, "?"},
@@ -97,12 +97,10 @@ func TestPlaceholderList(t *testing.T) {
 }
 
 func TestMapTypeCommon(t *testing.T) {
-	// Spot-check the type mapping flows across all three dialects so a
-	// regression in any one shows up immediately.
 	type want struct {
-		Name       string
-		NeedsTime  bool
-		NeedsSQL   bool
+		Name      string
+		NeedsTime bool
+		NeedsSQL  bool
 	}
 	cases := []struct {
 		dialect  Dialect
@@ -110,40 +108,33 @@ func TestMapTypeCommon(t *testing.T) {
 		nullable bool
 		want     want
 	}{
-		// strings
 		{SQLite{}, "TEXT", false, want{Name: "string"}},
 		{MySQL{}, "VARCHAR", false, want{Name: "string"}},
 		{Postgres{}, "TEXT", false, want{Name: "string"}},
 
-		// ints
 		{SQLite{}, "INTEGER", false, want{Name: "int64"}},
 		{MySQL{}, "BIGINT", false, want{Name: "int64"}},
 		{Postgres{}, "BIGSERIAL", false, want{Name: "int64"}},
 
-		// bool — sqlite has BOOLEAN keyword, mysql has BOOL, pg has BOOLEAN
+		// sqlite/pg spell it BOOLEAN, mysql BOOL
 		{SQLite{}, "BOOLEAN", false, want{Name: "bool"}},
 		{MySQL{}, "BOOL", false, want{Name: "bool"}},
 		{Postgres{}, "BOOLEAN", false, want{Name: "bool"}},
 
-		// time non-null → time.Time
 		{SQLite{}, "DATETIME", false, want{Name: "time.Time", NeedsTime: true}},
 		{MySQL{}, "TIMESTAMP", false, want{Name: "time.Time", NeedsTime: true}},
 		{Postgres{}, "TIMESTAMPTZ", false, want{Name: "time.Time", NeedsTime: true}},
 
-		// time nullable → sql.NullTime
 		{SQLite{}, "DATETIME", true, want{Name: "sql.NullTime", NeedsSQL: true}},
 		{Postgres{}, "TIMESTAMPTZ", true, want{Name: "sql.NullTime", NeedsSQL: true}},
 
-		// blob/bytea
 		{SQLite{}, "BLOB", false, want{Name: "[]byte"}},
 		{MySQL{}, "MEDIUMBLOB", false, want{Name: "[]byte"}},
 		{Postgres{}, "BYTEA", false, want{Name: "[]byte"}},
 
-		// json on pg → []byte, uuid → string
 		{Postgres{}, "JSONB", false, want{Name: "[]byte"}},
 		{Postgres{}, "UUID", false, want{Name: "string"}},
 
-		// unknown defaults to string
 		{SQLite{}, "WEIRDTYPE", false, want{Name: "string"}},
 	}
 	for _, c := range cases {

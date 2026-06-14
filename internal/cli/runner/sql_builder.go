@@ -6,9 +6,8 @@ import (
 	"github.com/tradalab/scorix/internal/cli/runner/dialect"
 )
 
-// tableSQL holds the precomputed SQL strings + field lists the model template
-// emits. Building these once at codegen time keeps generated files free of
-// runtime fmt.Sprintf — every query is a plain const that greps and EXPLAINs.
+// tableSQL holds SQL strings + field lists precomputed at codegen time so each
+// generated query is a plain const (no runtime fmt.Sprintf).
 type tableSQL struct {
 	FindOneSQL      string
 	FindAllSQL      string

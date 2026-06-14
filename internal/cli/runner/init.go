@@ -37,18 +37,15 @@ func Init(ctx context.Context, opt InitOptions) error {
 		"Package": strings.ToLower(opt.Name),
 	}
 
-	// 1. Initializing core project files (scorix.yaml, proto, etc.)
 	if err := writeTemplateFS("static/project", root, data); err != nil {
 		return err
 	}
 
-	// 2. Initializing shell (Next.js)
 	fmt.Println("==> Initializing Next.js shell...")
 	if err := writeTemplateFS(template.ShellNextJS, filepath.Join(root, "shell"), data); err != nil {
 		return err
 	}
 
-	// 3. Setup Go module
 	if _, err := os.Stat(filepath.Join(root, "go.mod")); os.IsNotExist(err) {
 		fmt.Println("==> Running go mod init...")
 		cmd := exec.CommandContext(ctx, "go", "mod", "init", opt.Name)
@@ -86,7 +83,6 @@ func Init(ctx context.Context, opt InitOptions) error {
 		}
 	}
 
-	// 4. Run generate proto for the first time
 	fmt.Println("==> Running initial scorix generate proto...")
 	if err := GenerateProto(ctx, GenerateProtoOptions{
 		Dir:   root,
@@ -96,15 +92,16 @@ func Init(ctx context.Context, opt InitOptions) error {
 		fmt.Printf("warning: initial generate proto failed: %v\n", err)
 	}
 
-	// 5. Run go mod tidy again after generation
 	fmt.Println("==> Running go mod tidy...")
 	t := exec.CommandContext(ctx, "go", "mod", "tidy")
 	t.Dir = root
 	t.Stdout = os.Stdout
 	t.Stderr = os.Stderr
-	t.Run()
+	if err := t.Run(); err != nil {
+		fmt.Printf("warning: go mod tidy failed: %v\n", err)
+		fmt.Println("Please run 'go mod tidy' manually in the project directory.")
+	}
 
-	// 6. Run pnpm install in shell
 	shellDir := filepath.Join(root, "shell")
 	if _, err := os.Stat(filepath.Join(shellDir, "package.json")); err == nil {
 		fmt.Println("==> Installing shell dependencies (pnpm install)...")

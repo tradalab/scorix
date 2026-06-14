@@ -1,8 +1,10 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"go/format"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,7 +28,6 @@ type ModelConfig struct {
 	Dialect string `yaml:"dialect"` // sqlite | mysql | postgres
 }
 
-// BuildConfig carries options that `scorix dev` / `scorix build` should pass to `go run` / `go build`.
 type BuildConfig struct {
 	Tags []string `yaml:"tags"`
 }
@@ -79,6 +80,10 @@ func GenerateModel(ctx context.Context, opt GenerateModelOptions) error {
 	if err != nil {
 		return fmt.Errorf("resolve dialect: %w", err)
 	}
+	if d.Name() != "sqlite" {
+		// No app validates these dialects end-to-end yet (all are SQLite).
+		fmt.Printf("warning: dialect %q is EXPERIMENTAL — no app validates it end-to-end yet; review generated SQL carefully\n", d.Name())
+	}
 
 	fmt.Printf("==> Parsing schema from %s (dialect: %s)\n", schemaPath, d.Name())
 	tables, err := parseSQLSchema(schemaAbs, d)
@@ -108,6 +113,8 @@ func GenerateModel(ctx context.Context, opt GenerateModelOptions) error {
 		}
 	}
 
+	var drifted []string
+
 	if len(tables) == 0 {
 		fmt.Println("No tables found in schema. Clearing generated model entries from svc.go.")
 	} else {
@@ -116,8 +123,19 @@ func GenerateModel(ctx context.Context, opt GenerateModelOptions) error {
 			return err
 		}
 
+		// Pass 1: render all; abort before any write if one fails.
+		type labelled struct {
+			file  generatedFile
+			label string // progress text; "" → suppress (skips handled per-action)
+		}
+		var pending []labelled
+
 		for _, table := range tables {
-			fmt.Printf("    Generating model for table: %s\n", table.Name)
+			if opt.Check {
+				fmt.Printf("    Checking model for table: %s\n", table.Name)
+			} else {
+				fmt.Printf("    Generating model for table: %s\n", table.Name)
+			}
 
 			data := modelTemplateData{
 				Module:  cfg.Name,
@@ -129,64 +147,112 @@ func GenerateModel(ctx context.Context, opt GenerateModelOptions) error {
 
 			// model.go — interface + hand-edited methods; created once, opt.Force overwrites.
 			modelFile := filepath.Join(modelDir, fmt.Sprintf("%s_model.go", table.TableName))
-			action1, err := writeGeneratedFile(generatedFile{
-				Path:     modelFile,
-				Template: mustRead(template.GoModel),
-				Data:     data,
-				Go:       true,
-				Force:    opt.Force,
+			pending = append(pending, labelled{
+				file: generatedFile{
+					Path:     modelFile,
+					Template: mustRead(template.GoModel),
+					Data:     data,
+					Go:       true,
+					Force:    opt.Force,
+				},
+				label: fmt.Sprintf("%s_model.go", table.TableName),
 			})
-			if err != nil {
-				return err
-			}
-			if action1 != "skipped" {
-				fmt.Printf("      %s: %s_model.go\n", action1, table.TableName)
-			}
 
 			// model_gen.go — CRUD + struct, always regenerated.
 			modelGenFile := filepath.Join(modelDir, fmt.Sprintf("%s_model_gen.go", table.TableName))
-			action2, err := writeGeneratedFile(generatedFile{
-				Path:     modelGenFile,
-				Template: mustRead(template.GoModelGen),
-				Data:     data,
-				Go:       true,
-				Force:    true,
+			pending = append(pending, labelled{
+				file: generatedFile{
+					Path:     modelGenFile,
+					Template: mustRead(template.GoModelGen),
+					Data:     data,
+					Go:       true,
+					Force:    true,
+				},
+				label: fmt.Sprintf("%s_model_gen.go", table.TableName),
 			})
-			if err != nil {
-				return err
-			}
-			if action2 != "skipped" {
-				fmt.Printf("      %s: %s_model_gen.go\n", action2, table.TableName)
-			}
 		}
 
 		// schema_gen.go uses //go:embed so schema.sql stays as native SQL.
 		schemaGenFile := filepath.Join(schemaDir, "schema_gen.go")
-		action, err := writeGeneratedFile(generatedFile{
-			Path:     schemaGenFile,
-			Template: mustRead(template.GoSchemaGen),
-			Data: schemaTemplateData{
-				Package:    schemaPkgName,
-				SchemaFile: filepath.Base(schemaAbs),
+		pending = append(pending, labelled{
+			file: generatedFile{
+				Path:     schemaGenFile,
+				Template: mustRead(template.GoSchemaGen),
+				Data: schemaTemplateData{
+					Package:    schemaPkgName,
+					SchemaFile: filepath.Base(schemaAbs),
+				},
+				Go:    true,
+				Force: true,
 			},
-			Go:    true,
-			Force: true,
+			label: fmt.Sprintf("%s/schema_gen.go", filepath.ToSlash(relSchemaDir)),
 		})
+
+		staged := make([]stagedFile, 0, len(pending))
+		labels := make([]string, 0, len(pending))
+		for _, p := range pending {
+			s, err := renderGeneratedFile(p.file)
+			if err != nil {
+				return err
+			}
+			staged = append(staged, s)
+			labels = append(labels, p.label)
+		}
+
+		if opt.Check {
+			for _, s := range staged {
+				reason, err := driftOf(s)
+				if err != nil {
+					return err
+				}
+				if reason != "" {
+					drifted = append(drifted, driftLabel(root, s.Path, reason))
+				}
+			}
+		} else {
+			// Pass 2: commit.
+			for i, s := range staged {
+				if err := commitStagedFile(s); err != nil {
+					return err
+				}
+				if s.Action != "skipped" {
+					fmt.Printf("      %s: %s\n", s.Action, labels[i])
+				}
+			}
+
+			// Drop the legacy internal/model/schema_gen.go if present, so we don't
+			// end up with duplicate SchemaSQL declarations across packages.
+			legacyPath := filepath.Join(modelDir, "schema_gen.go")
+			if legacyPath != schemaGenFile {
+				if err := os.Remove(legacyPath); err == nil {
+					fmt.Printf("      removed legacy: internal/model/schema_gen.go\n")
+				}
+			}
+		}
+	}
+
+	if opt.Check {
+		svcPath, svcNew, err := renderServiceContext(root, cfg.Name, tables, schemaPkgImport, schemaPkgName)
+		if err != nil {
+			return fmt.Errorf("render service context: %w", err)
+		}
+		svcDisk, err := os.ReadFile(svcPath)
 		if err != nil {
 			return err
 		}
-		if action != "skipped" {
-			fmt.Printf("      %s: %s/schema_gen.go\n", action, filepath.ToSlash(relSchemaDir))
+		if !bytes.Equal(normalizeNewlines(svcDisk), normalizeNewlines(svcNew)) {
+			drifted = append(drifted, driftLabel(root, svcPath, "model markers out of date"))
 		}
-
-		// Drop the legacy internal/model/schema_gen.go if present, so we don't
-		// end up with duplicate SchemaSQL declarations across packages.
-		legacyPath := filepath.Join(modelDir, "schema_gen.go")
-		if legacyPath != schemaGenFile {
-			if err := os.Remove(legacyPath); err == nil {
-				fmt.Printf("      removed legacy: internal/model/schema_gen.go\n")
+		if len(tables) > 0 {
+			hasSqlx, err := appYamlHasSqlx(root)
+			if err != nil {
+				return err
+			}
+			if !hasSqlx {
+				drifted = append(drifted, "etc/app.yaml (missing modules.sqlx)")
 			}
 		}
+		return reportDrift(root, "scorix generate model", drifted)
 	}
 
 	if err := patchServiceContext(root, cfg.Name, tables, schemaPkgImport, schemaPkgName); err != nil {
@@ -203,7 +269,9 @@ func GenerateModel(ctx context.Context, opt GenerateModelOptions) error {
 
 	cmd := exec.CommandContext(ctx, "go", "fmt", "./...")
 	cmd.Dir = root
-	_ = cmd.Run()
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("warning: go fmt ./... failed: %v\n", err)
+	}
 
 	fmt.Println("==> Model generation complete!")
 	return nil
@@ -217,17 +285,26 @@ const (
 )
 
 func patchServiceContext(root, moduleName string, tables []sqlTable, schemaPkgImport, schemaPkgName string) error {
+	svcPath, content, err := renderServiceContext(root, moduleName, tables, schemaPkgImport, schemaPkgName)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(svcPath, content, 0o644)
+}
+
+// renderServiceContext does not write, so --check can diff the result against disk.
+func renderServiceContext(root, moduleName string, tables []sqlTable, schemaPkgImport, schemaPkgName string) (string, []byte, error) {
 	svcPath := filepath.Join(root, "internal", "svc", "service_context.go")
 	b, err := os.ReadFile(svcPath)
 	if err != nil {
-		return err
+		return "", nil, err
 	}
 	content := ensureMarkers(string(b))
 
 	var imports, fields, init, assigns string
 	if len(tables) > 0 {
 		imports = fmt.Sprintf(
-			"\tscorixsqlx \"github.com/tradalab/scorix/module/sqlx\"\n\t%q\n\t%q",
+			"\t\"github.com/jmoiron/sqlx\"\n\t_ \"modernc.org/sqlite\"\n\tscorixsqlx \"github.com/tradalab/scorix/module/sqlx\"\n\t%q\n\t%q",
 			moduleName+"/internal/model",
 			schemaPkgImport,
 		)
@@ -243,7 +320,10 @@ func patchServiceContext(root, moduleName string, tables []sqlTable, schemaPkgIm
 		assigns = strings.Join(assignLines, "\n")
 
 		init = fmt.Sprintf(
-			"\tsqlxMod := scorixsqlx.New(scorixsqlx.WithSchema(%s.SchemaSQL))\n\tapp.Modules().Register(sqlxMod)",
+			"\tsqlxMod := scorixsqlx.New(scorixsqlx.WithSchema(%s.SchemaSQL))\n"+
+				"\tsqlxMod.RegisterDriver(\"sqlite\", func(dsn string) (*sqlx.DB, error) { return sqlx.Connect(\"sqlite\", dsn) })\n"+
+				"\ta.SetModuleConfig(\"sqlx\", map[string]any{\"driver\": \"sqlite\", \"dsn\": \"app.dat\"})\n"+
+				"\ta.Module(sqlxMod)",
 			schemaPkgName,
 		)
 	}
@@ -253,7 +333,11 @@ func patchServiceContext(root, moduleName string, tables []sqlTable, schemaPkgIm
 	content = replaceBetweenMarkers(content, markerInit, init)
 	content = replaceBetweenMarkers(content, markerAssigns, assigns)
 
-	return os.WriteFile(svcPath, []byte(content), 0o644)
+	// gofmt so --check diffs against the formatted bytes; raw on parse error.
+	if formatted, err := format.Source([]byte(content)); err == nil {
+		return svcPath, formatted, nil
+	}
+	return svcPath, []byte(content), nil
 }
 
 // validateTableForCodegen rejects table shapes the generator would emit
@@ -349,23 +433,36 @@ func replaceBetweenMarkers(content, marker, replacement string) string {
 	return re.ReplaceAllString(content, "${1}"+replacement+"\n${2}")
 }
 
-// patchAppYaml installs `modules.sqlx` in etc/app.yaml. Idempotent — re-runs
-// noop when modules.sqlx already exists (preserves hand-tuned fields).
+func appYamlHasSqlx(root string) (bool, error) {
+	b, err := os.ReadFile(filepath.Join(root, "etc", "app.yaml"))
+	if err != nil {
+		return false, err
+	}
+	var doc map[string]any
+	if err := yaml.Unmarshal(b, &doc); err != nil {
+		return false, fmt.Errorf("parse app.yaml: %w", err)
+	}
+	if modules, ok := doc["modules"].(map[string]any); ok {
+		_, hasSqlx := modules["sqlx"]
+		return hasSqlx, nil
+	}
+	return false, nil
+}
+
+// patchAppYaml is idempotent — a no-op when modules.sqlx already present.
 func patchAppYaml(root string, d dialect.Dialect) error {
+	hasSqlx, err := appYamlHasSqlx(root)
+	if err != nil {
+		return err
+	}
+	if hasSqlx {
+		return nil
+	}
+
 	yamlPath := filepath.Join(root, "etc", "app.yaml")
 	b, err := os.ReadFile(yamlPath)
 	if err != nil {
 		return err
-	}
-
-	var doc map[string]any
-	if err := yaml.Unmarshal(b, &doc); err != nil {
-		return fmt.Errorf("parse app.yaml: %w", err)
-	}
-	if modules, ok := doc["modules"].(map[string]any); ok {
-		if _, hasSqlx := modules["sqlx"]; hasSqlx {
-			return nil
-		}
 	}
 
 	content := string(b)

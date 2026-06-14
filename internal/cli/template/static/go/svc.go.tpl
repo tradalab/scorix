@@ -3,36 +3,66 @@ package svc
 
 import (
 	"context"
+	"encoding/json"
+
 	"{{ .Module }}/internal/config"
 {{- if .Proto.HasMiddleware }}
 	"{{ .Module }}/internal/middleware"
 {{- end }}
 	// scorix:model:imports:start
 	// scorix:model:imports:end
-	scorix "github.com/tradalab/scorix/kernel"
-	scorix_config "github.com/tradalab/scorix/kernel/core/config"
+	"github.com/tradalab/scorix/app"
 )
 
 type ServiceContext struct {
 	Cfg *config.Config
-	App scorix.App
 {{- range .Proto.Middlewares }}
 	{{ . }}Middleware func(func(context.Context, any) (any, error)) func(context.Context, any) (any, error)
 {{- end }}
 	// scorix:model:fields:start
 	// scorix:model:fields:end
+
+	emit   func(name string, data any)
+	emitTo func(client app.ClientID, name string, data any) bool
+	on     func(name string, fn func(context.Context, json.RawMessage))
 }
 
-func NewServiceContext(cfg *scorix_config.Config, app scorix.App) *ServiceContext {
+func NewServiceContext(a *app.App) *ServiceContext {
 	// scorix:model:init:start
 	// scorix:model:init:end
 	return &ServiceContext{
-		Cfg: &config.Config{Config: *cfg},
-		App: app,
+		Cfg: &config.Config{},
 {{- range .Proto.Middlewares }}
 		{{ . }}Middleware: middleware.{{ . }}Middleware,
 {{- end }}
 		// scorix:model:assigns:start
 		// scorix:model:assigns:end
+		emit:   a.Emit,
+		emitTo: a.EmitTo,
+		on:     func(name string, fn func(context.Context, json.RawMessage)) { a.Event(name, fn) },
+	}
+}
+
+// Emit broadcasts a one-way event to the frontend (Go -> JS).
+func (s *ServiceContext) Emit(name string, data any) {
+	if s.emit != nil {
+		s.emit(name, data)
+	}
+}
+
+// EmitTo sends a one-way event to a single connected frontend — the client a
+// handler identified via app.ClientFrom(ctx). Reports whether it was delivered.
+func (s *ServiceContext) EmitTo(client app.ClientID, name string, data any) bool {
+	if s.emitTo != nil {
+		return s.emitTo(client, name, data)
+	}
+	return false
+}
+
+// On registers a frontend-event handler (JS -> Go). The payload is raw JSON;
+// callers unmarshal into their typed args.
+func (s *ServiceContext) On(name string, fn func(context.Context, json.RawMessage)) {
+	if s.on != nil {
+		s.on(name, fn)
 	}
 }

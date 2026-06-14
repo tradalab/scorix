@@ -1,44 +1,33 @@
-// Package dialog provides a native OS dialog integration module for scorix applications.
-//
-// Enable in app.yaml (no extra config required):
-//
-//	modules:
-//	  dialog:
-//	    enabled: true
+// Package dialog provides native OS dialogs (file/dir picker, message box) via
+// ncruces/zenity (Win32 calls / osascript / zenity binary).
 package dialog
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"path/filepath"
 
-	"github.com/sqweek/dialog"
-	"github.com/tradalab/scorix/kernel/core/module"
+	"github.com/ncruces/zenity"
+	"github.com/tradalab/scorix/module"
 	"github.com/tradalab/scorix/logger"
 )
 
-// Config holds the config block for this module.
-// Fields are read from app.yaml → modules.dialog.*
 type Config struct {
 	Enabled bool `json:"enabled"`
 }
 
-// ////////// Module ////////// ////////// ////////// ////////// ////////// //////////
-
-// DialogModule provides functionality to open native OS dialogs for file selection and messaging.
 type DialogModule struct {
 	ctx *module.Context
 	cfg Config
 }
 
-// New creates a new DialogModule.
 func New() *DialogModule {
 	return &DialogModule{}
 }
 
 func (m *DialogModule) Name() string    { return "dialog" }
 func (m *DialogModule) Version() string { return "1.0.0" }
-
-// ////////// Lifecycle ////////// ////////// ////////// ////////// ////////// //////////
 
 func (m *DialogModule) OnLoad(ctx *module.Context) error {
 	logger.Info(fmt.Sprintf("[dialog] loading (v%s)", m.Version()))
@@ -48,7 +37,6 @@ func (m *DialogModule) OnLoad(ctx *module.Context) error {
 		return fmt.Errorf("decode config: %w", err)
 	}
 
-	// Register IPC handlers.
 	module.Expose(m, "OpenFile", ctx.IPC)
 	module.Expose(m, "OpenDirectory", ctx.IPC)
 	module.Expose(m, "SaveFile", ctx.IPC)
@@ -61,9 +49,26 @@ func (m *DialogModule) OnStart() error  { return nil }
 func (m *DialogModule) OnStop() error   { return nil }
 func (m *DialogModule) OnUnload() error { return nil }
 
-// ////////// IPC Handlers ////////// ////////// ////////// ////////// ////////// //////////
+func fileFilters(name, ext string) []zenity.Option {
+	if name == "" && ext == "" {
+		return nil
+	}
+	pattern := "*"
+	if ext != "" {
+		pattern = "*." + ext
+	}
+	return []zenity.Option{zenity.FileFilters{{Name: name, Patterns: []string{pattern}, CaseFold: true}}}
+}
 
-// OpenFileRequest represents an IPC request to open a file selection dialog.
+// canceled normalizes the user pressing Cancel to ("", nil) — an empty path,
+// not an error, matching the module's historical contract.
+func canceled(path string, err error) (string, error) {
+	if errors.Is(err, zenity.ErrCanceled) {
+		return "", nil
+	}
+	return path, err
+}
+
 type OpenFileRequest struct {
 	Title  string `json:"title"`
 	Filter string `json:"filter"` // Example pass "text files"
@@ -73,23 +78,11 @@ type OpenFileRequest struct {
 // OpenFile opens a native OS dialog to select a file for opening.
 // JS: scorix.invoke("mod:dialog:OpenFile", { title: "Select File", filter: "Text Files", ext: "txt" })
 func (m *DialogModule) OpenFile(_ context.Context, req OpenFileRequest) (string, error) {
-	b := dialog.File().Title(req.Title)
-	if req.Filter != "" || req.Ext != "" {
-		b = b.Filter(req.Filter, req.Ext)
-	}
-
-	path, err := b.Load()
-	if err != nil {
-		// sqweek/dialog can return "Cancelled" text on user abort.
-		if err.Error() == "Cancelled" {
-			return "", nil
-		}
-		return "", err
-	}
-	return path, nil
+	opts := []zenity.Option{zenity.Title(req.Title)}
+	opts = append(opts, fileFilters(req.Filter, req.Ext)...)
+	return canceled(zenity.SelectFile(opts...))
 }
 
-// OpenDirectoryRequest represents an IPC request to open a folder selection dialog.
 type OpenDirectoryRequest struct {
 	Title string `json:"title"`
 	Dir   string `json:"dir,omitempty"` // optional starting directory
@@ -98,21 +91,13 @@ type OpenDirectoryRequest struct {
 // OpenDirectory opens a native OS dialog to pick a folder.
 // JS: scorix.invoke("mod:dialog:OpenDirectory", { title: "Pick folder", dir: "/Users/foo" })
 func (m *DialogModule) OpenDirectory(_ context.Context, req OpenDirectoryRequest) (string, error) {
-	b := dialog.Directory().Title(req.Title)
+	opts := []zenity.Option{zenity.Title(req.Title), zenity.Directory()}
 	if req.Dir != "" {
-		b = b.SetStartDir(req.Dir)
+		opts = append(opts, zenity.Filename(req.Dir))
 	}
-	path, err := b.Browse()
-	if err != nil {
-		if err.Error() == "Cancelled" {
-			return "", nil
-		}
-		return "", err
-	}
-	return path, nil
+	return canceled(zenity.SelectFile(opts...))
 }
 
-// SaveFileRequest represents an IPC request to open a file save dialog.
 type SaveFileRequest struct {
 	Title    string `json:"title"`
 	Filter   string `json:"filter"`
@@ -124,28 +109,14 @@ type SaveFileRequest struct {
 // SaveFile opens a native OS dialog to select a path for saving a file.
 // JS: scorix.invoke("mod:dialog:SaveFile", { title, filter, ext, fileName, dir })
 func (m *DialogModule) SaveFile(_ context.Context, req SaveFileRequest) (string, error) {
-	b := dialog.File().Title(req.Title)
-	if req.Filter != "" || req.Ext != "" {
-		b = b.Filter(req.Filter, req.Ext)
+	opts := []zenity.Option{zenity.Title(req.Title), zenity.ConfirmOverwrite()}
+	opts = append(opts, fileFilters(req.Filter, req.Ext)...)
+	if req.Dir != "" || req.FileName != "" {
+		opts = append(opts, zenity.Filename(filepath.Join(req.Dir, req.FileName)))
 	}
-	if req.Dir != "" {
-		b = b.SetStartDir(req.Dir)
-	}
-	if req.FileName != "" {
-		b = b.SetStartFile(req.FileName)
-	}
-
-	path, err := b.Save()
-	if err != nil {
-		if err.Error() == "Cancelled" {
-			return "", nil
-		}
-		return "", err
-	}
-	return path, nil
+	return canceled(zenity.SelectFileSave(opts...))
 }
 
-// MessageRequest represents an IPC request to open a native message box.
 type MessageRequest struct {
 	Title string `json:"title"`
 	Text  string `json:"text"`
@@ -155,11 +126,14 @@ type MessageRequest struct {
 // Message opens a native OS alert or error message box.
 // JS: scorix.invoke("mod:dialog:Message", { title: "Alert", text: "Something happened", level: "info" })
 func (m *DialogModule) Message(_ context.Context, req MessageRequest) (string, error) {
-	b := dialog.Message("%s", req.Text).Title(req.Title)
+	var err error
 	if req.Level == "error" {
-		b.Error()
+		err = zenity.Error(req.Text, zenity.Title(req.Title))
 	} else {
-		b.Info()
+		err = zenity.Info(req.Text, zenity.Title(req.Title))
+	}
+	if err != nil && !errors.Is(err, zenity.ErrCanceled) {
+		return "", err
 	}
 	return "ok", nil
 }

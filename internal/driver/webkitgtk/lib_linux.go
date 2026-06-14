@@ -1,7 +1,7 @@
 //go:build linux
 
 // Package webkitgtk is the Linux native driver: GTK3 window + WebKitGTK via
-// dlopen/purego (no CGO), with runtime soname probing (4.1 → 4.0).
+// dlopen/purego, with runtime soname probing (4.1 → 4.0).
 //
 // EXPERIMENTAL: container-validated (make linuxcheck), not yet proven on real
 // desktops (Wayland, GPU). Needs libgtk-3 + libwebkit2gtk-4.1 (or 4.0) at runtime.
@@ -101,7 +101,6 @@ func dlopenFirst(names []string) (uintptr, string, error) {
 	return 0, "", fmt.Errorf("webkitgtk: none of %v could be loaded (install the webkit2gtk runtime): %w", names, lastErr)
 }
 
-// initLibs is idempotent.
 func initLibs() error {
 	libOnce.Do(func() {
 		flags := purego.RTLD_GLOBAL | purego.RTLD_NOW

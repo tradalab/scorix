@@ -4,76 +4,48 @@ package main
 import (
 	"embed"
 	"flag"
-	"fmt"
-	"os"
-	"strings"
+	"io/fs"
+	"log"
 
-	scorix "github.com/tradalab/scorix/kernel"
 	"{{ .Module }}/internal/handler"
 	"{{ .Module }}/internal/svc"
+	"github.com/tradalab/scorix/app"
 )
 
 //go:embed all:.scorix/dist
 var embeddedPublic embed.FS
 
-//go:embed etc/app.yaml
-var configFile []byte
-
 func main() {
-	mode := flag.String("mode", envOr("SCORIX_RUN_MODE", "desktop"), "run mode: desktop, web, cli")
-	config := flag.String("config", "etc/app.yaml", "config file path")
-	assets := flag.String("assets", "shell/dist", "static assets directory")
+	log.SetFlags(log.Ltime)
+	mode := flag.String("mode", "app", "run mode: app | web")
+	addr := flag.String("addr", ":8080", "web listen address (web mode)")
 	flag.Parse()
 
-	switch strings.ToLower(*mode) {
-	case "desktop", "app":
-		os.Setenv("SCORIX_MODE", "app")
-	case "web", "server":
-		os.Setenv("SCORIX_MODE", "web")
-	case "cli":
-		os.Setenv("SCORIX_MODE", "web")
-	default:
-		panic(fmt.Errorf("unsupported mode %q", *mode))
+	site, err := fs.Sub(embeddedPublic, ".scorix/dist")
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	configOption := scorix.WithConfigData(configFile)
-	if _, err := os.Stat(*config); err == nil {
-		configOption = scorix.WithConfigFile(*config)
+	a, err := app.New(app.Options{
+		Title: "{{ .Module }}",
+		URL:   "scorix://app/index.html",
+	})
+	if err != nil {
+		log.Fatal(err)
 	}
+	a.Serve("scorix", site) // in-process assets via scorix:// (no localhost)
 
-	app := scorix.MustNew(
-		[]scorix.InitOption{
-			configOption,
-		},
-		scorix.WithAssets(embeddedPublic, ".scorix/dist"),
-	)
+	sc := svc.NewServiceContext(a)
+	handler.RegisterHandlers(a, sc)
 
-	// Prefer external assets if they exist (development mode)
-	if _, err := os.Stat(*assets); err == nil {
-		app.Cfg().AssetFs = os.DirFS(*assets)
-		app.Cfg().AssetFsPath = ""
-	}
-
-	svcCtx := svc.NewServiceContext(app.Cfg(), app)
-	handler.RegisterHandlers(svcCtx)
-
-	if strings.EqualFold(*mode, "cli") {
-		fmt.Println("Scorix CLI mode")
-		fmt.Println("registered commands:")
-		for _, name := range handler.CommandNames() {
-			fmt.Println(" -", name)
+	if *mode == "web" {
+		log.Printf("serving on http://localhost%s", *addr)
+		if err := a.RunWeb(*addr); err != nil {
+			log.Fatal(err)
 		}
 		return
 	}
-
-	if err := app.Run(); err != nil {
-		panic(err)
+	if err := a.Run(); err != nil {
+		log.Fatal(err)
 	}
-}
-
-func envOr(key string, fallback string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return fallback
 }

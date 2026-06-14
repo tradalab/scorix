@@ -33,8 +33,7 @@ func (p *GitHubProvider) CheckForUpdate(ctx context.Context, currentVersion, pla
 
 	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", p.repo)
 
-	// GitHub API usually requires User-Agent.
-	// Optional: You can pass a GitHub Token header if hitting rate limits.
+	// GitHub API requires a User-Agent; pass a token header here if rate-limited.
 	headers := map[string]string{
 		"Accept": "application/vnd.github.v3+json",
 	}
@@ -57,23 +56,30 @@ func (p *GitHubProvider) CheckForUpdate(ctx context.Context, currentVersion, pla
 		return &Result{HasUpdate: false}, ErrNoUpdate
 	}
 
-	// Search for the proper asset matched by platformKey (e.g., windows-amd64)
-	var artifactURL string
-	var sigURL string
-
+	// Find the artifact for this platform, then require its signature to be the
+	// exact "<artifact>.sig" asset. Never pair a signature from a different
+	// asset — loose matching could otherwise verify the wrong file.
+	var artifactName, artifactURL, sigURL string
 	for _, asset := range release.Assets {
+		if strings.HasSuffix(asset.Name, ".sig") {
+			continue
+		}
 		if assetMatchesPlatform(asset.Name, platformKey) {
-			if strings.HasSuffix(asset.Name, ".sig") {
-				sigURL = asset.BrowserDownloadURL
-			} else if artifactURL == "" {
-				// Pick the first non-signature match as the main artifact
-				artifactURL = asset.BrowserDownloadURL
-			}
+			artifactName = asset.Name
+			artifactURL = asset.BrowserDownloadURL
+			break
 		}
 	}
 
 	if artifactURL == "" {
 		return nil, fmt.Errorf("no asset found matching platform %s in release %s", platformKey, release.TagName)
+	}
+
+	for _, asset := range release.Assets {
+		if asset.Name == artifactName+".sig" {
+			sigURL = asset.BrowserDownloadURL
+			break
+		}
 	}
 
 	res := &Result{
@@ -84,7 +90,6 @@ func (p *GitHubProvider) CheckForUpdate(ctx context.Context, currentVersion, pla
 		Elevate:     false, // GitHub provider relies on global ForceElevate config for this
 	}
 
-	// Fetch remote signature if a .sig file was tied to the platformKey
 	if sigURL != "" {
 		sigBody, err := httpGet(ctx, defaultClient(), sigURL, nil)
 		if err == nil && len(sigBody) > 0 {

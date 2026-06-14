@@ -16,14 +16,14 @@ func TestConfigDefaults(t *testing.T) {
 		want Config
 	}{
 		{
-			name: "empty defaults to sqlite3",
+			name: "empty defaults to sqlite (modernc, pure-Go)",
 			in:   Config{},
-			want: Config{Driver: "sqlite3", DSN: "app.dat", MaxOpenConns: 1, MaxIdleConns: 1, SlowQueryThresholdMs: 200},
+			want: Config{Driver: "sqlite", DSN: "app.dat", MaxOpenConns: 1, MaxIdleConns: 1, SlowQueryThresholdMs: 200},
 		},
 		{
-			name: "sqlite alias keeps pool size 1",
-			in:   Config{Driver: "sqlite"},
-			want: Config{Driver: "sqlite", DSN: "app.dat", MaxOpenConns: 1, MaxIdleConns: 1, SlowQueryThresholdMs: 200},
+			name: "sqlite3 alias keeps pool size 1",
+			in:   Config{Driver: "sqlite3"},
+			want: Config{Driver: "sqlite3", DSN: "app.dat", MaxOpenConns: 1, MaxIdleConns: 1, SlowQueryThresholdMs: 200},
 		},
 		{
 			name: "mysql defaults to larger pool",
@@ -49,10 +49,8 @@ func TestConfigDefaults(t *testing.T) {
 
 func TestMaskDSN(t *testing.T) {
 	cases := map[string]string{
-		// URL-style — strip password between : and @
-		"postgres://user:secret@host:5432/db":        "postgres://user:***@host:5432/db",
-		"postgres://user:secret@host:5432/db?ssl=on": "postgres://user:***@host:5432/db?ssl=on",
-		// MySQL go-sql-driver style
+		"postgres://user:secret@host:5432/db":                "postgres://user:***@host:5432/db",
+		"postgres://user:secret@host:5432/db?ssl=on":         "postgres://user:***@host:5432/db?ssl=on",
 		"user:secret@tcp(127.0.0.1:3306)/app?parseTime=true": "user:***@tcp(127.0.0.1:3306)/app?parseTime=true",
 		// No password — left alone
 		"postgres://user@host/db": "postgres://user@host/db",
@@ -96,9 +94,8 @@ func TestIsSQLite(t *testing.T) {
 
 func TestRegisterDriverOverride(t *testing.T) {
 	m := New()
-	// SQLite default must be present out of the box.
-	if _, ok := m.drivers["sqlite3"]; !ok {
-		t.Fatal("sqlite3 driver not registered by default")
+	if _, ok := m.drivers["sqlite"]; !ok {
+		t.Fatal("sqlite (modernc) driver not registered by default")
 	}
 
 	called := false
@@ -109,7 +106,6 @@ func TestRegisterDriverOverride(t *testing.T) {
 	if _, ok := m.drivers["mock"]; !ok {
 		t.Fatal("mock driver not registered")
 	}
-	// Smoke-fire the initializer to prove registration mapping is right.
 	_, _ = m.drivers["mock"]("ignored")
 	if !called {
 		t.Error("registered initializer was not invoked")
@@ -122,7 +118,7 @@ func TestRegisterDriverOverride(t *testing.T) {
 // exercised without spinning up a full app harness.
 func withInMemoryDB(t *testing.T, fn func(m *Module)) {
 	t.Helper()
-	db, err := sqlx.Connect("sqlite3", ":memory:")
+	db, err := sqlx.Connect("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("open in-memory sqlite: %v", err)
 	}
@@ -137,14 +133,12 @@ func TestIPCRoundTrip(t *testing.T) {
 	withInMemoryDB(t, func(m *Module) {
 		ctx := context.Background()
 
-		// DDL
 		if _, err := m.Exec(ctx, SQLRequest{
 			SQL: `CREATE TABLE note (id INTEGER PRIMARY KEY AUTOINCREMENT, body TEXT NOT NULL)`,
 		}); err != nil {
 			t.Fatalf("exec DDL: %v", err)
 		}
 
-		// Insert
 		res, err := m.Exec(ctx, SQLRequest{
 			SQL:  `INSERT INTO note (body) VALUES (?)`,
 			Args: []any{"hello"},
@@ -159,7 +153,6 @@ func TestIPCRoundTrip(t *testing.T) {
 			t.Error("last insert id should be non-zero for AUTOINCREMENT PK")
 		}
 
-		// Query
 		rows, err := m.Query(ctx, SQLRequest{SQL: `SELECT id, body FROM note`})
 		if err != nil {
 			t.Fatalf("query: %v", err)
@@ -171,7 +164,6 @@ func TestIPCRoundTrip(t *testing.T) {
 			t.Errorf("body = %v, want hello", rows[0]["body"])
 		}
 
-		// Ping
 		ping, err := m.Ping(ctx)
 		if err != nil {
 			t.Fatalf("ping: %v", err)
@@ -180,7 +172,6 @@ func TestIPCRoundTrip(t *testing.T) {
 			t.Errorf("ping not ok: %s", ping.Message)
 		}
 
-		// Stats
 		stats, err := m.Stats(ctx)
 		if err != nil {
 			t.Fatalf("stats: %v", err)
@@ -215,7 +206,6 @@ func TestWithSchemaOption(t *testing.T) {
 	if len(m2.initScripts) != 0 {
 		t.Errorf("empty options should not register scripts, got %d", len(m2.initScripts))
 	}
-	// Sanity: the InitScript closure does what we expect when fired manually.
 	if err := m.initScripts[1](context.Background(), nil); err != nil {
 		t.Fatalf("init script 2: %v", err)
 	}
@@ -237,7 +227,6 @@ func TestInitScriptsRunOnFirstOpen(t *testing.T) {
 				return err
 			},
 		}
-		// Run them — mirror the OnLoad loop body.
 		for _, fn := range m.initScripts {
 			if err := fn(context.Background(), m.db); err != nil {
 				t.Fatalf("init: %v", err)
@@ -246,7 +235,6 @@ func TestInitScriptsRunOnFirstOpen(t *testing.T) {
 		if called != 1 {
 			t.Errorf("init script called %d times, want 1", called)
 		}
-		// Table now exists — query should succeed.
 		if _, err := m.Query(context.Background(), SQLRequest{SQL: "SELECT COUNT(*) FROM migrated"}); err != nil {
 			t.Errorf("table not created by init script: %v", err)
 		}

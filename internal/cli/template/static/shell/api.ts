@@ -4,9 +4,24 @@
 import scorix from "@/lib/scorix";
 import type * as T from "@/types";
 {{ range .Services }}
+{{- if .RPCs }}
 export const {{ .Package }} = {
 {{- range .RPCs }}
   {{ .MethodName | lower }}: (params: T.{{ .RequestTSType }}) => scorix.invoke<T.{{ .ResultTSType }}>("{{ .CommandName }}", params),
+{{- end }}
+};
+{{ end }}
+{{- end }}
+{{- if .HasEvents }}
+// Typed events (@event in proto). onX subscribes (returns unsubscribe);
+// emitX sends a one-way frontend event to Go.
+export const events = {
+{{- range .OutEvents }}
+  on{{ .EventGoName }}: (cb: (data: T.{{ .RequestTSType }}, error?: string) => void): (() => void) =>
+    scorix.on("{{ .EventName }}", cb),
+{{- end }}
+{{- range .InEvents }}
+  emit{{ .EventGoName }}: (data: T.{{ .RequestTSType }}) => scorix.emit("{{ .EventName }}", data),
 {{- end }}
 };
 {{ end }}

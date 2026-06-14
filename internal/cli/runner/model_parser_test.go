@@ -55,7 +55,6 @@ func TestParseSQLSchema_SQLite(t *testing.T) {
 		t.Fatalf("want 3 tables, got %d", len(tables))
 	}
 
-	// --- connection ---
 	conn := tables[0]
 	if conn.Name != "connection" || conn.GoName != "Connection" {
 		t.Errorf("connection naming wrong: %+v", conn)
@@ -72,7 +71,6 @@ func TestParseSQLSchema_SQLite(t *testing.T) {
 	if conn.PKGoName != "ID" || conn.PKGoType != "string" {
 		t.Errorf("connection PK = %s %s, want ID string", conn.PKGoName, conn.PKGoType)
 	}
-	// group_id should map to GroupID (Go convention)
 	var groupCol *sqlColumn
 	for i := range conn.Columns {
 		if conn.Columns[i].Name == "group_id" {
@@ -95,12 +93,10 @@ func TestParseSQLSchema_SQLite(t *testing.T) {
 	if delCol == nil || delCol.GoType != "sql.NullTime" {
 		t.Errorf("deleted_at GoType = %v, want sql.NullTime", delCol)
 	}
-	// connection has no UNIQUE columns
 	if len(conn.UniqueColumns) != 0 {
 		t.Errorf("connection UniqueColumns = %v, want empty", conn.UniqueColumns)
 	}
 
-	// --- setting ---
 	setting := tables[1]
 	if len(setting.UniqueColumns) != 1 || setting.UniqueColumns[0].Name != "key" {
 		t.Errorf("setting UniqueColumns = %+v, want [{key}]", setting.UniqueColumns)
@@ -163,10 +159,8 @@ CREATE TABLE IF NOT EXISTS event (
 }
 
 func TestParseSQLSchema_QuotedIdentifiers(t *testing.T) {
-	// Reserved words like "group", "order", "user" must be quoted as table
-	// names so the raw schema.sql works under sqlite/postgres. The parser
-	// has to strip the wrapping quotes so generated Go field/struct names
-	// don't end up as e.g. `"Group"`.
+	// Reserved words ("group", "order", "user") are quoted in schema.sql; the
+	// parser must strip the wrapping quotes so Go names aren't e.g. `"Group"`.
 	path := writeTempSchema(t, `
 CREATE TABLE IF NOT EXISTS "group" (
     id   TEXT PRIMARY KEY,
@@ -296,6 +290,143 @@ CREATE TABLE IF NOT EXISTS messages (
 	}
 	if len(tables[0].Columns) != 3 {
 		t.Errorf("chats cols = %d, want 3 (id, title, pinned); got %+v", len(tables[0].Columns), tables[0].Columns)
+	}
+}
+
+// H-CG1 regression: the body splits on top-level commas, not newlines. A def may
+// span lines or share a line, and commas nested in parens (DECIMAL(10,2),
+// CHECK(... IN (1,2)), DEFAULT (json_array(...))) must not split a def.
+func TestParseSQLSchema_TopLevelCommaSplit(t *testing.T) {
+	type colWant struct {
+		sqlType string
+		goType  string
+	}
+	cases := []struct {
+		name    string
+		ddl     string
+		wantCol map[string]colWant // sql column name → expected types
+		// columns that must NOT exist (proves a def wasn't wrongly split)
+		notCol []string
+		// exact expected column count
+		wantCount int
+	}{
+		{
+			name: "multi-line single column definition",
+			ddl: `
+CREATE TABLE IF NOT EXISTS t (
+    id    INTEGER PRIMARY KEY,
+    meta  TEXT NOT NULL DEFAULT (
+        json_object('a', 1, 'b', 2)
+    ),
+    name  TEXT NOT NULL
+);`,
+			wantCol: map[string]colWant{
+				"id":   {"INTEGER", "int64"},
+				"meta": {"TEXT", "string"},
+				"name": {"TEXT", "string"},
+			},
+			notCol:    []string{"json_object", "a", "b"},
+			wantCount: 3,
+		},
+		{
+			name: "two columns on one physical line",
+			ddl: `
+CREATE TABLE IF NOT EXISTS t (
+    id INTEGER PRIMARY KEY, name TEXT NOT NULL
+);`,
+			wantCol: map[string]colWant{
+				"id":   {"INTEGER", "int64"},
+				"name": {"TEXT", "string"},
+			},
+			wantCount: 2,
+		},
+		{
+			name: "DECIMAL precision comma must not split",
+			ddl: `
+CREATE TABLE IF NOT EXISTS t (
+    id    INTEGER PRIMARY KEY,
+    price DECIMAL(10,2) NOT NULL DEFAULT 0,
+    qty   INTEGER NOT NULL
+);`,
+			wantCol: map[string]colWant{
+				"id":    {"INTEGER", "int64"},
+				"price": {"DECIMAL", "float64"},
+				"qty":   {"INTEGER", "int64"},
+			},
+			// a wrongly-split "2) NOT NULL DEFAULT 0" would create a bogus "2" col
+			notCol:    []string{"2", "10"},
+			wantCount: 3,
+		},
+		{
+			name: "CHECK with nested IN list and inline CHECK constraint",
+			ddl: `
+CREATE TABLE IF NOT EXISTS t (
+    id     INTEGER PRIMARY KEY,
+    status TEXT NOT NULL CHECK (status IN ('a', 'b', 'c')),
+    rank   INTEGER NOT NULL
+);`,
+			wantCol: map[string]colWant{
+				"id":     {"INTEGER", "int64"},
+				"status": {"TEXT", "string"},
+				"rank":   {"INTEGER", "int64"},
+			},
+			notCol:    []string{"a", "b", "c", "status IN"},
+			wantCount: 3,
+		},
+		{
+			name: "DEFAULT containing a comma inside parens",
+			ddl: `
+CREATE TABLE IF NOT EXISTS t (
+    id   TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(4)))),
+    tags TEXT NOT NULL DEFAULT (json_array('x', 'y'))
+);`,
+			wantCol: map[string]colWant{
+				"id":   {"TEXT", "string"},
+				"tags": {"TEXT", "string"},
+			},
+			notCol:    []string{"x", "y", "json_array"},
+			wantCount: 2,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeTempSchema(t, tc.ddl)
+			tables, err := parseSQLSchema(path, dialect.MustNew("sqlite"))
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			if len(tables) != 1 {
+				t.Fatalf("want 1 table, got %d: %+v", len(tables), tables)
+			}
+			tbl := tables[0]
+			if len(tbl.Columns) != tc.wantCount {
+				t.Errorf("column count = %d, want %d; cols = %+v",
+					len(tbl.Columns), tc.wantCount, tbl.Columns)
+			}
+			byName := map[string]sqlColumn{}
+			for _, c := range tbl.Columns {
+				byName[c.Name] = c
+			}
+			for name, want := range tc.wantCol {
+				got, ok := byName[name]
+				if !ok {
+					t.Errorf("missing column %q (cols = %+v)", name, tbl.Columns)
+					continue
+				}
+				if got.SQLType != want.sqlType {
+					t.Errorf("col %q SQLType = %q, want %q", name, got.SQLType, want.sqlType)
+				}
+				if got.GoType != want.goType {
+					t.Errorf("col %q GoType = %q, want %q", name, got.GoType, want.goType)
+				}
+			}
+			for _, name := range tc.notCol {
+				if _, ok := byName[name]; ok {
+					t.Errorf("spurious column %q — a definition was wrongly split", name)
+				}
+			}
+		})
 	}
 }
 

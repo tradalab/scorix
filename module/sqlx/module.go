@@ -1,18 +1,4 @@
-// Package sqlx provides a sqlx-based database module. Runtime counterpart to
-// `scorix generate model` codegen. SQLite (mattn/go-sqlite3) is bundled;
-// MySQL/Postgres/modernc opt in via RegisterDriver + blank import.
-//
-// Enable in app.yaml:
-//
-//	modules:
-//	  sqlx:
-//	    enabled: true
-//	    driver: sqlite3                  # sqlite3 | mysql | pgx | sqlite (modernc) | ...
-//	    dsn: app.dat                     # SQLite: filename under DataDir. Others: full DSN.
-//	    max_open_conns: 0                # Default: 1 (sqlite) or 10
-//	    max_idle_conns: 0                # Default: 1 (sqlite) or 2
-//	    conn_max_lifetime_minutes: 0     # 0 = unlimited
-//	    slow_query_threshold_ms: 200     # 0 disables
+// Package sqlx is the database module, runtime counterpart to `scorix generate model`.
 package sqlx
 
 import (
@@ -25,15 +11,15 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	_ "github.com/mattn/go-sqlite3" // registers "sqlite3" driver
+	_ "modernc.org/sqlite" // registers the default "sqlite" driver
 
-	"github.com/tradalab/scorix/kernel/core/module"
+	"github.com/tradalab/scorix/module"
 	"github.com/tradalab/scorix/logger"
 )
 
 type Config struct {
-	// Driver is the database/sql register name. "sqlite3" bundled by default;
-	// other drivers require RegisterDriver + blank import.
+	// Driver is the database/sql register name; "sqlite" (modernc) by default.
+	// Other drivers (mysql, pgx, ...) require RegisterDriver + blank import.
 	Driver string `json:"driver"`
 
 	// DSN: SQLite uses relative filenames resolved against DataDir.
@@ -49,7 +35,7 @@ type Config struct {
 
 func (c *Config) defaults() {
 	if c.Driver == "" {
-		c.Driver = "sqlite3"
+		c.Driver = "sqlite"
 	}
 	if c.DSN == "" {
 		if isSQLite(c.Driver) {
@@ -167,12 +153,6 @@ func From(ctx context.Context, fallback func() Conn) Conn {
 // WithTx runs fn in a transaction. Commit on nil return, rollback on error or
 // panic. The wrapped ctx carries the Tx so generated model calls participate
 // without signature changes.
-//
-//	err := sqlxMod.WithTx(ctx, func(ctx context.Context) error {
-//	    if _, err := svc.UserModel.Insert(ctx, &user); err != nil { return err }
-//	    if _, err := svc.AuditModel.Insert(ctx, &audit); err != nil { return err }
-//	    return nil
-//	})
 func (m *Module) WithTx(ctx context.Context, fn func(context.Context) error) (err error) {
 	db, dbErr := m.readDB()
 	if dbErr != nil {
@@ -208,12 +188,13 @@ type Module struct {
 	mu          sync.RWMutex
 }
 
-// New constructs a Module with "sqlite3" pre-registered.
+// New constructs a Module with "sqlite" (modernc) pre-registered as the default
+// driver. Register others via RegisterDriver + blank import.
 func New(opts ...Option) *Module {
 	m := &Module{
 		drivers: make(map[string]DriverInitializer),
 	}
-	m.RegisterDriver("sqlite3", defaultSqliteInit)
+	m.RegisterDriver("sqlite", defaultSqliteInit)
 	for _, opt := range opts {
 		opt(m)
 	}
@@ -221,7 +202,7 @@ func New(opts ...Option) *Module {
 }
 
 func defaultSqliteInit(dsn string) (*sqlx.DB, error) {
-	return sqlx.Connect("sqlite3", dsn)
+	return sqlx.Connect("sqlite", dsn)
 }
 
 // RegisterDriver maps a driver name (must match modules.sqlx.driver in
@@ -347,14 +328,12 @@ func (m *Module) OnUnload() error {
 	return nil
 }
 
-// ////////// IPC handlers ////////// ////////// ////////// ////////// ////////// //////////
-
 type SQLRequest struct {
 	SQL  string `json:"sql"`
 	Args []any  `json:"args,omitempty"`
 }
 
-// Query executes a raw SELECT. JS: scorix.invoke("mod:sqlx:Query", {sql, args}).
+// JS: scorix.invoke("mod:sqlx:Query", {sql, args}).
 func (m *Module) Query(ctx context.Context, req SQLRequest) ([]map[string]any, error) {
 	db, err := m.readDB()
 	if err != nil {
@@ -438,8 +417,6 @@ func (m *Module) Stats(_ context.Context) (*DBStats, error) {
 		WaitCount:          int(s.WaitCount),
 	}, nil
 }
-
-// ////////// Internal helpers ////////// ////////// ////////// ////////// ////////// //////////
 
 // logSlow logs queries above the threshold. SQL truncated at 512 chars; args
 // never logged (may contain credentials).

@@ -20,6 +20,7 @@ var generateProtoCmd = &cobra.Command{
 			Proto: generateProtoFile,
 			Dir:   generateProtoDir,
 			Force: generateProtoForce,
+			Check: generateProtoCheck,
 		})
 	},
 }
@@ -28,6 +29,7 @@ var (
 	generateProtoFile  string
 	generateProtoDir   string
 	generateProtoForce bool
+	generateProtoCheck bool
 )
 
 func init() {
@@ -37,4 +39,5 @@ func init() {
 	generateProtoCmd.Flags().StringVarP(&generateProtoFile, "proto", "p", "proto/app.proto", "proto file path")
 	generateProtoCmd.Flags().StringVarP(&generateProtoDir, "dir", "d", ".", "project root directory")
 	generateProtoCmd.Flags().BoolVarP(&generateProtoForce, "force", "f", false, "overwrite existing logic files")
+	generateProtoCmd.Flags().BoolVar(&generateProtoCheck, "check", false, "verify generated code is in sync without writing (CI drift guard)")
 }

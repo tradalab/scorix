@@ -9,6 +9,7 @@ var StaticFS embed.FS
 // them (their {{ }} syntax isn't valid Go). Generator emits .go output.
 const (
 	GoHandler    = "static/go/handler.go.tpl"
+	GoEvents     = "static/go/events.go.tpl"
 	GoLogic      = "static/go/logic.go.tpl"
 	GoMain       = "static/go/main.go.tpl"
 	GoSvc        = "static/go/svc.go.tpl"
@@ -19,9 +20,10 @@ const (
 	GoModelGen   = "static/go/model_gen.go.tpl"
 	GoSchemaGen  = "static/go/schema_gen.go.tpl"
 
-	ShellTypes = "static/shell/types.ts"
-	ShellAPI   = "static/shell/api.ts"
-	ShellPage  = "static/shell/page.tsx"
+	ShellTypes       = "static/shell/types.ts"
+	ShellAPI         = "static/shell/api.ts"
+	ShellPage        = "static/shell/page.tsx"
+	ShellHooksEvents = "static/shell/hooks_events.ts"
 
 	ProjectScorixYaml = "static/project/scorix.yaml"
 	ProjectProto      = "static/project/proto/app.proto"

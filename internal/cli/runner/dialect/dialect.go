@@ -1,5 +1,5 @@
-// Package dialect provides SQL generation primitives used by the model
-// generator. Codegen-only — no database drivers imported here.
+// Package dialect provides SQL generation primitives for the model generator.
+// Codegen-only — no database drivers imported here.
 package dialect
 
 import (

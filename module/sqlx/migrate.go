@@ -24,14 +24,9 @@ var gooseDialect = map[string]string{
 }
 
 // WithMigrations runs `goose up` against the given migration directory during
-// OnLoad. Idempotent — already-applied versions skipped.
-//
-//	//go:embed migrations/*.sql
-//	var migrationsFS embed.FS
-//	sqlxMod := sqlx.New(sqlx.WithMigrations(migrationsFS, "migrations"))
-//
-// Mutually exclusive with WithSchema — pick one. Mixing causes goose's
-// version table to fight schema.sql's CREATE TABLE IF NOT EXISTS statements.
+// OnLoad. Idempotent — already-applied versions skipped. Mutually exclusive
+// with WithSchema: mixing makes goose's version table fight schema.sql's
+// CREATE TABLE IF NOT EXISTS statements.
 func WithMigrations(fsys fs.FS, dir string) Option {
 	return func(m *Module) {
 		if fsys == nil {

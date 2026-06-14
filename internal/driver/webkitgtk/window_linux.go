@@ -30,7 +30,6 @@ var (
 
 func initWinSignals() {
 	winSignals.Do(func() {
-		// "destroy": clean up and quit when the last window closes.
 		destroyCB = purego.NewCallback(func(widget, _ uintptr) uintptr {
 			if v, ok := winByWidget.Load(widget); ok {
 				w := v.(*win)

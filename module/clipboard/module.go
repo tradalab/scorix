@@ -1,10 +1,4 @@
-// Package clipboard provides a native OS clipboard integration module for scorix applications.
-//
-// Enable in app.yaml (no extra config required):
-//
-//	modules:
-//	  clipboard:
-//	    enabled: true
+// Package clipboard is a native OS clipboard read/write module.
 package clipboard
 
 import (
@@ -12,33 +6,25 @@ import (
 	"fmt"
 
 	"github.com/atotto/clipboard"
-	"github.com/tradalab/scorix/kernel/core/module"
+	"github.com/tradalab/scorix/module"
 	"github.com/tradalab/scorix/logger"
 )
 
-// Config holds the config block for this module.
-// Fields are read from app.yaml → modules.clipboard.*
 type Config struct {
 	Enabled bool `json:"enabled"`
 }
 
-// ////////// Module ////////// ////////// ////////// ////////// ////////// //////////
-
-// ClipboardModule provides functionality to interact with the native OS clipboard.
 type ClipboardModule struct {
 	ctx *module.Context
 	cfg Config
 }
 
-// New creates a new ClipboardModule.
 func New() *ClipboardModule {
 	return &ClipboardModule{}
 }
 
 func (m *ClipboardModule) Name() string    { return "clipboard" }
 func (m *ClipboardModule) Version() string { return "1.0.0" }
-
-// ////////// Lifecycle ////////// ////////// ////////// ////////// ////////// //////////
 
 func (m *ClipboardModule) OnLoad(ctx *module.Context) error {
 	logger.Info(fmt.Sprintf("[clipboard] loading (v%s)", m.Version()))
@@ -48,7 +34,6 @@ func (m *ClipboardModule) OnLoad(ctx *module.Context) error {
 		return fmt.Errorf("decode config: %w", err)
 	}
 
-	// Register IPC handlers.
 	module.Expose(m, "Read", ctx.IPC)
 	module.Expose(m, "Write", ctx.IPC)
 
@@ -59,10 +44,7 @@ func (m *ClipboardModule) OnStart() error  { return nil }
 func (m *ClipboardModule) OnStop() error   { return nil }
 func (m *ClipboardModule) OnUnload() error { return nil }
 
-// ////////// IPC Handlers ////////// ////////// ////////// ////////// ////////// //////////
-
-// Read reads the text content from the native OS clipboard.
-// JS: scorix.invoke("mod:clipboard:Read")
+// Read: scorix.invoke("mod:clipboard:Read")
 func (m *ClipboardModule) Read(_ context.Context, _ struct{}) (string, error) {
 	text, err := clipboard.ReadAll()
 	if err != nil {
@@ -71,13 +53,11 @@ func (m *ClipboardModule) Read(_ context.Context, _ struct{}) (string, error) {
 	return text, nil
 }
 
-// WriteRequest represents an IPC request to write text to the clipboard.
 type WriteRequest struct {
 	Text string `json:"text"`
 }
 
-// Write writes text content to the native OS clipboard.
-// JS: scorix.invoke("mod:clipboard:Write", { text: "Sample text" })
+// Write: scorix.invoke("mod:clipboard:Write", { text: "Sample text" })
 func (m *ClipboardModule) Write(_ context.Context, req WriteRequest) (string, error) {
 	err := clipboard.WriteAll(req.Text)
 	if err != nil {

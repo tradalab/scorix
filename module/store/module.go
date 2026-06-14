@@ -1,33 +1,22 @@
-// Package store provides a simple key-value JSON file storage module for scorix.
-//
-// Enable in app.yaml:
-//
-//	modules:
-//	  store:
-//	    enabled: true
-//	    path: my_custom_store.json  # optional, relative to DataDir. Default: store.json
+// Package store is a key-value JSON-file storage module.
 package store
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/tradalab/scorix/logger"
 	"os"
 	"path/filepath"
 	"sync"
 
-	"github.com/tradalab/scorix/kernel/core/module"
+	"github.com/tradalab/scorix/module"
+	"github.com/tradalab/scorix/logger"
 )
 
-// Config is the configuration for the Store module.
 type Config struct {
 	Path string `json:"path"`
 }
 
-// ////////// Module ////////// ////////// ////////// ////////// ////////// //////////
-
-// StoreModule provides a simple key-value JSON store.
 type StoreModule struct {
 	mu       sync.RWMutex
 	data     map[string]interface{}
@@ -35,7 +24,6 @@ type StoreModule struct {
 	cfg      Config
 }
 
-// New creates a new StoreModule.
 func New() *StoreModule {
 	return &StoreModule{
 		data: make(map[string]interface{}),
@@ -44,8 +32,6 @@ func New() *StoreModule {
 
 func (m *StoreModule) Name() string    { return "store" }
 func (m *StoreModule) Version() string { return "1.0.0" }
-
-// ////////// Lifecycle ////////// ////////// ////////// ////////// ////////// //////////
 
 func (m *StoreModule) OnLoad(ctx *module.Context) error {
 	logger.Info(fmt.Sprintf("[store] loading (v%s)", m.Version()))
@@ -59,19 +45,17 @@ func (m *StoreModule) OnLoad(ctx *module.Context) error {
 		m.filePath = "store.json"
 	}
 
-	// Resolve relative paths against the app's DataDir
 	if !filepath.IsAbs(m.filePath) {
 		m.filePath = filepath.Join(ctx.DataDir, m.filePath)
 	}
 
 	if err := m.loadFromFile(); err != nil {
+		// Non-fatal: a fresh install has no file yet.
 		logger.Error(fmt.Sprintf("[store] failed to load file %s: %v", m.filePath, err))
-		// we don't return error here so that fresh installations can start
 	} else {
 		logger.Info(fmt.Sprintf("[store] loaded data from %s", m.filePath))
 	}
 
-	// Register IPC handlers
 	module.Expose(m, "Get", ctx.IPC)
 	module.Expose(m, "Set", ctx.IPC)
 	module.Expose(m, "Delete", ctx.IPC)
@@ -95,15 +79,13 @@ func (m *StoreModule) OnStop() error {
 
 func (m *StoreModule) OnUnload() error { return nil }
 
-// ////////// Internal Helpers ////////// ////////// ////////// ////////// ////////// //////////
-
 func (m *StoreModule) loadFromFile() error {
 	if m.filePath == "" {
 		return fmt.Errorf("no file path provided")
 	}
 
 	if _, err := os.Stat(m.filePath); os.IsNotExist(err) {
-		return nil // file not found → ignore
+		return nil
 	}
 
 	file, err := os.ReadFile(m.filePath)
@@ -144,10 +126,7 @@ func (m *StoreModule) saveToFile() error {
 	return os.WriteFile(m.filePath, dataBytes, 0644)
 }
 
-// ////////// IPC Handlers ////////// ////////// ////////// ////////// ////////// //////////
-
-// Set saves a value to the store.
-// JS: scorix.invoke("mod:store:Set", { key: "foo", value: "bar" })
+// Set: scorix.invoke("mod:store:Set", { key: "foo", value: "bar" })
 func (m *StoreModule) Set(ctx context.Context, req map[string]interface{}) (interface{}, error) {
 	key, _ := req["key"].(string)
 	if key == "" {
@@ -159,15 +138,16 @@ func (m *StoreModule) Set(ctx context.Context, req map[string]interface{}) (inte
 	m.data[key] = value
 	m.mu.Unlock()
 
+	// Surface persist failure rather than reporting "ok" (silent data loss).
 	if err := m.saveToFile(); err != nil {
 		logger.Error(fmt.Sprintf("[store] save failed: %v", err))
+		return nil, fmt.Errorf("store: persist failed: %w", err)
 	}
 
 	return "ok", nil
 }
 
-// Get retrieves a value from the store.
-// JS: scorix.invoke("mod:store:Get", { key: "foo" })
+// Get: scorix.invoke("mod:store:Get", { key: "foo" })
 func (m *StoreModule) Get(ctx context.Context, req map[string]interface{}) (interface{}, error) {
 	key, _ := req["key"].(string)
 	if key == "" {
@@ -184,8 +164,7 @@ func (m *StoreModule) Get(ctx context.Context, req map[string]interface{}) (inte
 	return value, nil
 }
 
-// Delete removes a key and its value from the store.
-// JS: scorix.invoke("mod:store:Delete", { key: "foo" })
+// Delete: scorix.invoke("mod:store:Delete", { key: "foo" })
 func (m *StoreModule) Delete(ctx context.Context, req map[string]interface{}) (interface{}, error) {
 	key, _ := req["key"].(string)
 	if key == "" {
@@ -196,15 +175,16 @@ func (m *StoreModule) Delete(ctx context.Context, req map[string]interface{}) (i
 	delete(m.data, key)
 	m.mu.Unlock()
 
+	// Surface persist failure rather than reporting "ok" (silent data loss).
 	if err := m.saveToFile(); err != nil {
 		logger.Error(fmt.Sprintf("[store] save failed: %v", err))
+		return nil, fmt.Errorf("store: persist failed: %w", err)
 	}
 
 	return "ok", nil
 }
 
-// Keys returns all keys in the store.
-// JS: scorix.invoke("mod:store:Keys", null)
+// Keys: scorix.invoke("mod:store:Keys", null)
 func (m *StoreModule) Keys(ctx context.Context) (interface{}, error) {
 	m.mu.RLock()
 	keys := make([]string, 0, len(m.data))

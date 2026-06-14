@@ -14,7 +14,6 @@ type Packager interface {
 	Package(ctx context.Context, bc *BuildContext) (string, error)
 }
 
-// PackageOptions controls `scorix package`.
 type PackageOptions struct {
 	Dir          string
 	OS           string
@@ -80,7 +79,6 @@ func packageOne(ctx context.Context, opt PackageOptions, t PackageTarget) (strin
 	if err != nil {
 		return "", err
 	}
-	// The staged binary in TempDir is intermediate once the installer is built.
 	_ = os.RemoveAll(bc.TempDir)
 	return art, nil
 }

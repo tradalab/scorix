@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 type StaticAppcast struct {
@@ -29,10 +30,14 @@ type DynamicAppcast struct {
 
 type AppcastProvider struct {
 	appcastURL string
+	// publicKeyB64 authenticates the manifest: when non-empty, verify an Ed25519
+	// signature over the raw appcast.json bytes (from appcastURL+".sig") BEFORE
+	// trusting any version/url field — blocks manifest tampering and rollback.
+	publicKeyB64 string
 }
 
-func NewAppcastProvider(url string) *AppcastProvider {
-	return &AppcastProvider{appcastURL: url}
+func NewAppcastProvider(url, publicKeyB64 string) *AppcastProvider {
+	return &AppcastProvider{appcastURL: url, publicKeyB64: publicKeyB64}
 }
 
 func (p *AppcastProvider) CheckForUpdate(ctx context.Context, currentVersion, platformKey string) (*Result, error) {
@@ -45,7 +50,21 @@ func (p *AppcastProvider) CheckForUpdate(ctx context.Context, currentVersion, pl
 		return nil, err
 	}
 
-	// Try StaticAppcast
+	// Authenticate the manifest BEFORE trusting any field: fetch the detached
+	// "<appcast>.sig" and verify over the raw bytes. FAIL CLOSED — a configured
+	// key with missing/invalid signature refuses the whole manifest. An empty key
+	// skips verification (back-compat); FullUpdate still refuses to install
+	// without a key, so this stays safe.
+	if p.publicKeyB64 != "" {
+		sigBody, err := httpGet(ctx, defaultClient(), p.appcastURL+".sig", nil)
+		if err != nil {
+			return nil, fmt.Errorf("appcast: fetch manifest signature: %w", err)
+		}
+		if err := verifyEd25519(p.publicKeyB64, strings.TrimSpace(string(sigBody)), body); err != nil {
+			return nil, fmt.Errorf("appcast: manifest signature verification failed (refusing): %w", err)
+		}
+	}
+
 	var stat StaticAppcast
 	if json.Unmarshal(body, &stat) == nil && stat.Version != "" && len(stat.Platforms) > 0 {
 		plat, ok := stat.Platforms[platformKey]
@@ -65,7 +84,6 @@ func (p *AppcastProvider) CheckForUpdate(ctx context.Context, currentVersion, pl
 		}, nil
 	}
 
-	// Try DynamicAppcast
 	var dyn DynamicAppcast
 	if json.Unmarshal(body, &dyn) == nil && dyn.URL != "" && dyn.Version != "" {
 		if !isNewer(dyn.Version, currentVersion) {

@@ -53,7 +53,7 @@ func (darwinPackager) Package(ctx context.Context, bc *BuildContext) (string, er
 	}
 
 	// Info.plist: use the app's if present, else scaffold. Patch the version so
-	// the bundle's version tracks etc/app.yaml (single source of truth).
+	// the bundle tracks etc/app.yaml.
 	plistSrc := filepath.Join(bc.Root, "installer", "mac", "Info.plist")
 	if _, err := os.Stat(plistSrc); err != nil {
 		fmt.Println("==> Info.plist not found — scaffolding installer/mac/")

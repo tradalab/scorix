@@ -48,29 +48,62 @@ func GenerateProto(ctx context.Context, opt GenerateProtoOptions) error {
 		return fmt.Errorf("no service found in proto: %s", protoPath)
 	}
 
+	var outEvents, inEvents []protoRPC
 	for i := range pf.Services {
-		pf.Services[i].Package = lowerCamel(pf.Services[i].Name)
-		for j := range pf.Services[i].RPCs {
-			rpc := &pf.Services[i].RPCs[j]
+		svc := &pf.Services[i]
+		svc.Package = lowerCamel(svc.Name)
+		svcExported := exportedName(svc.Name)
+		commands := svc.RPCs[:0]
+		for j := range svc.RPCs {
+			rpc := svc.RPCs[j]
 			rpc.LogicName = exportedName(rpc.Name) + "Logic"
 			rpc.MethodName = exportedName(rpc.Name)
 			rpc.FileName = snakeName(rpc.Name) + "_logic.go"
-			rpc.CommandName = pf.Services[i].Package + ":" + kebabName(rpc.Name)
+			rpc.CommandName = svc.Package + ":" + kebabName(rpc.Name)
 			rpc.RequestGoType = typeRef(rpc.RequestType)
 			rpc.ResultGoType = typeRef(rpc.ResponseType)
 			rpc.RequestTSType = tsTypeRef(rpc.RequestType)
 			rpc.ResultTSType = tsTypeRef(rpc.ResponseType)
-			// Inherit service-level middlewares if RPC has none defined
 			if len(rpc.Middlewares) == 0 {
-				rpc.Middlewares = pf.Services[i].Middlewares
+				rpc.Middlewares = svc.Middlewares
 			}
+			if rpc.IsEvent {
+				// The wire topic shares the command namespace; the Go/TS
+				// identifier is service-prefixed so rpc names only need to be
+				// unique within their service (Message in monitor AND pubsub).
+				rpc.EventName = rpc.CommandName
+				rpc.EventGoName = rpc.MethodName
+				if !strings.HasPrefix(rpc.EventGoName, svcExported) {
+					rpc.EventGoName = svcExported + rpc.EventGoName
+				}
+				svc.Events = append(svc.Events, rpc)
+				if rpc.EventDir == "in" {
+					inEvents = append(inEvents, rpc)
+				} else {
+					outEvents = append(outEvents, rpc)
+				}
+				continue
+			}
+			commands = append(commands, rpc)
 		}
+		svc.RPCs = commands
 	}
 
 	gen := protoTemplateData{
-		Module:   modPath,
-		Proto:    pf,
-		Services: pf.Services,
+		Module:    modPath,
+		Proto:     pf,
+		Services:  pf.Services,
+		OutEvents: outEvents,
+		InEvents:  inEvents,
+		HasEvents: len(outEvents)+len(inEvents) > 0,
+	}
+
+	pageGen := gen
+	pageGen.Services = nil
+	for _, svc := range pf.Services {
+		if len(svc.RPCs) > 0 {
+			pageGen.Services = append(pageGen.Services, svc)
+		}
 	}
 
 	writes := []generatedFile{
@@ -94,12 +127,6 @@ func GenerateProto(ctx context.Context, opt GenerateProtoOptions) error {
 			Force:    true,
 		},
 		{
-			Path:     filepath.Join(root, "shell", "app", "page.tsx"),
-			Template: mustRead(template.ShellPage),
-			Data:     gen,
-			Force:    opt.Force,
-		},
-		{
 			Path:     filepath.Join(root, "internal", "handler", "handler.go"),
 			Template: mustRead(template.GoHandler),
 			Data:     gen,
@@ -111,7 +138,7 @@ func GenerateProto(ctx context.Context, opt GenerateProtoOptions) error {
 			Template: mustRead(template.GoMain),
 			Data:     gen,
 			Go:       true,
-			Force:    true,
+			Force:    opt.Force,
 		},
 		{
 			Path:     filepath.Join(root, "internal", "config", "config.go"),
@@ -119,6 +146,33 @@ func GenerateProto(ctx context.Context, opt GenerateProtoOptions) error {
 			Data:     gen,
 			Go:       true,
 		},
+	}
+
+	if len(pageGen.Services) > 0 {
+		writes = append(writes, generatedFile{
+			Path:     filepath.Join(root, "shell", "app", "page.tsx"),
+			Template: mustRead(template.ShellPage),
+			Data:     pageGen,
+			Force:    opt.Force,
+		})
+	}
+
+	if gen.HasEvents {
+		writes = append(writes, generatedFile{
+			Path:     filepath.Join(root, "internal", "events", "events.go"),
+			Template: mustRead(template.GoEvents),
+			Data:     gen,
+			Go:       true,
+			Force:    true,
+		})
+	}
+	if len(gen.OutEvents) > 0 {
+		writes = append(writes, generatedFile{
+			Path:     filepath.Join(root, "shell", "hooks", "events.ts"),
+			Template: mustRead(template.ShellHooksEvents),
+			Data:     gen,
+			Force:    true,
+		})
 	}
 
 	for _, m := range pf.Middlewares {
@@ -160,25 +214,51 @@ func GenerateProto(ctx context.Context, opt GenerateProtoOptions) error {
 		}
 	}
 
-	fmt.Printf("==> Generating Scorix code from %s\n", protoPath)
-	var created, updated, skipped int
+	if opt.Check {
+		fmt.Printf("==> Checking generated code against %s\n", protoPath)
+	} else {
+		fmt.Printf("==> Generating Scorix code from %s\n", protoPath)
+	}
+
+	// Pass 1: render all; abort before any write if one fails.
+	staged := make([]stagedFile, 0, len(writes))
 	for _, f := range writes {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
-
-		action, err := writeGeneratedFile(f)
+		s, err := renderGeneratedFile(f)
 		if err != nil {
 			return err
 		}
+		staged = append(staged, s)
+	}
 
-		if action != "skipped" {
-			fmt.Printf("      %s: %s\n", action, filepath.Base(f.Path))
+	if opt.Check {
+		var drifted []string
+		for _, s := range staged {
+			reason, err := driftOf(s)
+			if err != nil {
+				return err
+			}
+			if reason != "" {
+				drifted = append(drifted, driftLabel(root, s.Path, reason))
+			}
 		}
+		return reportDrift(root, "scorix generate proto", drifted)
+	}
 
-		switch action {
+	// Pass 2: commit.
+	var created, updated, skipped int
+	for _, s := range staged {
+		if err := commitStagedFile(s); err != nil {
+			return err
+		}
+		if s.Action != "skipped" {
+			fmt.Printf("      %s: %s\n", s.Action, filepath.Base(s.Path))
+		}
+		switch s.Action {
 		case "created":
 			created++
 		case "updated":

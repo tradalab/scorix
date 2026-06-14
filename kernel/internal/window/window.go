@@ -1,5 +1,0 @@
-package window
-
-func New() {
-
-}

@@ -12,10 +12,9 @@ import (
 	"github.com/tradalab/scorix/internal/cli/template"
 )
 
-// renderModelGen invokes the full template→go-format pipeline used by
-// GenerateModel for one table, returning the rendered source. Failures from
-// go/format.Source (called inside writeGeneratedFile) surface as test errors,
-// proving the template produces syntactically valid Go.
+// renderModelGen runs GenerateModel's full template→go-format pipeline for one
+// table; a go/format.Source failure (inside writeGeneratedFile) surfaces as a
+// test error, proving the template emits valid Go.
 func renderModelGen(t *testing.T, schema string, d dialect.Dialect) string {
 	t.Helper()
 	tables := parseInline(t, schema, d)
@@ -58,26 +57,22 @@ func TestRenderModelGen_SQLite(t *testing.T) {
 	got := renderModelGen(t, connectionSchema, dialect.MustNew("sqlite"))
 
 	mustContain(t, got,
-		// imports
 		`"context"`, `"database/sql"`, `"time"`,
 		`"github.com/google/uuid"`,
 		`"github.com/jmoiron/sqlx"`,
-		// SQL constants exist (gofmt aligns the `=`, so check identifiers only)
+		// gofmt aligns the `=`, so check identifiers only
 		`connectionFindOneSQL`, `connectionFindAllSQL`,
 		`connectionFindManySQL`, `connectionInsertSQL`,
 		`connectionUpdateSQL`, `connectionDeleteSQL`,
 		// Soft delete: DeleteSQL is an UPDATE, not DELETE FROM
 		`= "UPDATE `+"`connection` SET `deleted_at`",
-		// SQLite ? placeholder
 		"`id` = ?",
-		// interface methods
 		`Insert(ctx context.Context, data *Connection)`,
 		`FindOne(ctx context.Context, id string)`,
 		`FindMany(ctx context.Context, ids []string)`,
 		`FindAll(ctx context.Context)`,
 		`Update(ctx context.Context, data *Connection)`,
 		`Delete(ctx context.Context, id string)`,
-		// UUID hook
 		`data.ID = uuid.NewString()`,
 		// Soft delete passes time.Now() first arg
 		`time.Now(), id`,
@@ -85,7 +80,6 @@ func TestRenderModelGen_SQLite(t *testing.T) {
 		`sqlx.In(connectionFindManySQL, ids)`,
 		`conn.Rebind(query)`,
 		`scorixsqlx.From(ctx, m.conn)`,
-		// Struct field db tags (gofmt-tolerant: identifier + tag fragment)
 		"SshID",
 		`db:"ssh_id"`,
 		"DeletedAt",

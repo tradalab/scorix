@@ -130,7 +130,6 @@ func initDispatch() {
 	})
 }
 
-// dispatchMain queues fn onto the GTK main loop.
 func dispatchMain(fn func()) {
 	taskMu.Lock()
 	taskSeq++

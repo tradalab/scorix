@@ -1,31 +1,21 @@
-// Package fs provides a file system paths module for scorix applications.
-//
-// Enable in app.yaml (no extra config required):
-//
-//	modules:
-//	  fs:
-//	    enabled: true
+// Package fs exposes platform app paths (config/data/cache/log/temp) over IPC.
 package fs
 
 import (
 	"context"
 	"fmt"
-	"github.com/tradalab/scorix/logger"
 	"os"
 	"path/filepath"
 	"runtime"
 
-	"github.com/tradalab/scorix/kernel/core/module"
+	"github.com/tradalab/scorix/module"
+	"github.com/tradalab/scorix/logger"
 )
 
-// ////////// Module ////////// ////////// ////////// ////////// ////////// //////////
-
-// FSModule provides standard application paths to the frontend.
 type FSModule struct {
 	appName string
 }
 
-// New creates a new FSModule.
 func New() *FSModule {
 	return &FSModule{}
 }
@@ -33,18 +23,14 @@ func New() *FSModule {
 func (m *FSModule) Name() string    { return "fs" }
 func (m *FSModule) Version() string { return "1.0.0" }
 
-// ////////// Lifecycle ////////// ////////// ////////// ////////// ////////// //////////
-
 func (m *FSModule) OnLoad(ctx *module.Context) error {
 	logger.Info(fmt.Sprintf("[fs] loading (v%s)", m.Version()))
 
-	// Grab the app name from the context to construct paths.
 	m.appName = ctx.AppName
 	if m.appName == "" {
 		m.appName = "scorix-app"
 	}
 
-	// Register IPC handlers.
 	module.Expose(m, "ConfigDir", ctx.IPC)
 	module.Expose(m, "DataDir", ctx.IPC)
 	module.Expose(m, "CacheDir", ctx.IPC)
@@ -58,10 +44,7 @@ func (m *FSModule) OnStart() error  { return nil }
 func (m *FSModule) OnStop() error   { return nil }
 func (m *FSModule) OnUnload() error { return nil }
 
-// ////////// IPC Handlers ////////// ////////// ////////// ////////// ////////// //////////
-
-// ConfigDir returns the path to the user config directory.
-// JS: scorix.invoke("mod:fs:ConfigDir", null)
+// ConfigDir: scorix.invoke("mod:fs:ConfigDir", null)
 func (m *FSModule) ConfigDir(ctx context.Context) (string, error) {
 	if dir, err := os.UserConfigDir(); err == nil {
 		return filepath.Join(dir, m.appName), nil
@@ -69,8 +52,7 @@ func (m *FSModule) ConfigDir(ctx context.Context) (string, error) {
 	return filepath.Join(os.TempDir(), m.appName, "config"), nil
 }
 
-// DataDir returns the path to the application data directory.
-// JS: scorix.invoke("mod:fs:DataDir", null)
+// DataDir: scorix.invoke("mod:fs:DataDir", null)
 func (m *FSModule) DataDir(ctx context.Context) (string, error) {
 	if runtime.GOOS == "windows" {
 		if dir := os.Getenv("APPDATA"); dir != "" {
@@ -91,8 +73,7 @@ func (m *FSModule) DataDir(ctx context.Context) (string, error) {
 	return filepath.Join(os.TempDir(), m.appName, "data"), nil
 }
 
-// CacheDir returns the path to the user cache directory.
-// JS: scorix.invoke("mod:fs:CacheDir", null)
+// CacheDir: scorix.invoke("mod:fs:CacheDir", null)
 func (m *FSModule) CacheDir(ctx context.Context) (string, error) {
 	if dir, err := os.UserCacheDir(); err == nil {
 		return filepath.Join(dir, m.appName), nil
@@ -100,8 +81,7 @@ func (m *FSModule) CacheDir(ctx context.Context) (string, error) {
 	return filepath.Join(os.TempDir(), m.appName, "cache"), nil
 }
 
-// LogDir returns the path to the application log directory.
-// JS: scorix.invoke("mod:fs:LogDir", null)
+// LogDir: scorix.invoke("mod:fs:LogDir", null)
 func (m *FSModule) LogDir(ctx context.Context) (string, error) {
 	if runtime.GOOS == "windows" {
 		if dir := os.Getenv("LOCALAPPDATA"); dir != "" {
@@ -112,8 +92,7 @@ func (m *FSModule) LogDir(ctx context.Context) (string, error) {
 	return filepath.Join(cacheDir, "logs"), nil
 }
 
-// TempDir returns a path to a temporary directory for the application.
-// JS: scorix.invoke("mod:fs:TempDir", null)
+// TempDir: scorix.invoke("mod:fs:TempDir", null)
 func (m *FSModule) TempDir(ctx context.Context) (string, error) {
 	return filepath.Join(os.TempDir(), m.appName), nil
 }

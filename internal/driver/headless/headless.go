@@ -1,4 +1,4 @@
-// Package headless is a pure-Go window.Driver with no native window, for web mode and tests.
+// Package headless is a window.Driver with no native window, for web mode and tests.
 package headless
 
 import (

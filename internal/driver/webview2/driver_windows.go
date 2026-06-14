@@ -227,7 +227,7 @@ func wndProc(hwnd, message, wParam, lParam uintptr) uintptr {
 			return 0
 		case wmDestroy:
 			if w := rt.manager.byHandle(h); w != nil {
-				w.dispose() // Close + Release the WebView2 COM objects
+				w.dispose()
 			}
 			if rt.manager.remove(h) == 0 {
 				procPostQuitMessage.Call(0)
