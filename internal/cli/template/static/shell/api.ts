@@ -7,7 +7,7 @@ import type * as T from "@/types";
 {{- if .RPCs }}
 export const {{ .Package }} = {
 {{- range .RPCs }}
-  {{ .MethodName | lower }}: (params: T.{{ .RequestTSType }}) => scorix.invoke<T.{{ .ResultTSType }}>("{{ .CommandName }}", params),
+  {{ .MethodName | lowerFirst }}: (params: T.{{ .RequestTSType }}) => scorix.invoke<T.{{ .ResultTSType }}>("{{ .CommandName }}", params),
 {{- end }}
 };
 {{ end }}

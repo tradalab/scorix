@@ -10,7 +10,7 @@ export default function Home() {
   useEffect(() => {
     const checkHealth = async () => {
       try {
-        const reply = await {{ (index .Services 0).Package }}.{{ (index (index .Services 0).RPCs 0).MethodName | lower }}({});
+        const reply = await {{ (index .Services 0).Package }}.{{ (index (index .Services 0).RPCs 0).MethodName | lowerFirst }}({});
         setStatus((reply as any).status || "Running Smoothly");
       } catch (err: any) {
         console.error("Scorix Connection Error:", err);
