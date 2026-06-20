@@ -2,8 +2,7 @@ package dialect
 
 import "strings"
 
-// SQLite uses backticks (matches MySQL — keeps emitted code consistent across
-// the two embedded-DB dialects) and positional "?" placeholders.
+// SQLite uses backticks (matching MySQL keeps emitted code consistent) and positional "?".
 type SQLite struct{}
 
 func (SQLite) Name() string       { return "sqlite" }

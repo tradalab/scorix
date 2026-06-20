@@ -7,11 +7,8 @@ import (
 	"github.com/tradalab/scorix/logger"
 )
 
-// safeOnLoad / safeOnStart convert panics into errors so the manager can
-// abort instead of tearing down main(). Stack traces logged for diagnostics.
-//
-// safeOnStop / safeOnUnload log panics but always return — shutdown must
-// complete even when a module misbehaves.
+// safeOnLoad/safeOnStart turn panics into errors (manager aborts startup);
+// safeOnStop/safeOnUnload swallow them so shutdown always completes.
 
 func safeOnLoad(mod Module, ctx *Context) (err error) {
 	defer func() {

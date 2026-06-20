@@ -5,8 +5,7 @@ import (
 	"net/http"
 )
 
-// SchemeHandler serves a scheme request in-process: the webview resolves
-// scorix://app/... by calling h instead of hitting a TCP port.
+// SchemeHandler serves scorix://app/... in-process, no TCP port.
 type SchemeHandler func(req *Request) *Response
 
 type Request struct {
@@ -16,8 +15,8 @@ type Request struct {
 	Body   []byte
 }
 
-// Status/Header must be complete enough for the platform webview (content-type,
-// and range headers when the backend signals partial content).
+// Header must set content-type (and range headers for partial content) for the
+// platform webview.
 type Response struct {
 	Status int
 	Header http.Header

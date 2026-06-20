@@ -56,6 +56,13 @@ func GenerateProto(ctx context.Context, opt GenerateProtoOptions) error {
 		commands := svc.RPCs[:0]
 		for j := range svc.RPCs {
 			rpc := svc.RPCs[j]
+			// A stream keyword on a one-way event would be silently discarded.
+			if rpc.IsEvent && rpc.Arity != "unary" {
+				return fmt.Errorf("rpc %s.%s is @event/@broadcast and cannot also be a %s; drop the stream keyword or the annotation", svc.Name, rpc.Name, rpc.Arity)
+			}
+			if !rpc.IsEvent && (rpc.Arity == "client-stream" || rpc.Arity == "bidi") {
+				return fmt.Errorf("rpc %s.%s uses the %s arity; codegen emits only unary and server-stream — wire %s by hand with app.RegisterDuplex", svc.Name, rpc.Name, rpc.Arity, rpc.Name)
+			}
 			rpc.LogicName = exportedName(rpc.Name) + "Logic"
 			rpc.MethodName = exportedName(rpc.Name)
 			rpc.FileName = snakeName(rpc.Name) + "_logic.go"
@@ -67,10 +74,14 @@ func GenerateProto(ctx context.Context, opt GenerateProtoOptions) error {
 			if len(rpc.Middlewares) == 0 {
 				rpc.Middlewares = svc.Middlewares
 			}
+			// Middleware can't wrap a server-stream Sink handler; emitting one anyway
+			// would silently drop an auth gate, so fail closed.
+			if rpc.IsServerStream && len(rpc.Middlewares) > 0 {
+				return fmt.Errorf("rpc %s.%s is a server-stream with @middleware %v; middleware is not supported on streaming handlers yet — remove it, or split the auth check into the handler body", svc.Name, rpc.Name, rpc.Middlewares)
+			}
 			if rpc.IsEvent {
-				// The wire topic shares the command namespace; the Go/TS
-				// identifier is service-prefixed so rpc names only need to be
-				// unique within their service (Message in monitor AND pubsub).
+				// Service-prefix the identifier so rpc names need only be unique
+				// within their service (e.g. Message in both monitor and pubsub).
 				rpc.EventName = rpc.CommandName
 				rpc.EventGoName = rpc.MethodName
 				if !strings.HasPrefix(rpc.EventGoName, svcExported) {
@@ -249,7 +260,6 @@ func GenerateProto(ctx context.Context, opt GenerateProtoOptions) error {
 		return reportDrift(root, "scorix generate proto", drifted)
 	}
 
-	// Pass 2: commit.
 	var created, updated, skipped int
 	for _, s := range staged {
 		if err := commitStagedFile(s); err != nil {

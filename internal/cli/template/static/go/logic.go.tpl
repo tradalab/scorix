@@ -3,6 +3,10 @@ package {{ .Service.Package }}
 
 import (
 	"context"
+{{- if .RPC.IsServerStream }}
+
+	"github.com/tradalab/scorix/app"
+{{- end }}
 
 	"{{ .Module }}/internal/svc"
 	"{{ .Module }}/internal/types"
@@ -20,6 +24,14 @@ func New{{ .RPC.LogicName }}(ctx context.Context, svcCtx *svc.ServiceContext) *{
 	}
 }
 
+{{- if .RPC.IsServerStream }}
+// {{ .RPC.MethodName }} receives one request, then pushes any number of typed
+// messages through out before returning (the call ends with the return).
+func (l *{{ .RPC.LogicName }}) {{ .RPC.MethodName }}(req *{{ .RPC.RequestGoType }}, out app.Sink[{{ .RPC.ResultGoType }}]) error {
+	return nil
+}
+{{- else }}
 func (l *{{ .RPC.LogicName }}) {{ .RPC.MethodName }}(params *{{ .RPC.RequestGoType }}) (*{{ .RPC.ResultGoType }}, error) {
 	return nil, nil
 }
+{{- end }}

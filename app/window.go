@@ -1,7 +1,10 @@
 package app
 
 import (
+	"context"
 	"errors"
+	"sync"
+	"time"
 
 	ipc "github.com/tradalab/scorix/internal/ipc"
 	"github.com/tradalab/scorix/window"
@@ -12,13 +15,10 @@ type AppWindow struct {
 	Client ClientID // targeted-emit id for this window's frontend
 }
 
-// OpenWindow opens an additional native window with the bridge injected and IPC
-// wired; per-window traffic uses the returned Client with EmitTo. Zero
-// Width/Height/URL fall back to the main-window options.
-//
-// App mode only, after Run has started. It blocks on the UI thread, so don't
-// call it from code already on it (OnReady, window event handlers); wrap those
-// in a goroutine. The loop exits when the last window closes.
+// OpenWindow opens an additional native window (bridge injected, IPC wired); zero
+// Width/Height/URL fall back to main-window options. App mode only, after Run.
+// Blocks on the UI thread — don't call from code already on it (OnReady, window
+// event handlers); wrap those in a goroutine.
 func (a *App) OpenWindow(opts window.Options) (*AppWindow, error) {
 	a.mu.Lock()
 	rt := a.rt
@@ -53,7 +53,7 @@ func (a *App) OpenWindow(opts window.Options) (*AppWindow, error) {
 	return r.w, r.err
 }
 
-// Quit stops the native event loop (app mode); no-op if none is running.
+// Quit stops the native event loop (app mode); no-op if none running.
 func (a *App) Quit() {
 	a.mu.Lock()
 	rt := a.rt
@@ -63,10 +63,9 @@ func (a *App) Quit() {
 	}
 }
 
-// attachWindow creates a window, injects the bridge, and wires its IPC
-// dispatcher to a fresh ClientID. MUST run on the UI thread (Manager.New contract).
+// MUST run on the UI thread (Manager.New contract).
 func (a *App) attachWindow(rt window.Runtime, opts window.Options) (*AppWindow, error) {
-	// Bridge runs before any page script; a caller InitScript runs after it.
+	// Bridge runs before any page script; a caller InitScript runs after.
 	if opts.InitScript == "" {
 		opts.InitScript = bridgeJS
 	} else {
@@ -77,13 +76,44 @@ func (a *App) attachWindow(rt window.Runtime, opts window.Options) (*AppWindow, 
 	if err != nil {
 		return nil, err
 	}
-	b := ipc.NewNativeBridge(w.View(), a.reg)
-	sid := a.addSender(func(raw []byte) { _ = w.View().PostMessage(raw) })
+	view := w.View()
+	// One serialized writer per view (RPC replies + broadcast/EmitTo): native
+	// PostMessage isn't assumed concurrency-safe, so Emit must not interleave a Send.
+	var wmu sync.Mutex
+	send := func(raw []byte) error {
+		wmu.Lock()
+		defer wmu.Unlock()
+		return view.PostMessage(raw)
+	}
+	d := ipc.NewDispatcher(a.reg, send)
+	view.OnMessage(d.Handle)
+	b := &ipc.NativeBridge{Dispatcher: d}
+	sid := a.addSender(func(raw []byte) { _ = send(raw) })
 	b.BindClient(ipc.ClientID(sid))
 	a.mu.Lock()
 	a.bridges = append(a.bridges, b)
 	a.mu.Unlock()
-	// Stop broadcasting to a disposed view once the window closes.
-	w.On(window.EventClose, func(window.EventData) { a.removeSender(sid) })
+	// On close, cancel the bridge's handlers too: else a long-lived stream (monitor,
+	// pubsub) leaks a goroutine per closed window — native PostMessage can't report
+	// the gone client.
+	w.On(window.EventClose, func(window.EventData) {
+		a.removeSender(sid)
+		a.mu.Lock()
+		for i, x := range a.bridges {
+			if x == b {
+				a.bridges = append(a.bridges[:i], a.bridges[i+1:]...)
+				break
+			}
+		}
+		a.mu.Unlock()
+		// winClose lets Run's teardown wait for this drain before stopping modules.
+		a.winClose.Add(1)
+		go func() {
+			defer a.winClose.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = b.Close(ctx)
+		}()
+	})
 	return &AppWindow{Window: w, Client: ipc.ClientID(sid)}, nil
 }

@@ -7,23 +7,26 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/tradalab/scorix/config"
 	ipc "github.com/tradalab/scorix/internal/ipc"
+	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/module"
 	"github.com/tradalab/scorix/webview"
 )
 
-// moduleCapability maps a module name to the security-allowlist capability that
-// gates it. Modules not listed here are not capability-gated.
+// moduleCapability maps a module to its gating allowlist capability; unlisted
+// modules are not capability-gated.
 var moduleCapability = map[string]string{
 	"fs":           "fs",
 	"clipboard":    "clipboard",
 	"browser":      "shell", // opens URLs / shells out to the OS handler
 	"dialog":       "shell",
 	"notification": "notification",
+	"updater":      "shell", // downloads + shell-executes a signed installer
 }
 
-// capabilityForCommand returns the allowlist capability gating a
-// "mod:<module>:<method>" command, or "" if it isn't a gated module command.
+// capabilityForCommand returns the capability gating a "mod:<module>:<method>"
+// command, or "" if it isn't a gated module command.
 func capabilityForCommand(name string) string {
 	rest, ok := strings.CutPrefix(name, "mod:")
 	if !ok {
@@ -36,26 +39,40 @@ func capabilityForCommand(name string) string {
 	return moduleCapability[mod]
 }
 
-// Module registers a Scorix module (store, fs, sqlx, …) and enables it by default.
+// Module registers a Scorix module (enabled by default). MUST be called before
+// Run/RunWeb/Handler — modules load+start once at startup; later calls no-op (warned).
 func (a *App) Module(m module.Module) {
+	a.warnIfStarted("Module(" + m.Name() + ")")
 	a.mods.Register(m)
 	if _, ok := a.cfg.Modules[m.Name()]; !ok {
 		a.cfg.Modules[m.Name()] = map[string]any{"enabled": true}
 	}
 }
 
-// SetModuleConfig sets a module's config section (auto-enabled). Call before Module.
+// SetModuleConfig merges cfg into a module's section (auto-enabled, caller keys
+// win per-key; does NOT replace the whole section). Call before Module / Run.
 func (a *App) SetModuleConfig(name string, cfg map[string]any) {
-	section := make(map[string]any, len(cfg)+1)
-	for k, v := range cfg {
-		section[k] = v
+	a.warnIfStarted("SetModuleConfig(" + name + ")")
+	section := config.AsStringMap(a.cfg.Modules[name])
+	merged := make(map[string]any, len(section)+len(cfg)+1)
+	for k, v := range section {
+		merged[k] = v
 	}
-	section["enabled"] = true
-	a.cfg.Modules[name] = section
+	for k, v := range cfg {
+		merged[k] = v
+	}
+	merged["enabled"] = true
+	a.cfg.Modules[name] = merged
 }
 
-// The module manager is unexported on purpose: apps interact through Module /
-// SetModuleConfig; lifecycle verbs belong to the runtime.
+func (a *App) warnIfStarted(call string) {
+	a.mu.Lock()
+	started := a.started
+	a.mu.Unlock()
+	if started {
+		logger.Warn("app: "+call+" after Run/RunWeb/Handler — modules already started, this has no effect", "call", call)
+	}
+}
 
 // startModules runs LoadAll+StartAll once (idempotent; Run and Handler both call it).
 func (a *App) startModules() error {
@@ -67,8 +84,7 @@ func (a *App) startModules() error {
 	a.started = true
 	a.mu.Unlock()
 
-	// On failure, unwind the loaded/started prefix and clear started so a later
-	// call can retry.
+	// On failure, unwind and clear started so a later call can retry.
 	if err := a.mods.LoadAll(); err != nil {
 		a.stopModules()
 		a.resetStarted()
@@ -115,13 +131,17 @@ func (c *moduleCore) Invoke(ctx context.Context, name string, data json.RawMessa
 }
 
 func (c *moduleCore) Emit(_ context.Context, name string, data json.RawMessage) error {
-	raw, _ := json.Marshal(webview.Message{
+	raw, err := json.Marshal(webview.Message{
 		ID:    "mod-" + strconv.FormatUint(c.app.seq.Add(1), 10),
 		Kind:  "event",
 		Name:  name,
 		State: "dispatch",
 		Data:  data,
 	})
+	if err != nil {
+		logger.Error("app: module emit marshal failed", "event", name, "err", err)
+		return err
+	}
 	c.app.broadcast(raw)
 	return nil
 }

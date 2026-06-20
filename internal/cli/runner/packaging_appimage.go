@@ -59,8 +59,7 @@ func (linuxPackager) Package(ctx context.Context, bc *BuildContext) (string, err
 		return "", err
 	}
 
-	// linuxdeploy writes <Name>-<arch>.AppImage into the working dir. Clear any
-	// stale ones so we can reliably identify the output.
+	// Clear stale *.AppImage so we can reliably identify linuxdeploy's output.
 	for _, s := range globAppImages(bc.Root) {
 		_ = os.Remove(s)
 	}

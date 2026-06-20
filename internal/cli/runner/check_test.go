@@ -37,9 +37,8 @@ func newCheckProject(t *testing.T) string {
 	files := map[string]string{
 		"go.mod":          "module example.com/demo\n\ngo 1.26\n",
 		"proto/app.proto": checkProto,
-		"scorix.yaml":     "name: example.com/demo\nmodel:\n  schema: etc/schema.sql\n  dialect: sqlite\n",
+		"scorix.yaml":     "name: example.com/demo\nmodel:\n  schema: etc/schema.sql\n  dialect: sqlite\napp:\n  name: demo\nmodules:\n  fs:\n    enabled: true\n",
 		"etc/schema.sql":  checkSchema,
-		"etc/app.yaml":    "app:\n  name: demo\nmodules:\n  fs:\n    enabled: true\n",
 	}
 	for rel, content := range files {
 		path := filepath.Join(dir, filepath.FromSlash(rel))

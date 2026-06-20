@@ -11,9 +11,8 @@ import (
 	"strings"
 )
 
-// SchemeFromFS serves files from fsys (URL host is a namespace, not part of the
-// path). An unresolved extensionless path falls back to index.html (SPA); a
-// missing asset 404s.
+// SchemeFromFS serves files from fsys (URL host is a namespace, not path).
+// Extensionless misses fall back to index.html (SPA); other misses 404.
 func SchemeFromFS(fsys fs.FS) SchemeHandler {
 	return func(req *Request) *Response {
 		name := assetPath(req.URL)
@@ -52,9 +51,8 @@ func notFound() *Response {
 	}
 }
 
-// assetPath maps scorix://app/foo/bar.js -> foo/bar.js; the host is a namespace,
-// not part of the path. Cleans so the result never escapes fsys; root/dir and
-// traversal resolve to index.html.
+// assetPath maps scorix://app/foo/bar.js -> foo/bar.js. Cleans so the result
+// never escapes fsys; root/dir and traversal resolve to index.html.
 func assetPath(rawurl string) string {
 	u, err := url.Parse(rawurl)
 	if err != nil {

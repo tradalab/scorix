@@ -34,9 +34,8 @@ func lowerFirstRune(s string) string {
 	return s
 }
 
-// unquoteIdent strips one layer of "x" / `x` / [x] wrapping. Schema authors
-// quote reserved words (group, order, user) so the DDL parses; the parser
-// stores the unquoted form for clean Go names.
+// unquoteIdent strips one layer of "x" / `x` / [x] wrapping (authors quote
+// reserved words like group/order/user); stored unquoted for clean Go names.
 func unquoteIdent(s string) string {
 	if len(s) < 2 {
 		return s
@@ -53,7 +52,7 @@ func unquoteIdent(s string) string {
 	return s
 }
 
-// goFieldFromColumn applies the Go *_id → *ID convention.
+// goFieldFromColumn applies the *_id → *ID convention.
 func goFieldFromColumn(colName string) string {
 	if strings.ToLower(colName) == "id" {
 		return "ID"
@@ -65,7 +64,6 @@ func goFieldFromColumn(colName string) string {
 }
 
 // Identifier captures accept "x" / `x` / [x] / x — unquoteIdent strips wrappers post-match.
-// tableHeadRegex matches `CREATE TABLE [IF NOT EXISTS] <name>` up to the opening `(`.
 var (
 	tableHeadRegex = regexp.MustCompile(`(?i)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?` +
 		"(\"[a-zA-Z0-9_]+\"|`[a-zA-Z0-9_]+`|\\[[a-zA-Z0-9_]+\\]|[a-zA-Z0-9_]+)" +
@@ -78,8 +76,7 @@ var (
 	tableUniqueRegex = regexp.MustCompile(`(?i)^UNIQUE\s*\(\s*([a-zA-Z0-9_,\s]+?)\s*\)`)
 )
 
-// isWordBoundary reports whether b is NOT part of a SQL identifier token, i.e.
-// it cannot be adjacent to a keyword like DEFAULT and still be the same word.
+// isWordBoundary reports whether b is not part of a SQL identifier token.
 func isWordBoundary(b byte) bool {
 	switch {
 	case b >= 'a' && b <= 'z', b >= 'A' && b <= 'Z', b >= '0' && b <= '9', b == '_':
@@ -89,9 +86,8 @@ func isWordBoundary(b byte) bool {
 	}
 }
 
-// indexKeyword returns the byte offset of the first whole-word occurrence of the
-// (uppercase) keyword in the caller-uppercased haystack, or -1. Whole-word (both
-// neighbours non-identifier bytes) so a column like `is_default` doesn't match DEFAULT.
+// indexKeyword finds the first whole-word occurrence of keyword (offset, or -1).
+// Whole-word so a column like `is_default` doesn't match DEFAULT.
 func indexKeyword(upper, keyword string) int {
 	from := 0
 	for {
@@ -110,10 +106,9 @@ func indexKeyword(upper, keyword string) int {
 	}
 }
 
-// extractDefaultValue returns the raw token after `DEFAULT` — a single-quoted
-// literal (doubled-quote escapes preserved), a paren-balanced expression, or a
-// bareword; empty when none. Whole-word match on string-blanked text so substrings
-// like `is_default` don't trigger.
+// extractDefaultValue returns the raw token after DEFAULT — a single-quoted literal,
+// a paren-balanced expression, or a bareword. Whole-word match on string-blanked text
+// so substrings like `is_default` don't trigger.
 func extractDefaultValue(line string) string {
 	blanked := strings.ToUpper(blankStringLiterals(line))
 	idx := indexKeyword(blanked, "DEFAULT")
@@ -196,16 +191,15 @@ func splitColList(s string) []string {
 }
 
 // parseSQLSchema produces []sqlTable from a CREATE TABLE script. FOREIGN KEY
-// clauses are ignored — relation handling lives in internal/logic/.
+// clauses are ignored — relations live in internal/logic/.
 func parseSQLSchema(schemaPath string, d dialect.Dialect) ([]sqlTable, error) {
 	b, err := os.ReadFile(schemaPath)
 	if err != nil {
 		return nil, fmt.Errorf("read schema: %w", err)
 	}
 
-	// Match on sanitized text so CREATE TABLE inside a string literal is ignored,
-	// and so parens inside string literals don't fool the body scanner; read the
-	// body and name from raw to keep DEFAULT values verbatim.
+	// Match on sanitized text (CREATE TABLE / parens inside string literals ignored);
+	// read body and name from raw so DEFAULT values stay verbatim.
 	raw := string(b)
 	sanitized := blankStringLiterals(raw)
 	heads := tableHeadRegex.FindAllStringSubmatchIndex(sanitized, -1)
@@ -216,7 +210,6 @@ func parseSQLSchema(schemaPath string, d dialect.Dialect) ([]sqlTable, error) {
 		if len(m) < 4 {
 			continue
 		}
-		// m[1] is the end of the whole head match (just before the `(`).
 		open, close, ok := tableBodySpan(sanitized, m[1])
 		if !ok {
 			continue
@@ -231,10 +224,9 @@ func parseSQLSchema(schemaPath string, d dialect.Dialect) ([]sqlTable, error) {
 	return tables, nil
 }
 
-// tableBodySpan returns the byte offsets of the CREATE TABLE body's opening and
-// matching closing parens, scanning paren depth over string-blanked text (so
-// parens inside literals don't shift depth). ok is false on no `(` or unbalanced
-// parens (malformed/truncated DDL) — skip rather than mis-parse.
+// tableBodySpan returns the body's opening/closing paren offsets, scanning depth over
+// string-blanked text (parens in literals don't shift depth). ok is false on unbalanced
+// parens — skip rather than mis-parse truncated DDL.
 func tableBodySpan(blanked string, from int) (open, close int, ok bool) {
 	open = strings.IndexByte(blanked[from:], '(')
 	if open < 0 {
@@ -284,11 +276,9 @@ func blankStringLiterals(s string) string {
 	return string(buf)
 }
 
-// splitTopLevelDefs splits a CREATE TABLE body on paren-depth-0 commas into
-// column/constraint defs; commas nested in parens — DECIMAL(10,2), CHECK (x IN
-// (1,2)), DEFAULT (json_array(...)), PRIMARY KEY (a, b) — stay within one def.
-// Splits run over the string-blanked copy (commas/parens in literals neutralised);
-// returned slices come from raw body so DEFAULT literals survive verbatim.
+// splitTopLevelDefs splits a CREATE TABLE body on paren-depth-0 commas, so commas
+// nested in parens (DECIMAL(10,2), composite PK) stay within one def. Splits run over
+// the string-blanked copy; returned slices come from raw body so DEFAULT survives verbatim.
 func splitTopLevelDefs(body string) []string {
 	blanked := blankStringLiterals(body) // length-preserving → byte indices align with body
 	var defs []string
@@ -328,9 +318,7 @@ func parseTable(tableName, body string, d dialect.Dialect) sqlTable {
 	var tableLevelUniqueCols []string
 
 	for _, def := range splitTopLevelDefs(body) {
-		// A def may span lines (multi-line DEFAULT/CHECK) but columnRegex expects
-		// single-line input; flatten interior newlines, preserving other spacing
-		// so DEFAULT literals stay intact.
+		// columnRegex expects single-line input; flatten a multi-line DEFAULT/CHECK def.
 		line := strings.NewReplacer("\n", " ", "\r", " ").Replace(def)
 		if line == "" || strings.HasPrefix(line, "--") {
 			continue
@@ -406,7 +394,9 @@ func parseColumn(line string, d dialect.Dialect) (sqlColumn, bool) {
 	colName := unquoteIdent(m[1])
 	colType := strings.ToUpper(m[2])
 	restOriginal := m[3]
-	rest := strings.ToUpper(restOriginal)
+	// Blank literals first so a benign DEFAULT 'PRIMARY KEY' / ' UNIQUE ' literal
+	// can't false-trigger IsPrimary/IsUnique; extractDefaultValue re-locates from restOriginal.
+	rest := strings.ToUpper(blankStringLiterals(restOriginal))
 
 	goName := goFieldFromColumn(colName)
 	col := sqlColumn{
@@ -423,24 +413,25 @@ func parseColumn(line string, d dialect.Dialect) (sqlColumn, bool) {
 	if strings.Contains(rest, "AUTOINCREMENT") || strings.Contains(rest, "AUTO_INCREMENT") {
 		col.IsAuto = true
 	}
+	if strings.Contains(colType, "SERIAL") { // Postgres SERIAL/BIGSERIAL are DB-assigned
+		col.IsAuto = true
+	}
 	if strings.Contains(rest, "NOT NULL") {
 		col.IsNotNull = true
 	}
-	// Keyword must be preceded by whitespace — guard against substring matches.
-	if strings.Contains(rest, " UNIQUE") || strings.HasSuffix(rest, " UNIQUE") || strings.Contains(rest, "\tUNIQUE") {
+	// Whole-word so a named constraint like `CONSTRAINT uniquename` doesn't false-trigger.
+	if indexKeyword(rest, "UNIQUE") >= 0 {
 		col.IsUnique = true
 	}
-	// Whole-word DEFAULT on string-blanked remainder so `is_default` (or DEFAULT
-	// inside a literal) doesn't false-trigger; extractDefaultValue re-locates it.
+	// Whole-word so `is_default` doesn't false-trigger.
 	if indexKeyword(strings.ToUpper(blankStringLiterals(restOriginal)), "DEFAULT") >= 0 {
 		col.DefaultValue = extractDefaultValue(restOriginal)
 	}
 
 	nullable := !col.IsNotNull && !col.IsPrimary
 
-	// created_at/updated_at are always treated as non-null time.Time so the
-	// Insert hook can call .IsZero() without sql.NullTime ergonomics. deleted_at
-	// stays nullable — soft-delete relies on NULL meaning "not deleted".
+	// created_at/updated_at forced non-null time.Time so the Insert hook can call
+	// .IsZero(). deleted_at stays nullable — soft-delete uses NULL = "not deleted".
 	switch strings.ToLower(colName) {
 	case "created_at", "updated_at":
 		nullable = false
@@ -458,8 +449,8 @@ func applyTableLevelPK(t *sqlTable, names []string) {
 	}
 }
 
-// finalisePK builds PK summary fields. Falls back to (ID, int64) when no PK
-// is declared — validateTableForCodegen catches the genuinely missing case.
+// finalisePK falls back to (ID, int64) when no PK is declared —
+// validateTableForCodegen catches the genuinely missing case.
 func finalisePK(t *sqlTable) {
 	for _, c := range t.Columns {
 		if c.IsPrimary {

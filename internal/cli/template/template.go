@@ -27,7 +27,6 @@ const (
 
 	ProjectScorixYaml = "static/project/scorix.yaml"
 	ProjectProto      = "static/project/proto/app.proto"
-	ProjectConfig     = "static/project/etc/app.yaml"
 
 	InstallerWindows = "static/project/installer/windows"
 	InstallerLinux   = "static/project/installer/linux"

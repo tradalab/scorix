@@ -126,7 +126,7 @@ func GenerateModel(ctx context.Context, opt GenerateModelOptions) error {
 		// Pass 1: render all; abort before any write if one fails.
 		type labelled struct {
 			file  generatedFile
-			label string // progress text; "" → suppress (skips handled per-action)
+			label string
 		}
 		var pending []labelled
 
@@ -210,7 +210,6 @@ func GenerateModel(ctx context.Context, opt GenerateModelOptions) error {
 				}
 			}
 		} else {
-			// Pass 2: commit.
 			for i, s := range staged {
 				if err := commitStagedFile(s); err != nil {
 					return err
@@ -220,8 +219,7 @@ func GenerateModel(ctx context.Context, opt GenerateModelOptions) error {
 				}
 			}
 
-			// Drop the legacy internal/model/schema_gen.go if present, so we don't
-			// end up with duplicate SchemaSQL declarations across packages.
+			// Drop legacy internal/model/schema_gen.go to avoid duplicate SchemaSQL across packages.
 			legacyPath := filepath.Join(modelDir, "schema_gen.go")
 			if legacyPath != schemaGenFile {
 				if err := os.Remove(legacyPath); err == nil {
@@ -243,15 +241,6 @@ func GenerateModel(ctx context.Context, opt GenerateModelOptions) error {
 		if !bytes.Equal(normalizeNewlines(svcDisk), normalizeNewlines(svcNew)) {
 			drifted = append(drifted, driftLabel(root, svcPath, "model markers out of date"))
 		}
-		if len(tables) > 0 {
-			hasSqlx, err := appYamlHasSqlx(root)
-			if err != nil {
-				return err
-			}
-			if !hasSqlx {
-				drifted = append(drifted, "etc/app.yaml (missing modules.sqlx)")
-			}
-		}
 		return reportDrift(root, "scorix generate model", drifted)
 	}
 
@@ -260,12 +249,8 @@ func GenerateModel(ctx context.Context, opt GenerateModelOptions) error {
 	}
 	fmt.Println("==> Patched internal/svc/service_context.go")
 
-	if len(tables) > 0 {
-		if err := patchAppYaml(root, d); err != nil {
-			return fmt.Errorf("patch app.yaml: %w", err)
-		}
-		fmt.Println("==> Ensured sqlx module enabled in etc/app.yaml")
-	}
+	// dsn is NOT written here: the module reads modules.sqlx / SCORIX_MODULE_SQLX_DSN
+	// at runtime — one source, no drift.
 
 	cmd := exec.CommandContext(ctx, "go", "fmt", "./...")
 	cmd.Dir = root
@@ -312,17 +297,17 @@ func renderServiceContext(root, moduleName string, tables []sqlTable, schemaPkgI
 		var fieldLines, assignLines []string
 		for _, t := range tables {
 			fieldLines = append(fieldLines, fmt.Sprintf("\t%sModel model.%sModel", t.GoName, t.GoName))
-			// sqlxMod.Conn (no parens) is a bound method value — defers
-			// connection resolution until after OnLoad opens the DB.
+			// sqlxMod.Conn (no parens): bound method value, defers connection until OnLoad opens the DB.
 			assignLines = append(assignLines, fmt.Sprintf("\t\t%sModel: model.New%sModel(sqlxMod.Conn),", t.GoName, t.GoName))
 		}
 		fields = strings.Join(fieldLines, "\n")
 		assigns = strings.Join(assignLines, "\n")
 
+		// No SetModuleConfig: the module self-defaults to sqlite/app.dat; override the
+		// DSN via modules.sqlx or SCORIX_MODULE_SQLX_DSN at runtime — no rebuild.
 		init = fmt.Sprintf(
 			"\tsqlxMod := scorixsqlx.New(scorixsqlx.WithSchema(%s.SchemaSQL))\n"+
 				"\tsqlxMod.RegisterDriver(\"sqlite\", func(dsn string) (*sqlx.DB, error) { return sqlx.Connect(\"sqlite\", dsn) })\n"+
-				"\ta.SetModuleConfig(\"sqlx\", map[string]any{\"driver\": \"sqlite\", \"dsn\": \"app.dat\"})\n"+
 				"\ta.Module(sqlxMod)",
 			schemaPkgName,
 		)
@@ -401,18 +386,21 @@ func ensureMarkers(content string) string {
 			"import (\n\t// "+markerImports+":start\n\t// "+markerImports+":end", 1)
 	}
 	if !strings.Contains(content, markerFields+":start") {
-		re := regexp.MustCompile(`(?s)(type ServiceContext struct \{[^}]*?)\n\}`)
+		// Anchor on the column-0 `}`; `.*?` (not `[^}]*?`) so an inline struct field's
+		// brace doesn't truncate the match.
+		re := regexp.MustCompile(`(?s)(type ServiceContext struct \{.*?)\n\}`)
 		content = re.ReplaceAllString(content,
 			"${1}\n\t// "+markerFields+":start\n\t// "+markerFields+":end\n}")
 	}
 	if !strings.Contains(content, markerInit+":start") {
-		re := regexp.MustCompile(`(func NewServiceContext\([^)]+\) \*ServiceContext \{)`)
+		// `.*?` (not `[^)]+`) so a param type containing `)` (e.g. `fn func()`) doesn't truncate.
+		re := regexp.MustCompile(`(?s)(func NewServiceContext\(.*?\) \*ServiceContext \{)`)
 		content = re.ReplaceAllString(content,
 			"${1}\n\t// "+markerInit+":start\n\t// "+markerInit+":end")
 	}
 	if !strings.Contains(content, markerAssigns+":start") {
-		// Anchor on `\n\t}\n}` — literal close (one tab) + function close
-		// (no indent) — so nested braces like `&config.Config{...}` don't fool us.
+		// Anchor on `\n\t}\n}` (literal + func close) so nested braces like
+		// `&config.Config{...}` don't fool us.
 		re := regexp.MustCompile(`(?s)(return &ServiceContext\{.*?)\n\t\}\n\}`)
 		content = re.ReplaceAllString(content,
 			"${1}\n\t\t// "+markerAssigns+":start\n\t\t// "+markerAssigns+":end\n\t}\n}")
@@ -431,72 +419,4 @@ func replaceBetweenMarkers(content, marker, replacement string) string {
 		return re.ReplaceAllString(content, "${1}${2}")
 	}
 	return re.ReplaceAllString(content, "${1}"+replacement+"\n${2}")
-}
-
-func appYamlHasSqlx(root string) (bool, error) {
-	b, err := os.ReadFile(filepath.Join(root, "etc", "app.yaml"))
-	if err != nil {
-		return false, err
-	}
-	var doc map[string]any
-	if err := yaml.Unmarshal(b, &doc); err != nil {
-		return false, fmt.Errorf("parse app.yaml: %w", err)
-	}
-	if modules, ok := doc["modules"].(map[string]any); ok {
-		_, hasSqlx := modules["sqlx"]
-		return hasSqlx, nil
-	}
-	return false, nil
-}
-
-// patchAppYaml is idempotent — a no-op when modules.sqlx already present.
-func patchAppYaml(root string, d dialect.Dialect) error {
-	hasSqlx, err := appYamlHasSqlx(root)
-	if err != nil {
-		return err
-	}
-	if hasSqlx {
-		return nil
-	}
-
-	yamlPath := filepath.Join(root, "etc", "app.yaml")
-	b, err := os.ReadFile(yamlPath)
-	if err != nil {
-		return err
-	}
-
-	content := string(b)
-	if !strings.HasSuffix(content, "\n") {
-		content += "\n"
-	}
-
-	sqlxBlock := buildSqlxYamlBlock(d)
-
-	re := regexp.MustCompile(`(?m)^modules:[ \t]*$`)
-	if loc := re.FindStringIndex(content); loc != nil {
-		insertion := "\n" + strings.TrimRight(sqlxBlock, "\n")
-		content = content[:loc[1]] + insertion + content[loc[1]:]
-	} else {
-		content += "\nmodules:\n" + sqlxBlock
-	}
-
-	return os.WriteFile(yamlPath, []byte(content), 0o644)
-}
-
-func buildSqlxYamlBlock(d dialect.Dialect) string {
-	return fmt.Sprintf("  sqlx:\n    enabled: true\n    driver: %s\n    dsn: %s\n",
-		d.DriverName(), defaultDSN(d.Name()))
-}
-
-// defaultDSN: SQLite gets a filename (resolved against DataDir at runtime);
-// MySQL/Postgres get placeholder credentials the user must replace.
-func defaultDSN(dialectName string) string {
-	switch dialectName {
-	case "mysql":
-		return "user:pass@tcp(127.0.0.1:3306)/app?parseTime=true"
-	case "postgres":
-		return "postgres://user:pass@127.0.0.1:5432/app?sslmode=disable"
-	default:
-		return "app.dat"
-	}
 }

@@ -21,8 +21,7 @@ func (MySQL) PlaceholderList(_, n int) string {
 func (MySQL) MapType(sqlType string, nullable bool) GoType {
 	switch strings.ToUpper(strings.TrimSpace(sqlType)) {
 	case "TINYINT":
-		// TINYINT(1) is the BOOLEAN convention but we lack column-length info;
-		// declare BOOLEAN/BOOL explicitly to get a Go bool.
+		// TINYINT(1)=bool convention, but length info is lost here; declare BOOLEAN for a Go bool.
 		return GoType{Name: "int64"}
 	case "BOOLEAN", "BOOL":
 		return GoType{Name: "bool"}

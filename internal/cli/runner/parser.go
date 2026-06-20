@@ -17,9 +17,21 @@ func parseProto(src string) (protoFile, error) {
 	middlewareRe := regexp.MustCompile(`@middleware\s+([A-Za-z_][A-Za-z0-9_]*)`)
 	// @event [in|out] marks an rpc as a one-way event (default direction: out)
 	eventRe := regexp.MustCompile(`@event\b(?:[ \t]+(in|out))?`)
+	// @broadcast is the v2 spelling of a callerless Go->JS push (== @event out)
+	broadcastRe := regexp.MustCompile(`@broadcast\b`)
+
+	// A trailing same-line @event/@broadcast would be captured as the NEXT rpc's
+	// leading comment and silently reclassify it — reject it loudly. Annotation must
+	// END the comment line so prose like `// see @event-bus design` isn't matched.
+	trailingAnno := regexp.MustCompile(`returns\s*\(\s*(?:stream\s+)?[A-Za-z_][A-Za-z0-9_.]*\s*\)[ \t]*;?[ \t]*//[^\n]*@(?:event|broadcast)(?:[ \t]+(?:in|out))?[ \t]*(?:\r?\n|$)`)
+	if m := trailingAnno.FindString(src); m != "" {
+		return pf, fmt.Errorf("proto: @event/@broadcast must be on its own comment line above the rpc, not a trailing comment: %q", strings.TrimSpace(m))
+	}
+
+	// Collect @middleware only from service-header/rpc scopes (below), not a global
+	// scan — else one in an unrelated message comment leaks into every service.
 	middlewareMap := make(map[string]bool)
-	for _, m := range middlewareRe.FindAllStringSubmatch(src, -1) {
-		name := m[1]
+	addMiddleware := func(name string) {
 		if !middlewareMap[name] {
 			middlewareMap[name] = true
 			pf.Middlewares = append(pf.Middlewares, name)
@@ -32,13 +44,12 @@ func parseProto(src string) (protoFile, error) {
 		pf.Package = parts[len(parts)-1]
 	}
 
-	// Header-only regexes locate the `message`/`service` opening; the body is
-	// brace-balance scanned so a nested `{}` (inline option block, nested message)
-	// doesn't truncate at the first inner `}` (L9).
+	// Header regexes locate the opening; the body is brace-balance scanned so a
+	// nested `{}` doesn't truncate at the first inner `}`.
 	messageHeadRe := regexp.MustCompile(`\bmessage\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{`)
 	for _, loc := range messageHeadRe.FindAllStringSubmatchIndex(clean, -1) {
 		name := clean[loc[2]:loc[3]]
-		openBrace := loc[1] - 1 // position of the '{' matched by the head regex
+		openBrace := loc[1] - 1
 		body, ok := braceBalancedBody(clean, openBrace)
 		if !ok {
 			continue
@@ -50,45 +61,67 @@ func parseProto(src string) (protoFile, error) {
 		pf.Messages = append(pf.Messages, msg)
 	}
 
-	serviceHeadRe := regexp.MustCompile(`(?s)((?://.*?\n|/\*.*?\*/\s*)*)\bservice\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{`)
-	rpcWithCommentRe := regexp.MustCompile(`(?s)((?:[ \t]*//[^\n]*\n)*)[ \t]*\brpc\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\)\s*returns\s*\(\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\)`)
+	// Line-comment alt must be //[^\n]*\n, not //.*?\n: under (?s) a non-greedy .*?
+	// backtracks across newlines, swallowing non-comment lines into the comment prefix
+	// and pulling an unrelated @middleware into the service.
+	serviceHeadRe := regexp.MustCompile(`(?s)((?://[^\n]*\n|/\*.*?\*/\s*)*)\bservice\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{`)
+	// Optional `stream` before the request and/or response type selects the arity.
+	rpcWithCommentRe := regexp.MustCompile(`(?s)((?:[ \t]*//[^\n]*\n)*)[ \t]*\brpc\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*(stream\s+)?([A-Za-z_][A-Za-z0-9_.]*)\s*\)\s*returns\s*\(\s*(stream\s+)?([A-Za-z_][A-Za-z0-9_.]*)\s*\)`)
 	for _, loc := range serviceHeadRe.FindAllStringSubmatchIndex(src, -1) {
 		commentPrefix := src[loc[2]:loc[3]]
 		svc := protoService{Name: src[loc[4]:loc[5]]}
-		openBrace := loc[1] - 1 // position of the '{' matched by the head regex
+		openBrace := loc[1] - 1
 		body, ok := braceBalancedBody(src, openBrace)
 		if !ok {
 			continue
 		}
 		for _, mm := range middlewareRe.FindAllStringSubmatch(commentPrefix, -1) {
 			svc.Middlewares = append(svc.Middlewares, mm[1])
+			addMiddleware(mm[1])
 		}
 
 		for _, r := range rpcWithCommentRe.FindAllStringSubmatch(body, -1) {
 			commentBlock := r[1]
 			rpcName := r[2]
-			reqType := protoTypeName(r[3])
-			respType := protoTypeName(r[4])
+			reqStream := strings.TrimSpace(r[3]) != ""
+			reqType := protoTypeName(r[4])
+			respStream := strings.TrimSpace(r[5]) != ""
+			respType := protoTypeName(r[6])
+
+			arity := "unary"
+			switch {
+			case !reqStream && respStream:
+				arity = "server-stream"
+			case reqStream && !respStream:
+				arity = "client-stream"
+			case reqStream && respStream:
+				arity = "bidi"
+			}
 
 			var rpcMiddlewares []string
 			for _, mm := range middlewareRe.FindAllStringSubmatch(commentBlock, -1) {
 				rpcMiddlewares = append(rpcMiddlewares, mm[1])
+				addMiddleware(mm[1])
 			}
 
 			rpc := protoRPC{
-				Name:         rpcName,
-				RequestType:  reqType,
-				ResponseType: respType,
-				Middlewares:  rpcMiddlewares, // empty = inherit from service in generate.go
+				Name:           rpcName,
+				RequestType:    reqType,
+				ResponseType:   respType,
+				Middlewares:    rpcMiddlewares, // empty = inherit from service in generate.go
+				Arity:          arity,
+				IsServerStream: arity == "server-stream",
 			}
-			// @event marks a one-way event (request = payload, response ignored):
-			// bare @event → Go->JS push; @event in → JS->Go.
+			// bare @event/@broadcast → Go->JS push (out); @event in → JS->Go.
 			if m := eventRe.FindStringSubmatch(commentBlock); m != nil {
 				rpc.IsEvent = true
 				rpc.EventDir = "out"
 				if m[1] == "in" {
 					rpc.EventDir = "in"
 				}
+			} else if broadcastRe.MatchString(commentBlock) {
+				rpc.IsEvent = true
+				rpc.EventDir = "out"
 			}
 			svc.RPCs = append(svc.RPCs, rpc)
 		}
@@ -104,9 +137,9 @@ func parseProto(src string) (protoFile, error) {
 	return pf, nil
 }
 
-// braceBalancedBody returns the text between the '{' at openBrace and its
-// matching '}', tracking depth so an inner `{}` doesn't terminate early (L9).
-// ok is false when openBrace isn't '{' or braces never balance (truncated source).
+// braceBalancedBody returns the text between the '{' at openBrace and its matching
+// '}', tracking depth so an inner `{}` doesn't terminate early. ok is false on
+// non-'{' or never-balanced (truncated source).
 func braceBalancedBody(s string, openBrace int) (body string, ok bool) {
 	if openBrace < 0 || openBrace >= len(s) || s[openBrace] != '{' {
 		return "", false
@@ -137,15 +170,13 @@ func parseProtoFields(msgName, body string) []protoField {
 	var fields []protoField
 	for _, line := range strings.Split(body, "\n") {
 		trimmed := strings.TrimSpace(line)
-		// Skip blank lines, comments and stray closing braces (nested `}` left
-		// over from balanced bodies, or the bodies of nested messages).
+		// `}` from nested balanced bodies can leak in here.
 		if trimmed == "" || strings.HasPrefix(trimmed, "//") || trimmed == "}" {
 			continue
 		}
 		m := fieldRe.FindStringSubmatch(line)
 		if m == nil {
-			// L10: a non-blank, non-comment line that doesn't parse as a field
-			// is otherwise silently dropped — warn so a typo'd field isn't lost.
+			// Warn so a typo'd field isn't silently dropped.
 			fmt.Printf("warning: message %s: skipping unparseable field line: %s\n", msgName, trimmed)
 			continue
 		}

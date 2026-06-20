@@ -70,12 +70,24 @@ func buildSQL(t sqlTable, d dialect.Dialect) tableSQL {
 	}
 	sql.FindManyBaseSQL = "SELECT " + colList + " FROM " + tableQ + whereIn
 
-	sql.InsertFields = append(sql.InsertFields, t.Columns...)
-	insertPHs := make([]string, len(t.Columns))
-	for i := range t.Columns {
+	// Exclude DB-assigned auto columns (AUTOINCREMENT / SERIAL) from INSERT so the
+	// engine generates them; binding the Go zero value would override auto-increment
+	// (SQLite assigns the next rowid only for NULL, not 0; SERIAL likewise).
+	var insertCols []sqlColumn
+	for _, c := range t.Columns {
+		if c.IsAuto {
+			continue
+		}
+		insertCols = append(insertCols, c)
+	}
+	sql.InsertFields = insertCols
+	insertNames := make([]string, len(insertCols))
+	insertPHs := make([]string, len(insertCols))
+	for i, c := range insertCols {
+		insertNames[i] = q(c.Name)
 		insertPHs[i] = d.Placeholder(i + 1)
 	}
-	sql.InsertSQL = "INSERT INTO " + tableQ + " (" + colList + ") VALUES (" + strings.Join(insertPHs, ",") + ")"
+	sql.InsertSQL = "INSERT INTO " + tableQ + " (" + strings.Join(insertNames, ",") + ") VALUES (" + strings.Join(insertPHs, ",") + ")"
 
 	var setExpr []string
 	pos := 0
@@ -134,7 +146,9 @@ func looksLikeUUIDDefault(t sqlTable) bool {
 		return false
 	}
 	lower := strings.ToLower(pk.DefaultValue)
-	for _, marker := range []string{"randomblob", "uuid", "hex("} {
+	// Match UUID/blob *function-call* shapes, not the bare word "uuid", so a
+	// non-UUID default like 'my_uuidish_label' doesn't pull in the uuid hook+import.
+	for _, marker := range []string{"randomblob(", "hex(", "uuid(", "gen_random_uuid", "uuid_generate"} {
 		if strings.Contains(lower, marker) {
 			return true
 		}

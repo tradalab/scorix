@@ -8,11 +8,10 @@ import (
 	"fmt"
 
 	"github.com/energye/systray"
-	"github.com/tradalab/scorix/module"
 	"github.com/tradalab/scorix/logger"
+	"github.com/tradalab/scorix/module"
 )
 
-// Fields are read from app.yaml → modules.systemtray.*
 type Config struct {
 	Title   string `json:"title"`
 	Tooltip string `json:"tooltip"`
@@ -27,9 +26,8 @@ type SystemTrayModule struct {
 
 type Option func(*SystemTrayModule)
 
-// WithMenu replaces the default Open/Quit menu with the given items
-// (see Item and Separator). Click handlers run on the tray's goroutine —
-// hand long work off to another goroutine.
+// WithMenu replaces the default Open/Quit menu. Click handlers run on the tray's
+// goroutine — offload long work to another goroutine.
 func WithMenu(items ...MenuItem) Option {
 	return func(m *SystemTrayModule) { m.menu = items }
 }

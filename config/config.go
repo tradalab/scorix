@@ -8,22 +8,26 @@ import (
 )
 
 type Config struct {
+	// Identifier is SEALED (no `env` tag): it keys the data dir + OS keychain, so a
+	// runtime change would point the app at another app's data/secrets.
 	App struct {
-		Name           string `yaml:"name" json:"name"`
-		Version        string `yaml:"version" json:"version"`
+		Name           string `yaml:"name" json:"name" env:""`
+		Version        string `yaml:"version" json:"version" env:""`
 		Identifier     string `yaml:"identifier" json:"identifier"`
 		SingleInstance bool   `yaml:"single_instance" json:"single_instance"`
 	} `yaml:"app" json:"app"`
 
 	Dev struct {
-		HotReload bool `yaml:"hot_reload" json:"hot_reload"`
+		HotReload bool `yaml:"hot_reload" json:"hot_reload" env:""`
 	} `yaml:"dev" json:"dev"`
 
+	// Mode is advisory only (SEALED); the real backend is chosen by entrypoint
+	// (Run vs RunWeb), no code branches on it.
 	Mode string `yaml:"mode" json:"mode" validate:"omitempty,oneof=app web"` // app, web
 
 	Web struct {
-		Host string `yaml:"host" json:"host"`
-		Port int    `yaml:"port" json:"port" validate:"omitempty,gte=0,lte=65535"`
+		Host string `yaml:"host" json:"host" env:""`
+		Port int    `yaml:"port" json:"port" env:"" validate:"omitempty,gte=0,lte=65535"`
 	} `yaml:"web" json:"web"`
 
 	Window   WindowConfig  `yaml:"window" json:"window"`
@@ -35,26 +39,26 @@ type Config struct {
 
 	Raw map[string]any `yaml:",inline" json:",inline"`
 
-	AssetFs     fs.FS
-	AssetFsPath string
+	AssetFs     fs.FS  `json:"-" yaml:"-"`
+	AssetFsPath string `json:"-" yaml:"-"`
 	path        string
 }
 
 type WindowConfig struct {
-	Title       string `yaml:"title" json:"title"`
-	Width       int    `yaml:"width" json:"width"`
-	Height      int    `yaml:"height" json:"height"`
-	Debug       bool   `yaml:"debug" json:"debug"`
-	HideOnClose bool   `yaml:"hide_on_close" json:"hide_on_close"`
+	Title       string `yaml:"title" json:"title" env:""`
+	Width       int    `yaml:"width" json:"width" env:""`
+	Height      int    `yaml:"height" json:"height" env:""`
+	Debug       bool   `yaml:"debug" json:"debug" env:""`
+	HideOnClose bool   `yaml:"hide_on_close" json:"hide_on_close" env:""`
 }
 
 type LoggerConfig struct {
-	Level   string `yaml:"level" json:"level" validate:"omitempty,oneof=debug info warn error"` // debug, info, warn, error
-	Format  string `yaml:"format" json:"format" validate:"omitempty,oneof=console json"`        // console, json
-	Output  string `yaml:"output" json:"output" validate:"omitempty,oneof=stdout file both"`    // stdout, file, both
-	File    string `yaml:"file" json:"file"`                                                    // logs/app.log
-	MaxSize int    `yaml:"max_size" json:"max_size"`                                            // MB
-	MaxAge  int    `yaml:"max_age" json:"max_age"`                                              // days
+	Level   string `yaml:"level" json:"level" env:"" validate:"omitempty,oneof=debug info warn error"` // debug, info, warn, error
+	Format  string `yaml:"format" json:"format" env:"" validate:"omitempty,oneof=console json"`        // console, json
+	Output  string `yaml:"output" json:"output" env:"" validate:"omitempty,oneof=stdout file both"`    // stdout, file, both
+	File    string `yaml:"file" json:"file" env:""`                                                    // logs/app.log
+	MaxSize int    `yaml:"max_size" json:"max_size"`                                                   // MB
+	MaxAge  int    `yaml:"max_age" json:"max_age"`                                                     // days
 }
 
 type Allowlist struct {
@@ -65,6 +69,9 @@ type Allowlist struct {
 	Notification bool `yaml:"notification" json:"notification"`
 }
 
+// SandboxConfig is entirely SEALED (no `env` tags): env/overlay must not loosen
+// CSP or the capability allowlist (RCE/priv-esc vector). Changing it needs a
+// rebuild with a new embedded manifest.
 type SandboxConfig struct {
 	CSP             string    `yaml:"csp" json:"csp"` // "none", "default", "strict"
 	AllowRightClick bool      `yaml:"allow_right_click" json:"allow_right_click"`

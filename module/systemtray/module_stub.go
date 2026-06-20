@@ -3,21 +3,19 @@
 package systemtray
 
 import (
-	"github.com/tradalab/scorix/module"
 	"github.com/tradalab/scorix/logger"
+	"github.com/tradalab/scorix/module"
 )
 
-// SystemTrayModule is a no-op stub for headless/server and darwin builds.
+// No-op stub for headless/server and darwin builds; args kept for API compatibility.
 type SystemTrayModule struct{}
 
 type Option func(*SystemTrayModule)
 
-// WithMenu is accepted for API compatibility; the stub renders no menu.
 func WithMenu(items ...MenuItem) Option {
 	return func(*SystemTrayModule) {}
 }
 
-// The icon parameter is accepted for API compatibility but unused.
 func New(icon []byte, opts ...Option) *SystemTrayModule {
 	return &SystemTrayModule{}
 }

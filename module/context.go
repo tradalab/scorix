@@ -2,43 +2,44 @@ package module
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
+
+	"github.com/tradalab/scorix/config"
+	"github.com/tradalab/scorix/logger"
 )
 
-// AppController is optional app-level window control; nil in headless/web mode.
+// AppController is nil in headless/web mode.
 type AppController interface {
 	Show()
 	Close()
 }
 
-// Context is passed to a module during OnLoad.
 type Context struct {
-	// Handlers are namespaced as "<module>:<name>".
-	IPC *ModuleIPC
+	IPC        *ModuleIPC // handlers namespaced "<module>:<name>"
+	AppName    string
+	AppVersion string // app.version; the running version, in one place
+	DataDir    string
+	App        AppController // nil in web/server mode
 
-	AppName string
-
-	DataDir string
-
-	// nil in web/server mode.
-	App AppController
-
-	// modules.<name> section.
-	rawConfig map[string]any
+	name        string
+	rawConfig   map[string]any // embedded modules.<name> (trusted)
+	fileOverlay map[string]any // runtime-file modules.<name> (untrusted; env-tagged fields only)
 }
 
-func newContext(name string, ipcCore Core, appName, dataDir string, rawModuleCfg map[string]any, appCtrl AppController) *Context {
+func newContext(name string, ipcCore Core, appName, appVersion, dataDir string, rawModuleCfg, fileOverlay map[string]any, appCtrl AppController) *Context {
 	return &Context{
-		IPC:       NewModuleIPC(name, ipcCore),
-		AppName:   appName,
-		DataDir:   dataDir,
-		App:       appCtrl,
-		rawConfig: rawModuleCfg,
+		IPC:         NewModuleIPC(name, ipcCore),
+		AppName:     appName,
+		AppVersion:  appVersion,
+		DataDir:     dataDir,
+		App:         appCtrl,
+		name:        name,
+		rawConfig:   rawModuleCfg,
+		fileOverlay: fileOverlay,
 	}
 }
 
-// GetConfig looks up a dot-path key in the module's config section
-// (e.g. "dsn" → modules.<name>.dsn).
 func (c *Context) GetConfig(path string) (any, bool) {
 	if c.rawConfig == nil {
 		return nil, false
@@ -88,7 +89,20 @@ func (c *Context) Decode(out any) error {
 	return json.Unmarshal(b, out)
 }
 
-// toStringMap normalises map[interface{}]any (from YAML) to map[string]any.
+// ApplyOverrides applies env + runtime-file overrides via `env` tags. Call AFTER
+// Decode + defaults(); precedence env > runtime_file > embedded > default.
+// Untagged fields are SEALED (security: updater keys etc. stay immutable at
+// runtime). See config.ResolveOverrides for the tag grammar.
+func (c *Context) ApplyOverrides(out any) error {
+	prefix := "SCORIX_MODULE_" + strings.ToUpper(c.name) + "_"
+	return config.ResolveOverrides(out, config.ResolveOptions{
+		Prefix:      prefix,
+		FileOverlay: c.fileOverlay,
+		Warnf:       func(format string, a ...any) { logger.Warn(fmt.Sprintf(format, a...)) },
+	})
+}
+
+// toStringMap normalises the map[interface{}]any yaml.v3 can produce.
 func toStringMap(v any) (map[string]any, bool) {
 	if m, ok := v.(map[string]any); ok {
 		return m, true

@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/tradalab/scorix/module"
 	"github.com/tradalab/scorix/logger"
+	"github.com/tradalab/scorix/module"
 )
 
 type Config struct {

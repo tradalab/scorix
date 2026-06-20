@@ -45,8 +45,8 @@ type WindowsPackage struct {
 	Wxs []string `yaml:"wxs"`
 }
 
-// appMetadata is the subset of etc/app.yaml the packager needs. app.yaml is the
-// single source of truth for app name/version/identifier.
+// appMetadata is the subset of the `app:` section the packager needs. scorix.yaml
+// is the single source of truth for app name/version/identifier.
 type appMetadata struct {
 	App struct {
 		Name        string   `yaml:"name"`
@@ -101,8 +101,6 @@ type BuildOptions struct {
 	SkipFrontend bool
 }
 
-// Build compiles the frontend + Go binary into a single self-contained
-// executable for the given (or host) os/arch.
 func Build(ctx context.Context, opt BuildOptions) error {
 	bc, err := resolveBuildContext(opt.Dir, opt.OS, opt.Arch)
 	if err != nil {
@@ -154,7 +152,7 @@ func resolveBuildContext(dir, goos, goarch string) (*BuildContext, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load scorix.yaml: %w", err)
 	}
-	meta, err := loadAppMetadata(filepath.Join(root, "etc", "app.yaml"))
+	meta, err := loadAppMetadata(root)
 	if err != nil {
 		return nil, err
 	}
@@ -228,20 +226,35 @@ func resolveBuildContext(dir, goos, goarch string) (*BuildContext, error) {
 	return bc, nil
 }
 
-func loadAppMetadata(path string) (*appMetadata, error) {
+func loadAppMetadata(root string) (*appMetadata, error) {
+	scx := filepath.Join(root, "scorix.yaml")
+	if m, err := readAppMetadata(scx); err == nil && m.App.Name != "" {
+		return m, nil
+	}
+	if legacy := filepath.Join(root, "etc", "app.yaml"); fileExists(legacy) {
+		return readAppMetadata(legacy)
+	}
+	// No legacy file — report against scorix.yaml, the expected source.
+	return readAppMetadata(scx)
+}
+
+func readAppMetadata(path string) (*appMetadata, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read etc/app.yaml: %w", err)
+		return nil, fmt.Errorf("read %s: %w", filepath.Base(path), err)
 	}
 	var m appMetadata
 	if err := yaml.Unmarshal(b, &m); err != nil {
-		return nil, fmt.Errorf("parse etc/app.yaml: %w", err)
+		return nil, fmt.Errorf("parse %s: %w", filepath.Base(path), err)
 	}
 	return &m, nil
 }
 
-// upgradeCode returns a stable MSI UpgradeCode GUID — explicit from config, or
-// derived deterministically from the app identifier (UUIDv5).
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 func (bc *BuildContext) upgradeCode() string {
 	if bc.pkg.Windows != nil && bc.pkg.Windows.UpgradeCode != "" {
 		return bc.pkg.Windows.UpgradeCode
@@ -300,9 +313,8 @@ func goBuild(ctx context.Context, bc *BuildContext, out string) error {
 func goBuildArch(ctx context.Context, bc *BuildContext, goarch, out string) error {
 	var sysoPath string
 	if bc.OS == "windows" && bc.IconPath != "" && strings.EqualFold(filepath.Ext(bc.IconPath), ".ico") {
-		// Go links every *.syso in the package dir. If the project already
-		// ships one (its own icon/manifest resource), generating ours would
-		// collide (".rsrc merge failure: duplicate leaf"), so defer to theirs.
+		// Go links every *.syso in the dir; a project's own one would collide with
+		// ours (".rsrc merge failure: duplicate leaf"), so defer to theirs.
 		if existing, _ := filepath.Glob(filepath.Join(bc.Root, "*.syso")); len(existing) > 0 {
 			fmt.Println("==> Using project's existing .syso resource (skipping generated icon)")
 		} else if p, err := genWindowsIcon(ctx, bc); err != nil {
@@ -324,8 +336,7 @@ func goBuildArch(ctx context.Context, bc *BuildContext, goarch, out string) erro
 
 	env := append(os.Environ(), "GOOS="+bc.OS, "GOARCH="+goarch)
 	if bc.OS == "darwin" {
-		// CGO (sqlite/webkit) is required; allow a per-arch CC override for
-		// cross-arch builds (CC_amd64 / CC_arm64).
+		// CGO (sqlite/webkit) required; per-arch CC override (CC_amd64/CC_arm64) for cross-arch.
 		env = append(env, "CGO_ENABLED=1")
 		if cc := os.Getenv("CC_" + goarch); cc != "" {
 			env = append(env, "CC="+cc)

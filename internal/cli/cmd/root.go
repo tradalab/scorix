@@ -23,8 +23,7 @@ var rootCmd = &cobra.Command{
 	Use:   "scorix",
 	Short: "Scorix CLI – build native apps with Go + WebUI",
 	Long:  "Scorix CLI.\nBuild, scaffold and manage Scorix applications.",
-	// Runtime failures (drift, parse error) aren't usage mistakes: suppress help
-	// text and the duplicate error (Execute already prints it) to keep CI logs clean.
+	// Runtime failures (drift, parse error) aren't usage mistakes; Execute already prints the error.
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {

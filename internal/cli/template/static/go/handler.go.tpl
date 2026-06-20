@@ -18,7 +18,7 @@ import (
 // reg registers one command on the app: it unmarshals the JSON payload into
 // *Req and dispatches to the logic.
 func reg[Req any](a *app.App, name string, call func(context.Context, *Req) (any, error)) {
-	a.Command(name, func(ctx context.Context, data json.RawMessage, _ app.Stream) (any, error) {
+	a.Command(name, func(ctx context.Context, data json.RawMessage, _ app.ChunkStream) (any, error) {
 		var req Req
 		if len(data) > 0 && string(data) != "null" {
 			if err := json.Unmarshal(data, &req); err != nil {
@@ -33,6 +33,11 @@ func RegisterHandlers(a *app.App, svcCtx *svc.ServiceContext) {
 {{- range .Services }}
 {{- $svc := . }}
 {{- range .RPCs }}
+{{- if .IsServerStream }}
+	app.RegisterServerStream(a, "{{ .CommandName }}", func(ctx context.Context, req *{{ .RequestGoType }}, out app.Sink[{{ .ResultGoType }}]) error {
+		return {{ $svc.Package }}.New{{ .LogicName }}(ctx, svcCtx).{{ .MethodName }}(req, out)
+	})
+{{- else }}
 	reg(a, "{{ .CommandName }}", func(ctx context.Context, r *{{ .RequestGoType }}) (any, error) {
 		h := func(ctx context.Context, a any) (any, error) {
 			return {{ $svc.Package }}.New{{ .LogicName }}(ctx, svcCtx).{{ .MethodName }}(a.(*{{ .RequestGoType }}))
@@ -42,6 +47,7 @@ func RegisterHandlers(a *app.App, svcCtx *svc.ServiceContext) {
 {{- end }}
 		return h(ctx, r)
 	})
+{{- end }}
 {{- end }}
 {{- end }}
 }

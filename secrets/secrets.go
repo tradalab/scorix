@@ -1,7 +1,6 @@
-// Package secrets provides at-rest encryption for credentials via envelope
-// encryption: a 32-byte master key in the OS credential store (zalando/go-keyring)
-// seals values with AES-256-GCM into "scorix:v1:<base64>" tokens.
-// DecryptString passes non-token values through unchanged (lazy plaintext migration).
+// Package secrets seals credentials with AES-256-GCM under a 32-byte master key
+// kept in the OS credential store, as "scorix:v1:<base64>" tokens. Non-token
+// values pass through unchanged (lazy plaintext migration).
 package secrets
 
 import (
@@ -26,8 +25,8 @@ type Store struct {
 	aead cipher.AEAD
 }
 
-// Open loads or creates the app's master key in the OS credential store.
-// service names the keychain entry (typically the app identifier).
+// Open loads or creates the master key under service (the keychain entry name,
+// typically the app identifier).
 func Open(service string) (*Store, error) {
 	key, err := loadOrCreateKey(service)
 	if err != nil {
@@ -36,8 +35,8 @@ func Open(service string) (*Store, error) {
 	return newStore(key)
 }
 
-// NewWithKey builds a Store from an externally managed 32-byte key, for tests
-// and headless environments without an OS credential store.
+// NewWithKey builds a Store from an external 32-byte key, for tests/headless
+// environments without an OS credential store.
 func NewWithKey(key []byte) (*Store, error) {
 	return newStore(key)
 }

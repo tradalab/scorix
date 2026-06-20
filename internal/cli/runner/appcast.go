@@ -57,7 +57,7 @@ func Appcast(ctx context.Context, opt AppcastOptions) error {
 	if err != nil {
 		return fmt.Errorf("load scorix.yaml: %w", err)
 	}
-	meta, err := loadAppMetadata(filepath.Join(root, "etc", "app.yaml"))
+	meta, err := loadAppMetadata(root)
 	if err != nil {
 		return err
 	}
@@ -157,10 +157,9 @@ func Appcast(ctx context.Context, opt AppcastOptions) error {
 		}
 		fmt.Printf("==> wrote %s (%d platform entries)\n", out, len(platforms))
 
-		// Sign the manifest itself (anti-tamper/anti-rollback): else an attacker
-		// controlling it could advertise a high version pointing at an OLD,
-		// still-validly-signed artifact. Updater verifies this over the raw bytes
-		// before trusting any field.
+		// Sign the manifest itself (anti-tamper/anti-rollback): else an attacker could
+		// advertise a high version pointing at an OLD, still-validly-signed artifact.
+		// Updater verifies this over raw bytes before trusting any field.
 		if priv != nil {
 			manifestSig := base64.StdEncoding.EncodeToString(ed25519.Sign(priv, manifest))
 			sigOut := out + ".sig"
@@ -173,8 +172,7 @@ func Appcast(ctx context.Context, opt AppcastOptions) error {
 	return nil
 }
 
-// GenerateKeypair prints a fresh Ed25519 keypair (base64). The public key goes
-// into modules.updater.public_key_base_64; keep the private key secret (CI env).
+// GenerateKeypair prints a fresh Ed25519 keypair (base64).
 func GenerateKeypair() error {
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -182,7 +180,7 @@ func GenerateKeypair() error {
 	}
 	fmt.Println("PUBLIC_KEY_B64 =", base64.StdEncoding.EncodeToString(pub))
 	fmt.Println("PRIVATE_KEY_B64 =", base64.StdEncoding.EncodeToString(priv))
-	fmt.Println("\nSet the public key in etc/app.yaml (modules.updater.public_key_base_64).")
+	fmt.Println("\nSet the public key in scorix.yaml (modules.updater.public_key_base_64).")
 	fmt.Println("Keep the private key secret; expose it to `scorix appcast` via the env named in package.update.sign_key_env.")
 	return nil
 }

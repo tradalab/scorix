@@ -22,6 +22,9 @@ import (
 	"golang.org/x/mod/semver"
 )
 
+// SEALED (no `env` tags): the update source, signing key and platform key decide
+// what code we download and trust — env/runtime-file override would be an RCE
+// vector, so changing them needs a rebuild with a new embedded manifest.
 type Config struct {
 	Provider        string `json:"provider"`    // "appcast" or "github"
 	GitHubRepo      string `json:"github_repo"` // user/repo for github provider
@@ -56,9 +59,7 @@ var (
 type UpdaterModule struct {
 	cfg      Config
 	provider UpdateProvider
-	// dataDir holds the anti-rollback floor file. Empty -> best-effort
-	// fallback under os.UserConfigDir().
-	dataDir string
+	dataDir  string // holds the anti-rollback floor file; empty → fallback under os.UserConfigDir()
 }
 
 func New() *UpdaterModule {
@@ -74,8 +75,21 @@ func (m *UpdaterModule) OnLoad(ctx *module.Context) error {
 	if err := ctx.Decode(&m.cfg); err != nil {
 		return fmt.Errorf("decode config: %w", err)
 	}
+	// Config is sealed: this logs and drops any env/runtime-file override attempt.
+	if err := ctx.ApplyOverrides(&m.cfg); err != nil {
+		return fmt.Errorf("apply overrides: %w", err)
+	}
 
 	m.dataDir = ctx.DataDir
+
+	// SECURITY: AppVersion/dataDir derive from env-overridable app.version/app.name,
+	// so env control can lower the floor base or move the floor file. Foothold-gated
+	// and defended in depth (on-disk floor wins via max() in rollbackFloor; every
+	// update must be strictly newer AND pass Ed25519). TODO: anchor CurrentVersion to
+	// a build-stamped constant and the floor file to the SEALED app.identifier.
+	if m.cfg.CurrentVersion == "" {
+		m.cfg.CurrentVersion = ctx.AppVersion
+	}
 
 	if m.cfg.PlatformKey == "" {
 		m.cfg.PlatformKey = fmt.Sprintf("%s-%s", runtime.GOOS, runtime.GOARCH) // e.g. windows-amd64
@@ -85,8 +99,7 @@ func (m *UpdaterModule) OnLoad(ctx *module.Context) error {
 		m.provider = NewGitHubProvider(m.cfg.GitHubRepo)
 		logger.Info(fmt.Sprintf("[updater] using GitHub provider: repo=%s, platform=%s", m.cfg.GitHubRepo, m.cfg.PlatformKey))
 	} else {
-		// Pass the public key so the provider authenticates the manifest before
-		// trusting its version/url fields.
+		// Public key lets the provider authenticate the manifest before trusting its fields.
 		m.provider = NewAppcastProvider(m.cfg.AppcastURL, m.cfg.PublicKeyBase64)
 		logger.Info(fmt.Sprintf("[updater] using Appcast provider: url=%s, platform=%s", m.cfg.AppcastURL, m.cfg.PlatformKey))
 	}
@@ -104,10 +117,8 @@ func (m *UpdaterModule) OnUnload() error { return nil }
 func defaultClient() *http.Client {
 	return &http.Client{
 		Timeout: 30 * time.Second,
-		// Every redirect hop must stay secure (https, or http to loopback for
-		// local testing). Cross-host https IS allowed — release downloads
-		// legitimately redirect to a CDN — but a downgrade to plain http on a
-		// remote host (MITM) is refused.
+		// Every redirect hop must stay secure: cross-host https is fine (CDN), but a
+		// downgrade to plain http on a remote host (MITM) is refused.
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 10 {
 				return fmt.Errorf("stopped after 10 redirects")
@@ -117,9 +128,7 @@ func defaultClient() *http.Client {
 	}
 }
 
-// checkSecureURL rejects update URLs that aren't https — except plain http to a
-// loopback host, which is permitted for local testing. This blocks MITM /
-// downgrade attacks on appcast, artifact and signature fetches.
+// Rejects non-https update URLs (loopback http allowed for local testing) to block MITM/downgrade.
 func checkSecureURL(rawurl string) error {
 	u, err := url.Parse(rawurl)
 	if err != nil {
@@ -177,11 +186,9 @@ func ensureV(v string) string {
 	return v
 }
 
-// Anti-rollback floor: highest version ever accepted; we refuse anything not
-// strictly newer than max(CurrentVersion, floor), defeating signed-but-old replays.
+// Anti-rollback floor: highest version ever accepted; reject anything not strictly
+// newer than max(CurrentVersion, floor), defeating signed-but-old replays.
 
-// floorPath prefers the per-app DataDir; falls back to os.UserConfigDir()/scorix.
-// Best-effort: returns "" if no location can be determined.
 func (m *UpdaterModule) floorPath() string {
 	dir := m.dataDir
 	if dir == "" {
@@ -207,8 +214,7 @@ func (m *UpdaterModule) readFloor() string {
 	return strings.TrimSpace(string(b))
 }
 
-// writeFloor persists the version as the new floor. Best-effort: failures are
-// logged, never fatal (callers must not abort an update on a write error).
+// Best-effort: a write failure is logged, never fatal — must not abort an update.
 func (m *UpdaterModule) writeFloor(version string) {
 	p := m.floorPath()
 	if p == "" {
@@ -225,8 +231,7 @@ func (m *UpdaterModule) writeFloor(version string) {
 	}
 }
 
-// rollbackFloor returns max(cfg.CurrentVersion, persistedFloor) as the minimum
-// version an update must EXCEED to be accepted.
+// max(CurrentVersion, persistedFloor) — the version an update must EXCEED to be accepted.
 func (m *UpdaterModule) rollbackFloor() string {
 	floor := m.cfg.CurrentVersion
 	if persisted := m.readFloor(); isNewer(persisted, floor) {
@@ -255,11 +260,9 @@ func (m *UpdaterModule) Download(ctx context.Context, c *http.Client, url string
 	}
 
 	total := resp.ContentLength
-	// Download into a private, current-user-only directory (0700) so another
-	// local process can't swap the artifact between signature verification and
-	// install (TOCTOU). The extension is constrained to a known installer type —
-	// msiexec rejects a file not ending in .msi, and a hostile URL must not be
-	// able to choose an arbitrary suffix that flows into the installer.
+	// Private 0700 dir so no other local process can swap the artifact between verify
+	// and install (TOCTOU); extension constrained to a known installer type so a
+	// hostile URL can't pick a suffix that flows into the installer.
 	dir, err := os.MkdirTemp("", "scorix-update-")
 	if err != nil {
 		return "", fmt.Errorf("create update dir: %w", err)
@@ -301,9 +304,8 @@ func (m *UpdaterModule) Download(ctx context.Context, c *http.Client, url string
 	return tmpFile.Name(), nil
 }
 
-// safeInstallerExt restricts the downloaded file's extension to a known
-// installer type (defaulting per-OS) so a hostile artifact URL can't pick an
-// arbitrary suffix that later flows into msiexec / the OS installer.
+// Restricts the file extension to a known installer type (per-OS default) so a hostile
+// artifact URL can't pick a suffix that flows into msiexec / the OS installer.
 func safeInstallerExt(ext string) string {
 	switch strings.ToLower(ext) {
 	case ".msi", ".exe", ".dmg", ".pkg", ".appimage":
@@ -323,9 +325,7 @@ func (m *UpdaterModule) VerifyEd25519(publicKeyB64, signatureB64 string, payload
 	return verifyEd25519(publicKeyB64, signatureB64, payload)
 }
 
-// verifyEd25519 verifies an Ed25519 signature (base64) over payload using the
-// base64 public key. Package-level so AppcastProvider can verify the manifest
-// without a module receiver. Returns ErrSignatureMissing / ErrSignatureInvalid.
+// Package-level so AppcastProvider can verify the manifest without a module receiver.
 func verifyEd25519(publicKeyB64, signatureB64 string, payload []byte) error {
 	if signatureB64 == "" {
 		return ErrSignatureMissing
@@ -341,21 +341,14 @@ func verifyEd25519(publicKeyB64, signatureB64 string, payload []byte) error {
 	if len(pub) != ed25519.PublicKeySize {
 		return fmt.Errorf("invalid public key size: %d", len(pub))
 	}
-	// ed25519.Verify is already constant-time and returns a plain bool; no
-	// extra subtle.ConstantTime dance is needed (the if already branches on it).
+	// ed25519.Verify is already constant-time; no subtle.ConstantTime needed.
 	if !ed25519.Verify(ed25519.PublicKey(pub), payload, sig) {
 		return ErrSignatureInvalid
 	}
 	return nil
 }
 
-// RunInstaller applies a downloaded, verified update for the current platform:
-//   - windows: hands the .msi to msiexec (which closes/relaunches the app).
-//   - darwin:  mounts the .dmg, swaps the running .app, relaunches, exits.
-//   - linux:   replaces the running AppImage, relaunches, exits.
-//
-// The darwin/linux paths self-replace and call os.Exit after scheduling a
-// relaunch, so this function does not return on those platforms on success.
+// On darwin/linux this self-replaces and os.Exit()s after scheduling a relaunch — does NOT return on success.
 func RunInstaller(ctx context.Context, path string, elevate bool) error {
 	switch runtime.GOOS {
 	case "windows":
@@ -376,9 +369,7 @@ func runInstallerWindows(ctx context.Context, path string, elevate bool) error {
 		cmd.Dir = filepath.Dir(path)
 		return cmd.Run()
 	}
-	// The path is interpolated into a PowerShell command string; refuse any
-	// character that could break out of the quoting and inject commands. (After
-	// the download hardening the path is updater-controlled, but guard anyway.)
+	// Path is interpolated into a PowerShell string; refuse chars that break quoting and inject commands.
 	if strings.ContainsAny(path, "'\"`\r\n") {
 		return fmt.Errorf("refusing to elevate-install: unsafe characters in installer path %q", path)
 	}
@@ -390,8 +381,6 @@ func runInstallerWindows(ctx context.Context, path string, elevate bool) error {
 	return cmd.Run()
 }
 
-// runInstallerDarwin mounts the .dmg, swaps the running .app bundle for the new
-// one (rename-based, with rollback), then relaunches after this process exits.
 func runInstallerDarwin(ctx context.Context, dmgPath string) error {
 	appPath, err := currentMacAppBundle()
 	if err != nil {
@@ -435,8 +424,6 @@ func runInstallerDarwin(ctx context.Context, dmgPath string) error {
 	return nil
 }
 
-// runInstallerLinux replaces the running AppImage file with the new one, then
-// relaunches after this process exits.
 func runInstallerLinux(ctx context.Context, newPath string) error {
 	_ = ctx
 	target := currentLinuxAppImage()
@@ -465,8 +452,7 @@ func runInstallerLinux(ctx context.Context, newPath string) error {
 	return nil
 }
 
-// currentMacAppBundle returns the absolute path to the running .app bundle, or
-// an error if the binary is not running from inside one (e.g. a dev build).
+// Errors if not running from inside a .app bundle (e.g. a dev build).
 func currentMacAppBundle() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -482,8 +468,6 @@ func currentMacAppBundle() (string, error) {
 	return "", fmt.Errorf("not running from a .app bundle — cannot self-update (path: %s)", exe)
 }
 
-// currentLinuxAppImage returns the path of the running AppImage (set in $APPIMAGE
-// by the AppImage runtime), or "" if not running as an AppImage.
 func currentLinuxAppImage() string {
 	if p := os.Getenv("APPIMAGE"); p != "" {
 		return p
@@ -539,14 +523,11 @@ func copyFileTo(src, dst string) error {
 	return out.Close()
 }
 
-// relaunchAfterExit spawns a detached shell that waits for this process to exit,
-// then runs the given command — so the new app starts only after the old one
-// releases the single-instance lock. Best-effort.
+// Detached shell that waits for this process to exit (releasing the single-instance
+// lock), then runs the command. Best-effort.
 func relaunchAfterExit(args ...string) {
-	// Pass the command as positional params ("$@") rather than interpolating it
-	// into the script body, so no quoting/shell-injection is possible. Only the
-	// PID (an integer) is interpolated. sh -c <script> sh arg1 arg2... binds
-	// $0=sh and $@=args.
+	// Command passed as positional params ("$@"), not interpolated, so no shell
+	// injection; only the integer PID is interpolated.
 	script := fmt.Sprintf(`while kill -0 %d 2>/dev/null; do sleep 0.2; done; exec "$@"`, os.Getpid())
 	cmd := exec.Command("sh", append([]string{"-c", script, "sh"}, args...)...)
 	_ = cmd.Start() // detached; orphaned to init after we exit
@@ -558,17 +539,15 @@ func (m *UpdaterModule) CheckForUpdate(ctx context.Context) (*Result, error) {
 		return nil, fmt.Errorf("update provider not initialized")
 	}
 
-	// Check against the anti-rollback floor, not just CurrentVersion: a replayed
-	// OLD-but-validly-signed manifest must not downgrade us even if the running
-	// binary reports a stale CurrentVersion.
+	// Check against the floor, not CurrentVersion: a replayed old-but-signed manifest
+	// must not downgrade us even if the binary reports a stale CurrentVersion.
 	floor := m.rollbackFloor()
 	res, err := m.provider.CheckForUpdate(ctx, floor, m.cfg.PlatformKey)
 	if err != nil {
 		return res, err
 	}
 
-	// Defence in depth: even if a provider returned HasUpdate, refuse anything
-	// not strictly newer than the floor (FAIL CLOSED against rollback).
+	// Defence in depth: FAIL CLOSED — re-check the floor even if the provider said HasUpdate.
 	if res != nil && res.HasUpdate && !isNewer(res.NewVersion, floor) {
 		return &Result{HasUpdate: false}, ErrNoUpdate
 	}
@@ -596,6 +575,16 @@ func (m *UpdaterModule) FullUpdate(ctx context.Context) (*Result, error) {
 	}
 	res.LocalPath = localPath
 
+	// Remove the private download dir on every failure path (else failed attempts and
+	// unverified artifacts pile up in TEMP); disarmed once the installer owns the file.
+	tmpDir := filepath.Dir(localPath)
+	installing := false
+	defer func() {
+		if !installing {
+			_ = os.RemoveAll(tmpDir)
+		}
+	}()
+
 	if m.cfg.PublicKeyBase64 == "" {
 		return res, fmt.Errorf("updater: refusing to run an unverified update — set modules.updater.public_key_base_64 and sign releases with `scorix appcast`")
 	}
@@ -607,12 +596,10 @@ func (m *UpdaterModule) FullUpdate(ctx context.Context) (*Result, error) {
 		return res, fmt.Errorf("updater: signature verification failed (refusing to install): %w", err)
 	}
 	logger.Info("[updater] signature verified")
+	installing = true // installer owns the file from here; don't delete it
 
-	// Raise the anti-rollback floor BEFORE invoking the installer: RunInstaller
-	// may exit/replace the process and never return, so persisting afterwards is
-	// unreliable. We are about to install this version and the manifest +
-	// artifact signatures have already passed, so committing the floor now is
-	// safe. Best-effort — a persistence failure must not abort the update.
+	// Raise the floor BEFORE the installer: RunInstaller may never return, so
+	// persisting afterwards is unreliable. Signatures already passed, so committing now is safe.
 	m.writeFloor(res.NewVersion)
 
 	logger.Info(fmt.Sprintf("[updater] Running installer at: %s", localPath))

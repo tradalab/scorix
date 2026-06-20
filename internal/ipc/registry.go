@@ -16,16 +16,23 @@ type CmdFunc func(ctx context.Context, data json.RawMessage, s Stream) (any, err
 
 type EvtFunc func(ctx context.Context, data json.RawMessage)
 
+type rpcEntry struct {
+	arity Arity
+	fn    Handler
+}
+
 type Registry struct {
 	mu   sync.RWMutex
 	cmds map[string]CmdFunc
 	evts map[string]EvtFunc
+	rpcs map[string]rpcEntry
 }
 
 func NewRegistry() *Registry {
 	return &Registry{
 		cmds: map[string]CmdFunc{},
 		evts: map[string]EvtFunc{},
+		rpcs: map[string]rpcEntry{},
 	}
 }
 
@@ -39,6 +46,19 @@ func (r *Registry) Event(name string, fn EvtFunc) {
 	r.mu.Lock()
 	r.evts[name] = fn
 	r.mu.Unlock()
+}
+
+func (r *Registry) RPC(name string, arity Arity, fn Handler) {
+	r.mu.Lock()
+	r.rpcs[name] = rpcEntry{arity: arity, fn: fn}
+	r.mu.Unlock()
+}
+
+func (r *Registry) rpc(name string) (rpcEntry, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	e, ok := r.rpcs[name]
+	return e, ok
 }
 
 func (r *Registry) command(name string) (CmdFunc, bool) {

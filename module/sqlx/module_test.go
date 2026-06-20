@@ -114,7 +114,7 @@ func TestRegisterDriverOverride(t *testing.T) {
 
 // withInMemoryDB runs the test against a fresh in-memory SQLite database
 // injected directly into a Module. Bypasses OnLoad (which requires a real
-// module.Context constructed by the kernel) so the IPC handlers can be
+// module.Context constructed by the module manager) so the IPC handlers can be
 // exercised without spinning up a full app harness.
 func withInMemoryDB(t *testing.T, fn func(m *Module)) {
 	t.Helper()
@@ -217,7 +217,7 @@ func TestWithSchemaOption(t *testing.T) {
 func TestInitScriptsRunOnFirstOpen(t *testing.T) {
 	// Simulate the OnLoad init-script execution path by invoking the script
 	// list directly against an in-memory DB. This avoids the module.Context
-	// scaffolding which the kernel constructs.
+	// scaffolding which the module manager constructs.
 	withInMemoryDB(t, func(m *Module) {
 		called := 0
 		m.initScripts = []InitScript{

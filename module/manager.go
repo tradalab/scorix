@@ -11,8 +11,6 @@ import (
 	"github.com/tradalab/scorix/logger"
 )
 
-// Manager handles the lifecycle of registered modules; only modules with
-// modules.<name>.enabled: true are loaded.
 type Manager struct {
 	registry *Registry
 	cfg      *config.Config
@@ -21,6 +19,9 @@ type Manager struct {
 	order    []string
 	mu       sync.RWMutex
 	appCtrl  AppController
+
+	// Untrusted runtime overlay `modules:` section; only env-tagged fields consult it, so sealed fields stay immutable.
+	runtimeModules map[string]any
 }
 
 func NewManager(cfg *config.Config, ipcCore Core, appCtrl AppController) *Manager {
@@ -42,7 +43,8 @@ func (m *Manager) Register(mod Module) {
 	m.order = append(m.order, mod.Name())
 }
 
-// IsEnabled reports whether modules.<name>.enabled == true in config.
+// Reads the EMBEDDED config only — sealed against the runtime overlay: letting an
+// untrusted overlay enable a capability-bearing module is privilege escalation.
 func (m *Manager) IsEnabled(name string) bool {
 	if m.cfg == nil || m.cfg.Modules == nil {
 		return false
@@ -66,10 +68,29 @@ func (m *Manager) moduleSectionCfg(name string) map[string]any {
 	return entry
 }
 
+func (m *Manager) SetRuntimeModules(mods map[string]any) {
+	m.mu.Lock()
+	m.runtimeModules = mods
+	m.mu.Unlock()
+}
+
+func (m *Manager) moduleFileCfg(name string) map[string]any {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.runtimeModules == nil {
+		return nil
+	}
+	entry, _ := toStringMap(m.runtimeModules[name])
+	return entry
+}
+
+// Raw, pre-allowlist overlay section — the sealed/overridable split is enforced later in Context.ApplyOverrides.
+func (m *Manager) RuntimeModuleSection(name string) map[string]any {
+	return m.moduleFileCfg(name)
+}
+
 func dataDir(appName string) string {
 	if appName == "" {
-		// Without a per-app subdir, modules would write into the platform data
-		// root and collide; fall back to a fixed name.
 		appName = "scorix-app"
 	}
 	switch runtime.GOOS {
@@ -105,7 +126,7 @@ func (m *Manager) Load(name string) error {
 	}
 
 	appName := m.cfg.App.Name
-	ctx := newContext(name, m.ipcCore, appName, dataDir(appName), m.moduleSectionCfg(name), m.appCtrl)
+	ctx := newContext(name, m.ipcCore, appName, m.cfg.App.Version, dataDir(appName), m.moduleSectionCfg(name), m.moduleFileCfg(name), m.appCtrl)
 
 	if err := safeOnLoad(mod, ctx); err != nil {
 		return fmt.Errorf("module %s OnLoad: %w", name, err)
@@ -159,7 +180,6 @@ func (m *Manager) Start(name string) error {
 	return nil
 }
 
-// StartAll starts modules in registration order.
 func (m *Manager) StartAll() error {
 	m.mu.RLock()
 	order := make([]string, len(m.order))

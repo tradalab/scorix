@@ -13,8 +13,8 @@ import (
 	scorix_template "github.com/tradalab/scorix/internal/cli/template"
 )
 
-// stagedFile is a rendered generatedFile held in memory: the action plus the
-// bytes, so a batch can render everything before committing any (all-or-nothing).
+// stagedFile is a rendered generatedFile held in memory so a batch can render
+// everything before committing any (all-or-nothing).
 type stagedFile struct {
 	Path       string
 	Content    []byte
@@ -22,8 +22,8 @@ type stagedFile struct {
 	NeedsWrite bool
 }
 
-// renderGeneratedFile resolves the create/update/skip action and renders into
-// memory without touching the filesystem, so an error aborts before any write.
+// renderGeneratedFile renders into memory without touching the filesystem, so an
+// error aborts before any write.
 func renderGeneratedFile(f generatedFile) (stagedFile, error) {
 	_, statErr := os.Stat(f.Path)
 	exists := statErr == nil
@@ -73,8 +73,6 @@ func normalizeNewlines(b []byte) []byte {
 	return bytes.ReplaceAll(b, []byte("\r"), nil)
 }
 
-// driftOf compares a staged render against disk without writing: "" (in sync),
-// "missing", or "out of date".
 func driftOf(s stagedFile) (string, error) {
 	if !s.NeedsWrite {
 		return "", nil
@@ -120,8 +118,8 @@ func commitStagedFile(s stagedFile) error {
 	return os.WriteFile(s.Path, s.Content, 0644)
 }
 
-// writeGeneratedFile renders and immediately writes one file — for callers
-// (writeTemplateFS) that emit independently, not as an all-or-nothing batch.
+// writeGeneratedFile renders and immediately writes one file — for callers that
+// emit independently, not as an all-or-nothing batch.
 func writeGeneratedFile(f generatedFile) (string, error) {
 	staged, err := renderGeneratedFile(f)
 	if err != nil {

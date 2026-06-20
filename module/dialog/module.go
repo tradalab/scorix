@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 
 	"github.com/ncruces/zenity"
-	"github.com/tradalab/scorix/module"
 	"github.com/tradalab/scorix/logger"
+	"github.com/tradalab/scorix/module"
 )
 
 type Config struct {
@@ -60,8 +60,7 @@ func fileFilters(name, ext string) []zenity.Option {
 	return []zenity.Option{zenity.FileFilters{{Name: name, Patterns: []string{pattern}, CaseFold: true}}}
 }
 
-// canceled normalizes the user pressing Cancel to ("", nil) — an empty path,
-// not an error, matching the module's historical contract.
+// Maps user-Cancel to ("", nil) rather than an error (module contract).
 func canceled(path string, err error) (string, error) {
 	if errors.Is(err, zenity.ErrCanceled) {
 		return "", nil
@@ -71,11 +70,10 @@ func canceled(path string, err error) (string, error) {
 
 type OpenFileRequest struct {
 	Title  string `json:"title"`
-	Filter string `json:"filter"` // Example pass "text files"
-	Ext    string `json:"ext"`    // Example pass "txt"
+	Filter string `json:"filter"`
+	Ext    string `json:"ext"`
 }
 
-// OpenFile opens a native OS dialog to select a file for opening.
 // JS: scorix.invoke("mod:dialog:OpenFile", { title: "Select File", filter: "Text Files", ext: "txt" })
 func (m *DialogModule) OpenFile(_ context.Context, req OpenFileRequest) (string, error) {
 	opts := []zenity.Option{zenity.Title(req.Title)}
@@ -85,10 +83,9 @@ func (m *DialogModule) OpenFile(_ context.Context, req OpenFileRequest) (string,
 
 type OpenDirectoryRequest struct {
 	Title string `json:"title"`
-	Dir   string `json:"dir,omitempty"` // optional starting directory
+	Dir   string `json:"dir,omitempty"`
 }
 
-// OpenDirectory opens a native OS dialog to pick a folder.
 // JS: scorix.invoke("mod:dialog:OpenDirectory", { title: "Pick folder", dir: "/Users/foo" })
 func (m *DialogModule) OpenDirectory(_ context.Context, req OpenDirectoryRequest) (string, error) {
 	opts := []zenity.Option{zenity.Title(req.Title), zenity.Directory()}
@@ -106,7 +103,6 @@ type SaveFileRequest struct {
 	Dir      string `json:"dir,omitempty"`
 }
 
-// SaveFile opens a native OS dialog to select a path for saving a file.
 // JS: scorix.invoke("mod:dialog:SaveFile", { title, filter, ext, fileName, dir })
 func (m *DialogModule) SaveFile(_ context.Context, req SaveFileRequest) (string, error) {
 	opts := []zenity.Option{zenity.Title(req.Title), zenity.ConfirmOverwrite()}
@@ -123,7 +119,6 @@ type MessageRequest struct {
 	Level string `json:"level"` // info, error
 }
 
-// Message opens a native OS alert or error message box.
 // JS: scorix.invoke("mod:dialog:Message", { title: "Alert", text: "Something happened", level: "info" })
 func (m *DialogModule) Message(_ context.Context, req MessageRequest) (string, error) {
 	var err error

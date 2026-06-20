@@ -7,8 +7,8 @@ import (
 	"fmt"
 
 	"github.com/ncruces/zenity"
-	"github.com/tradalab/scorix/module"
 	"github.com/tradalab/scorix/logger"
+	"github.com/tradalab/scorix/module"
 )
 
 type Config struct {
@@ -49,7 +49,6 @@ type NotifyRequest struct {
 	Level string `json:"level,omitempty"` // info (default) | warning | error — maps to the OS icon where supported
 }
 
-// Notify shows an OS notification.
 // JS: scorix.invoke("mod:notification:Notify", { title: "Build done", text: "All green" })
 func (m *NotificationModule) Notify(_ context.Context, req NotifyRequest) (string, error) {
 	opts := []zenity.Option{zenity.Title(req.Title)}
@@ -67,8 +66,7 @@ func (m *NotificationModule) Notify(_ context.Context, req NotifyRequest) (strin
 	return "ok", nil
 }
 
-// NotifyDirect sends a notification from Go code (not over IPC) — convenience
-// for modules/apps that want to notify without round-tripping the registry.
+// NotifyDirect notifies from Go without round-tripping the IPC registry.
 func NotifyDirect(title, text string) error {
 	return zenity.Notify(text, zenity.Title(title))
 }

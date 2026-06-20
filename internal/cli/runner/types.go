@@ -56,8 +56,15 @@ type protoRPC struct {
 	RequestTSType string
 	ResultTSType  string
 
-	// Event fields — set when the rpc carries an @event annotation. The request
-	// message is the event payload; the response type is ignored.
+	// Arity is derived from the proto `stream` keyword on the request/response:
+	// "unary" (1->1, default) or "server-stream" (1->N, response streamed). The
+	// client-stream/bidi arities parse but are rejected by the generator and
+	// reserved for hand-wired app.RegisterDuplex.
+	Arity          string
+	IsServerStream bool
+
+	// Event fields — set when the rpc carries an @event / @broadcast annotation.
+	// The request message is the event payload; the response type is ignored.
 	IsEvent     bool
 	EventDir    string // "out" (Go -> JS push, default) | "in" (JS -> Go one-way)
 	EventName   string // wire topic, e.g. "monitor:message"

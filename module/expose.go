@@ -14,9 +14,8 @@ var (
 	errType = reflect.TypeOf((*error)(nil)).Elem()
 )
 
-// Expose binds a module method to its IPC surface via reflection, registered as
-// "mod:<module>:<Method>". JS: scorix.invoke("mod:<module>:<Method>", payload).
-// Accepts Method([ctx context.Context][, arg T]) (R, error).
+// Expose binds Method([ctx context.Context][, arg T]) (R, error) at "mod:<module>:<Method>" via reflection.
+// JS: scorix.invoke("mod:<module>:<Method>", payload).
 func Expose(mod Module, method string, mipc *ModuleIPC) {
 	v := reflect.ValueOf(mod)
 	m := v.MethodByName(method)

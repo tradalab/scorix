@@ -22,7 +22,7 @@ func New() *TemplateModule {
 	return &TemplateModule{}
 }
 
-// Name must match the key in app.yaml.
+// Name must match the key in scorix.yaml modules.
 func (m *TemplateModule) Name() string { return "template" }
 
 func (m *TemplateModule) Version() string { return "1.0.0" }
@@ -44,21 +44,18 @@ func (m *TemplateModule) OnLoad(ctx *module.Context) error {
 	return nil
 }
 
-// OnStart starts background work after all modules are loaded.
 func (m *TemplateModule) OnStart() error {
 	logger.Info(fmt.Sprintf("[%s] started", m.Name()))
 	// TODO: start background work here (goroutines, timers, etc.)
 	return nil
 }
 
-// OnStop closes resources during graceful shutdown.
 func (m *TemplateModule) OnStop() error {
 	logger.Info(fmt.Sprintf("[%s] stopping", m.Name()))
 	// TODO: stop background work, close resources.
 	return nil
 }
 
-// OnUnload releases any remaining state after OnStop.
 func (m *TemplateModule) OnUnload() error {
 	logger.Info(fmt.Sprintf("[%s] unloaded", m.Name()))
 	return nil
@@ -72,7 +69,6 @@ type HelloResponse struct {
 	Message string `json:"message"`
 }
 
-// Hello is an example IPC handler.
 // JS: scorix.invoke("mod:template:Hello", { name: "World" })
 func (m *TemplateModule) Hello(_ context.Context, req HelloRequest) (*HelloResponse, error) {
 	name := req.Name

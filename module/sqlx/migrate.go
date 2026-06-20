@@ -13,8 +13,7 @@ import (
 	"github.com/tradalab/scorix/logger"
 )
 
-// gooseDialect maps our driver names to goose's dialect tokens. Goose has its
-// own taxonomy — "sqlite3"/"sqlite" both go to "sqlite3"; "pgx" → "postgres".
+// Maps our driver names to goose's dialect taxonomy.
 var gooseDialect = map[string]string{
 	"sqlite3":  "sqlite3",
 	"sqlite":   "sqlite3",
@@ -23,10 +22,8 @@ var gooseDialect = map[string]string{
 	"postgres": "postgres",
 }
 
-// WithMigrations runs `goose up` against the given migration directory during
-// OnLoad. Idempotent — already-applied versions skipped. Mutually exclusive
-// with WithSchema: mixing makes goose's version table fight schema.sql's
-// CREATE TABLE IF NOT EXISTS statements.
+// WithMigrations runs `goose up` during OnLoad. Mutually exclusive with WithSchema:
+// goose's version table fights schema.sql's CREATE TABLE IF NOT EXISTS.
 func WithMigrations(fsys fs.FS, dir string) Option {
 	return func(m *Module) {
 		if fsys == nil {
@@ -38,7 +35,6 @@ func WithMigrations(fsys fs.FS, dir string) Option {
 	}
 }
 
-// runGooseUp is split out so tests can exercise the wiring without OnLoad.
 func runGooseUp(ctx context.Context, db *sql.DB, driverName string, fsys fs.FS, dir string) error {
 	dialect, ok := gooseDialect[driverName]
 	if !ok {
@@ -54,8 +50,7 @@ func runGooseUp(ctx context.Context, db *sql.DB, driverName string, fsys fs.FS, 
 
 	current, err := goose.GetDBVersionContext(ctx, db)
 	if err != nil && !errors.Is(err, goose.ErrNoNextVersion) {
-		// First run — goose creates the version table on Up.
-		current = 0
+		current = 0 // first run; goose creates the version table on Up
 	}
 	logger.Info(fmt.Sprintf("[sqlx/migrate] current version=%d dir=%s", current, dir))
 

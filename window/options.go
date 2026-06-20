@@ -12,8 +12,7 @@ type Options struct {
 	MaxWidth  int
 	MaxHeight int
 
-	// X, Y is the top-left position. nil means OS default; set Center to true
-	// to center on the active monitor instead.
+	// X, Y top-left position; nil = OS default (or set Center to center instead).
 	X *int
 	Y *int
 
@@ -25,10 +24,8 @@ type Options struct {
 	HideOnClose bool
 	DevTools    bool
 
-	// URL: initial content, typically an in-process scheme, e.g. "scorix://app/index.html".
-	URL string
-	// InitScript is injected before page scripts on every navigation.
-	InitScript string
+	URL        string // initial content, e.g. "scorix://app/index.html"
+	InitScript string // injected before page scripts on every navigation
 }
 
 func DefaultOptions() Options {

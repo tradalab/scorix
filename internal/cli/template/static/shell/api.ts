@@ -7,7 +7,11 @@ import type * as T from "@/types";
 {{- if .RPCs }}
 export const {{ .Package }} = {
 {{- range .RPCs }}
+{{- if .IsServerStream }}
+  {{ .MethodName | lowerFirst }}: (params: T.{{ .RequestTSType }}) => scorix.serverStream<T.{{ .ResultTSType }}>("{{ .CommandName }}", params),
+{{- else }}
   {{ .MethodName | lowerFirst }}: (params: T.{{ .RequestTSType }}) => scorix.invoke<T.{{ .ResultTSType }}>("{{ .CommandName }}", params),
+{{- end }}
 {{- end }}
 };
 {{ end }}

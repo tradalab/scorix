@@ -33,7 +33,6 @@ func (p *GitHubProvider) CheckForUpdate(ctx context.Context, currentVersion, pla
 
 	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", p.repo)
 
-	// GitHub API requires a User-Agent; pass a token header here if rate-limited.
 	headers := map[string]string{
 		"Accept": "application/vnd.github.v3+json",
 	}
@@ -56,9 +55,7 @@ func (p *GitHubProvider) CheckForUpdate(ctx context.Context, currentVersion, pla
 		return &Result{HasUpdate: false}, ErrNoUpdate
 	}
 
-	// Find the artifact for this platform, then require its signature to be the
-	// exact "<artifact>.sig" asset. Never pair a signature from a different
-	// asset — loose matching could otherwise verify the wrong file.
+	// Sig must be the exact "<artifact>.sig" asset — pairing a different asset's sig could verify the wrong file.
 	var artifactName, artifactURL, sigURL string
 	for _, asset := range release.Assets {
 		if strings.HasSuffix(asset.Name, ".sig") {
@@ -100,11 +97,8 @@ func (p *GitHubProvider) CheckForUpdate(ctx context.Context, currentVersion, pla
 	return res, nil
 }
 
-// assetMatchesPlatform reports whether a release asset filename corresponds to
-// the given platform key ({GOOS}-{GOARCH}, e.g. "darwin-arm64"). It tolerates
-// the common naming variants the packager emits: the OS may appear as "macos"
-// (darwin) or "win" (windows), the arch may use x86_64/aarch64, and a
-// "universal" macOS artifact serves every darwin arch.
+// Matches an asset filename to platformKey ({GOOS}-{GOARCH}), tolerating packager
+// naming variants: macos/win for the OS, x86_64/aarch64 for the arch, "universal" for any darwin arch.
 func assetMatchesPlatform(name, platformKey string) bool {
 	n := strings.ToLower(name)
 	pk := strings.ToLower(platformKey)

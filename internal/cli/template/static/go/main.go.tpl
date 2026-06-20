@@ -15,10 +15,16 @@ import (
 //go:embed all:.scorix/dist
 var embeddedPublic embed.FS
 
+// scorix.yaml is the single config source: app.New reads the runtime manifest
+// sections (app/window/security/modules); CLI build-recipe keys are ignored.
+//
+//go:embed scorix.yaml
+var manifest []byte
+
 func main() {
 	log.SetFlags(log.Ltime)
 	mode := flag.String("mode", "app", "run mode: app | web")
-	addr := flag.String("addr", ":8080", "web listen address (web mode)")
+	addr := flag.String("addr", "", "web listen address override (default: manifest web.host:port / SCORIX_WEB_*)")
 	flag.Parse()
 
 	site, err := fs.Sub(embeddedPublic, ".scorix/dist")
@@ -27,8 +33,8 @@ func main() {
 	}
 
 	a, err := app.New(app.Options{
-		Title: "{{ .Module }}",
-		URL:   "scorix://app/index.html",
+		URL:      "scorix://app/index.html",
+		Manifest: manifest,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -39,8 +45,12 @@ func main() {
 	handler.RegisterHandlers(a, sc)
 
 	if *mode == "web" {
-		log.Printf("serving on http://localhost%s", *addr)
-		if err := a.RunWeb(*addr); err != nil {
+		listen := *addr
+		if listen == "" {
+			listen = a.WebAddr()
+		}
+		log.Printf("serving on http://%s", listen)
+		if err := a.RunWeb(listen); err != nil {
 			log.Fatal(err)
 		}
 		return

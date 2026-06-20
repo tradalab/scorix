@@ -8,12 +8,11 @@ import (
 	"os/exec"
 	"runtime"
 
-	"github.com/tradalab/scorix/module"
 	"github.com/tradalab/scorix/logger"
+	"github.com/tradalab/scorix/module"
 )
 
-// allowedSchemes is the allow-list OpenUrl hands to the OS handler; anything
-// else (file://, javascript:, custom protocols) is an RCE/local-file surface.
+// Allow-list for OpenUrl; file://, javascript:, custom protocols are an RCE/local-file surface.
 var allowedSchemes = map[string]bool{
 	"http":   true,
 	"https":  true,
@@ -45,10 +44,9 @@ type OpenUrlRequest struct {
 	URL string `json:"url"`
 }
 
-// OpenUrl opens a URL in the OS browser.
 // JS: scorix.invoke("mod:browser:OpenUrl", { url: "https://example.com" })
 func (m *BrowserModule) OpenUrl(ctx context.Context, req interface{}) (interface{}, error) {
-	// Accept both a bare string and {url: "..."} from the frontend.
+	// Accept both a bare string and {url: "..."}.
 	var url string
 	switch v := req.(type) {
 	case string:
@@ -63,7 +61,7 @@ func (m *BrowserModule) OpenUrl(ctx context.Context, req interface{}) (interface
 		return nil, fmt.Errorf("invalid payload format, expected string or {url: string}")
 	}
 
-	// Validate before shelling out (see allowedSchemes).
+	// Validate before shelling out.
 	if url == "" {
 		return nil, fmt.Errorf("url is empty")
 	}

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"strconv"
 
 	"github.com/tradalab/scorix/logger"
 	"gopkg.in/yaml.v3"
@@ -45,9 +44,11 @@ func loadConfigInternal(data []byte, path string) (*Config, error) {
 		logger.Info("no config file or data, using defaults")
 	}
 
-	overrideFromEnv(cfg)
+	// A malformed env override fails the load rather than being silently ignored.
+	if err := ApplyEnv(cfg); err != nil {
+		return nil, fmt.Errorf("config: apply env overrides: %w", err)
+	}
 
-	// Validate after env overrides are applied.
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -64,9 +65,8 @@ func tryReadFile(path string) ([]byte, error) {
 		return nil, nil
 	}
 	if _, err := os.Stat(path); err != nil {
-		// Only a not-exist error means "use defaults"; any other stat
-		// error (permission denied, I/O error, etc.) must propagate so a
-		// real-but-unreadable config is not silently ignored.
+		// Only not-exist means "use defaults"; other errors (perm, I/O) must
+		// propagate so a real-but-unreadable config isn't silently ignored.
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil
 		}
@@ -85,16 +85,16 @@ func buildRaw(cfg *Config) error {
 		return err
 	}
 
-	// NOTE: JSON round-trip coerces all numbers to float64. Raw is consumed
-	// via type-asserting accessors (e.g. GetString), so this is acceptable.
+	// JSON round-trip coerces numbers to float64; Raw is read via type-asserting
+	// accessors, so that's fine.
 	var cfgMap map[string]any
 	if err := json.Unmarshal(raw, &cfgMap); err != nil {
 		return err
 	}
+	delete(cfgMap, "Raw") // inline field marshals under "Raw"; drop to avoid Raw-in-Raw
 
-	// cfg.Raw is a yaml:",inline" field capturing unknown/custom top-level
-	// keys. Merge the typed view into it rather than overwriting, so inline-only
-	// keys survive while typed values win for known keys.
+	// Merge the typed view into Raw (don't overwrite) so inline-only keys survive
+	// while typed values win for known keys.
 	if cfg.Raw == nil {
 		cfg.Raw = make(map[string]any, len(cfgMap))
 	}
@@ -104,35 +104,72 @@ func buildRaw(cfg *Config) error {
 	return nil
 }
 
-func overrideFromEnv(cfg *Config) {
-	getInt := func(env string) (int, bool) {
-		v := os.Getenv(env)
-		if v == "" {
-			return 0, false
-		}
-		i, err := strconv.Atoi(v)
-		return i, err == nil && i > 0
-	}
+// ApplyEnv resolves env-tagged framework fields; Security stays sealed. Exported
+// so the App can re-run it after merging a runtime overlay (env must still win).
+func ApplyEnv(cfg *Config) error {
+	return ApplyOverlays(cfg, nil)
+}
 
-	if v := os.Getenv("SCORIX_APP_NAME"); v != "" {
-		cfg.App.Name = v
+// RawMap parses YAML into a section map; nil for empty input.
+func RawMap(data []byte) (map[string]any, error) {
+	if len(data) == 0 {
+		return nil, nil
 	}
-	if v := os.Getenv("SCORIX_APP_VERSION"); v != "" {
-		cfg.App.Version = v
+	var m map[string]any
+	if err := yaml.Unmarshal(data, &m); err != nil {
+		return nil, fmt.Errorf("parse runtime config: %w", err)
 	}
-	if v := os.Getenv("SCORIX_WINDOW_TITLE"); v != "" {
-		cfg.Window.Title = v
+	return m, nil
+}
+
+// ApplyOverlays resolves framework config from env + an optional runtime-file
+// section map ("app", "window", ...). Per-field precedence: env > file > embedded.
+// Sections resolve independently so each gets its own auto-name prefix.
+func ApplyOverlays(cfg *Config, file map[string]any) error {
+	warn := func(format string, a ...any) { logger.Warn(fmt.Sprintf(format, a...)) }
+	sections := []struct {
+		prefix string
+		key    string
+		target any
+	}{
+		{"SCORIX_APP_", "app", &cfg.App},
+		{"SCORIX_WINDOW_", "window", &cfg.Window},
+		{"SCORIX_DEV_", "dev", &cfg.Dev},
+		{"SCORIX_WEB_", "web", &cfg.Web},
+		{"SCORIX_LOGGER_", "logger", &cfg.Logger},
 	}
-	if w, ok := getInt("SCORIX_WINDOW_WIDTH"); ok {
-		cfg.Window.Width = w
+	for _, s := range sections {
+		var overlay map[string]any
+		if file != nil {
+			overlay = AsStringMap(file[s.key])
+		}
+		if err := ResolveOverrides(s.target, ResolveOptions{Prefix: s.prefix, FileOverlay: overlay, Warnf: warn}); err != nil {
+			return err
+		}
 	}
-	if h, ok := getInt("SCORIX_WINDOW_HEIGHT"); ok {
-		cfg.Window.Height = h
+	// security is sealed; surface (don't apply) a runtime attempt to change it.
+	if file != nil {
+		if _, ok := file["security"]; ok {
+			warn("config: ignoring runtime overlay of `security` (sealed — rebuild with a new manifest to change CSP/allowlist)")
+		}
 	}
-	if v := os.Getenv("SCORIX_WINDOW_DEBUG"); v == "true" {
-		cfg.Window.Debug = true
+	return nil
+}
+
+// AsStringMap normalises the map[interface{}]any yaml.v3 can produce to
+// map[string]any, or nil.
+func AsStringMap(v any) map[string]any {
+	if m, ok := v.(map[string]any); ok {
+		return m
 	}
-	if v := os.Getenv("SCORIX_DEV_HOT_RELOAD"); v == "true" {
-		cfg.Dev.HotReload = true
+	if m, ok := v.(map[interface{}]any); ok {
+		out := make(map[string]any, len(m))
+		for k, val := range m {
+			if ks, ok := k.(string); ok {
+				out[ks] = val
+			}
+		}
+		return out
 	}
+	return nil
 }

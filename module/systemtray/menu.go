@@ -1,8 +1,6 @@
 package systemtray
 
-// MenuItem describes one tray menu entry. Zero-value semantics: an item with
-// Separator set renders a divider (Title/OnClick ignored); OnClick may be nil
-// for display-only entries.
+// Separator set → renders a divider (Title/OnClick ignored); OnClick nil → display-only.
 type MenuItem struct {
 	Title     string
 	Tooltip   string

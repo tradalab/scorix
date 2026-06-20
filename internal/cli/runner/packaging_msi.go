@@ -24,8 +24,7 @@ func (windowsPackager) Package(ctx context.Context, bc *BuildContext) (string, e
 		return "", fmt.Errorf("wix CLI not found in PATH — install WiX Toolset v6 (`dotnet tool install --global wix`), then verify with `scorix doctor`")
 	}
 
-	// The binary was built at TempDir/BinaryName by the caller. The WiX sources
-	// reference the icon next to it, so stage a copy named <ProductName>.ico.
+	// WiX sources reference the icon beside the binary, so stage a copy named <ProductName>.ico.
 	if bc.IconPath != "" {
 		if _, err := os.Stat(bc.IconPath); err == nil {
 			dst := filepath.Join(bc.TempDir, bc.ProductName+".ico")

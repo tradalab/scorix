@@ -13,24 +13,22 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite" // registers the default "sqlite" driver
 
-	"github.com/tradalab/scorix/module"
 	"github.com/tradalab/scorix/logger"
+	"github.com/tradalab/scorix/module"
 )
 
+// `env`-tagged fields are runtime-overridable (env name SCORIX_MODULE_SQLX_<KEY>;
+// precedence env > runtime_file > embedded > default). DSN is `secret` (env-only +
+// masked) since in server mode it carries credentials.
 type Config struct {
-	// Driver is the database/sql register name; "sqlite" (modernc) by default.
-	// Other drivers (mysql, pgx, ...) require RegisterDriver + blank import.
-	Driver string `json:"driver"`
+	Driver string `json:"driver" env:""` // database/sql register name; non-sqlite needs RegisterDriver + blank import
+	DSN    string `json:"dsn" env:",secret"`
 
-	// DSN: SQLite uses relative filenames resolved against DataDir.
-	DSN string `json:"dsn"`
+	MaxOpenConns           int `json:"max_open_conns" env:""`
+	MaxIdleConns           int `json:"max_idle_conns" env:""`
+	ConnMaxLifetimeMinutes int `json:"conn_max_lifetime_minutes" env:""`
 
-	MaxOpenConns           int `json:"max_open_conns"`
-	MaxIdleConns           int `json:"max_idle_conns"`
-	ConnMaxLifetimeMinutes int `json:"conn_max_lifetime_minutes"`
-
-	// SlowQueryThresholdMs logs queries exceeding this duration. 0 disables.
-	SlowQueryThresholdMs int `json:"slow_query_threshold_ms"`
+	SlowQueryThresholdMs int `json:"slow_query_threshold_ms" env:""` // 0 disables
 }
 
 func (c *Config) defaults() {
@@ -63,9 +61,7 @@ func (c *Config) defaults() {
 	}
 }
 
-// maskDSN strips passwords for safe logging. URL form
-// "scheme://user:pass@host" and MySQL "user:pass@tcp(...)" both handled;
-// SQLite filenames carry no secrets and pass through unchanged.
+// maskDSN strips the password for safe logging (URL and MySQL user:pass@ forms).
 func maskDSN(dsn string) string {
 	if i := strings.Index(dsn, "://"); i >= 0 {
 		rest := dsn[i+3:]
@@ -101,9 +97,8 @@ type InitScript func(ctx context.Context, db *sqlx.DB) error
 
 type Option func(*Module)
 
-// WithSchema executes the script during OnLoad. Must be idempotent (uses
-// CREATE TABLE IF NOT EXISTS etc) — re-runs on every app start. SQLite accepts
-// multi-statement scripts; MySQL/Postgres callers may need to split themselves.
+// WithSchema runs the script on every OnLoad, so it MUST be idempotent (CREATE
+// TABLE IF NOT EXISTS). SQLite takes multi-statement scripts; MySQL/Postgres may need splitting.
 func WithSchema(script string) Option {
 	return func(m *Module) {
 		if script == "" {
@@ -116,8 +111,6 @@ func WithSchema(script string) Option {
 	}
 }
 
-// WithInitScript appends an arbitrary init callback when WithSchema isn't
-// flexible enough (dialect-specific splitting, runtime-computed migrations).
 func WithInitScript(fn InitScript) Option {
 	return func(m *Module) {
 		if fn == nil {
@@ -127,9 +120,8 @@ func WithInitScript(fn InitScript) Option {
 	}
 }
 
-// Conn is the contract generated model code requires. Both *sqlx.DB and
-// *sqlx.Tx satisfy it — Tx propagation via WithTx + From(ctx, ...) substitutes
-// the Tx without changing model method signatures.
+// Conn is the contract generated model code requires; *sqlx.DB and *sqlx.Tx both
+// satisfy it, so From(ctx) can swap in a Tx without changing model signatures.
 type Conn interface {
 	sqlx.ExtContext
 	Rebind(query string) string
@@ -137,7 +129,6 @@ type Conn interface {
 
 type txCtxKey struct{}
 
-// WithTxCtx attaches tx to ctx. Normally invoked by Module.WithTx, not directly.
 func WithTxCtx(ctx context.Context, tx *sqlx.Tx) context.Context {
 	return context.WithValue(ctx, txCtxKey{}, tx)
 }
@@ -150,9 +141,8 @@ func From(ctx context.Context, fallback func() Conn) Conn {
 	return fallback()
 }
 
-// WithTx runs fn in a transaction. Commit on nil return, rollback on error or
-// panic. The wrapped ctx carries the Tx so generated model calls participate
-// without signature changes.
+// WithTx runs fn in a transaction: commit on nil, rollback on error or panic. The
+// wrapped ctx carries the Tx so generated model calls join it automatically.
 func (m *Module) WithTx(ctx context.Context, fn func(context.Context) error) (err error) {
 	db, dbErr := m.readDB()
 	if dbErr != nil {
@@ -188,8 +178,7 @@ type Module struct {
 	mu          sync.RWMutex
 }
 
-// New constructs a Module with "sqlite" (modernc) pre-registered as the default
-// driver. Register others via RegisterDriver + blank import.
+// New pre-registers the "sqlite" (modernc) driver; add others via RegisterDriver.
 func New(opts ...Option) *Module {
 	m := &Module{
 		drivers: make(map[string]DriverInitializer),
@@ -205,8 +194,7 @@ func defaultSqliteInit(dsn string) (*sqlx.DB, error) {
 	return sqlx.Connect("sqlite", dsn)
 }
 
-// RegisterDriver maps a driver name (must match modules.sqlx.driver in
-// app.yaml) to a DSN-opener. Safe to call any time before OnLoad.
+// RegisterDriver maps driver name (must match modules.sqlx.driver) to an opener; call before OnLoad.
 func (m *Module) RegisterDriver(name string, init DriverInitializer) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -223,8 +211,7 @@ func (m *Module) DB() *sqlx.DB {
 	return m.db
 }
 
-// Conn returns the DB as a Conn interface. Returns typed-nil — a bare
-// *sqlx.DB(nil) cast into Conn would compare non-nil under interface rules.
+// Returns an untyped nil when DB is nil — a *sqlx.DB(nil) boxed in Conn compares non-nil.
 func (m *Module) Conn() Conn {
 	db := m.DB()
 	if db == nil {
@@ -241,6 +228,10 @@ func (m *Module) OnLoad(ctx *module.Context) error {
 	}
 	m.cfg.defaults()
 
+	if err := ctx.ApplyOverrides(&m.cfg); err != nil {
+		return fmt.Errorf("[sqlx] apply overrides: %w", err)
+	}
+
 	m.mu.RLock()
 	init, ok := m.drivers[m.cfg.Driver]
 	m.mu.RUnlock()
@@ -251,7 +242,7 @@ func (m *Module) OnLoad(ctx *module.Context) error {
 	dsn := m.cfg.DSN
 	dbDesc := m.cfg.Driver
 
-	// SQLite: relative DSN → DataDir; auto-create parent so first-run installs work.
+	// SQLite: relative DSN resolves against DataDir; mkdir parent for first run.
 	if isSQLite(m.cfg.Driver) {
 		if !filepath.IsAbs(dsn) && dsn != ":memory:" {
 			dsn = filepath.Join(ctx.DataDir, dsn)
@@ -355,7 +346,7 @@ type ExecResult struct {
 	LastInsertID int64 `json:"last_insert_id"`
 }
 
-// Exec runs INSERT/UPDATE/DELETE/DDL.
+// JS: scorix.invoke("mod:sqlx:Exec", {sql, args}). INSERT/UPDATE/DELETE/DDL.
 func (m *Module) Exec(ctx context.Context, req SQLRequest) (*ExecResult, error) {
 	db, err := m.readDB()
 	if err != nil {
@@ -372,7 +363,7 @@ func (m *Module) Exec(ctx context.Context, req SQLRequest) (*ExecResult, error) 
 	if n, e := res.RowsAffected(); e == nil {
 		out.RowsAffected = n
 	}
-	// Postgres returns 0/error for LastInsertId — best effort, surface 0 silently.
+	// Postgres errors on LastInsertId — best-effort, leave 0.
 	if id, e := res.LastInsertId(); e == nil {
 		out.LastInsertID = id
 	}
@@ -418,8 +409,7 @@ func (m *Module) Stats(_ context.Context) (*DBStats, error) {
 	}, nil
 }
 
-// logSlow logs queries above the threshold. SQL truncated at 512 chars; args
-// never logged (may contain credentials).
+// logSlow logs queries over the threshold; args are never logged (may hold credentials).
 func (m *Module) logSlow(op, sqlText string, start time.Time) {
 	threshold := m.cfg.SlowQueryThresholdMs
 	if threshold <= 0 {
@@ -463,8 +453,7 @@ func scanRows(rows *sqlx.Rows) ([]map[string]any, error) {
 		}
 		row := make(map[string]any, len(cols))
 		for i, col := range cols {
-			// SQLite returns []byte for TEXT when scanned into any — normalise
-			// so the IPC payload to JS is plain string.
+			// SQLite scans TEXT as []byte into any — coerce to string for the JS payload.
 			if b, ok := vals[i].([]byte); ok {
 				row[col] = string(b)
 			} else {

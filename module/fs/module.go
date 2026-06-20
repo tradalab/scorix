@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/tradalab/scorix/module"
 	"github.com/tradalab/scorix/logger"
+	"github.com/tradalab/scorix/module"
 )
 
 type FSModule struct {

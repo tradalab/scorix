@@ -16,8 +16,7 @@ type DevOptions struct {
 	// URL of an already-running frontend dev server. Empty → `pnpm dev` is
 	// spawned and http://localhost:3000 assumed.
 	URL string
-	// Legacy disables HMR: build the shell once and serve the embedded assets
-	// (the pre-hot-reload behavior).
+	// Legacy disables HMR: build the shell once and serve the embedded assets.
 	Legacy bool
 }
 

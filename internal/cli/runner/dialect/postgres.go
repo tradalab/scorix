@@ -5,9 +5,8 @@ import (
 	"strings"
 )
 
-// Postgres targets PostgreSQL 12+. Double-quoted identifiers + numbered "$N"
-// placeholders. Postgres folds unquoted identifiers to lower-case — we
-// always quote, so mixed-case names from schema.sql survive.
+// Postgres uses "$N" placeholders and always-quoted identifiers — Postgres folds
+// unquoted idents to lower-case, so quoting preserves mixed-case schema names.
 type Postgres struct{}
 
 func (Postgres) Name() string       { return "postgres" }
@@ -60,7 +59,6 @@ func (Postgres) MapType(sqlType string, nullable bool) GoType {
 	case "JSON", "JSONB":
 		return GoType{Name: "[]byte"}
 	case "UUID":
-		// Stored as string — users wanting a typed UUID can swap post-gen.
 		return GoType{Name: "string"}
 	default:
 		return GoType{Name: "string"}

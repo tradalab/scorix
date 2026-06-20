@@ -6,13 +6,7 @@ type Module interface {
 	Version() string
 
 	OnLoad(ctx *Context) error
-
-	// OnStart is called after all modules are loaded.
-	OnStart() error
-
-	// OnStop is called during graceful shutdown (reverse order).
-	OnStop() error
-
-	// OnUnload is called after OnStop to release resources.
+	OnStart() error // after all modules loaded
+	OnStop() error  // graceful shutdown, reverse order
 	OnUnload() error
 }

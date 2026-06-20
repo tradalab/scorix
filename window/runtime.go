@@ -15,17 +15,14 @@ const (
 	RuntimeActivate   RuntimeEvent = "activate" // e.g. macOS dock re-open
 )
 
-// Runtime owns the OS event loop on the main thread. All window/webview
-// mutations must be marshaled onto that thread via Dispatch.
+// Runtime owns the OS event loop on the main thread; all window/webview mutations
+// must be marshaled onto it via Dispatch.
 type Runtime interface {
-	// Run blocks until Quit. Call on main().
-	Run() error
+	Run() error // blocks until Quit; call on main()
 	Quit()
-	// Dispatch runs fn on the UI/event-loop thread.
-	Dispatch(fn func())
+	Dispatch(fn func()) // runs fn on the UI/event-loop thread
 	Windows() Manager
-	// RegisterScheme installs an in-process asset handler so app mode needs no
-	// localhost HTTP server.
+	// RegisterScheme installs an in-process asset handler (no localhost server).
 	RegisterScheme(scheme string, h webview.SchemeHandler)
 	On(evt RuntimeEvent, fn func())
 }

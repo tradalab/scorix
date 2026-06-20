@@ -8,8 +8,8 @@ import (
 	"runtime"
 )
 
-// Packager turns a freshly built binary (at BuildContext.TempDir) into a native
-// installer/bundle, returning the path to the produced artifact.
+// Packager turns the built binary (at BuildContext.TempDir) into a native
+// installer/bundle, returning the artifact path.
 type Packager interface {
 	Package(ctx context.Context, bc *BuildContext) (string, error)
 }
@@ -25,9 +25,8 @@ type PackageOptions struct {
 	ForceSign    bool
 }
 
-// Package builds and packages the app into a native installer for each resolved
-// target. Native installers (MSI/DMG/AppImage) require their own OS toolchain,
-// so by default it packages for the host OS only.
+// Package builds and packages for each resolved target. Native installers need
+// their own OS toolchain, so by default it packages for the host OS only.
 func Package(ctx context.Context, opt PackageOptions) error {
 	root, err := filepath.Abs(orDefault(opt.Dir, "."))
 	if err != nil {

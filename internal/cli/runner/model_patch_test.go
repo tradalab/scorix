@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/tradalab/scorix/internal/cli/runner/dialect"
 )
 
 // stubSvcGo mirrors what the proto generator emits before scorix:model
@@ -67,11 +65,13 @@ func TestPatchServiceContext_FreshProject(t *testing.T) {
 		`PostModel model.PostModel`,
 		`sqlxMod := scorixsqlx.New(scorixsqlx.WithSchema(etc.SchemaSQL))`,
 		`sqlxMod.RegisterDriver("sqlite",`,
-		`a.SetModuleConfig("sqlx", map[string]any{"driver": "sqlite", "dsn": "app.dat"})`,
 		`a.Module(sqlxMod)`,
 		`UserModel: model.NewUserModel(sqlxMod.Conn),`,
 		`PostModel: model.NewPostModel(sqlxMod.Conn),`,
 	)
+	// Runtime config is no longer hardcoded — the module self-defaults and reads
+	// modules.sqlx / SCORIX_MODULE_SQLX_DSN at runtime (single source, no drift).
+	mustNotContain(t, out, `a.SetModuleConfig("sqlx"`)
 }
 
 func TestPatchServiceContext_EmptyTables(t *testing.T) {
@@ -96,76 +96,4 @@ func TestPatchServiceContext_EmptyTables(t *testing.T) {
 		"scorix:model:imports:start",
 		"scorix:model:imports:end",
 	)
-}
-
-func TestPatchAppYaml_FreshInsertSQLite(t *testing.T) {
-	root := t.TempDir()
-	yamlPath := filepath.Join(root, "etc", "app.yaml")
-	writeStub(t, yamlPath, "app:\n  name: example\n")
-
-	if err := patchAppYaml(root, dialect.MustNew("sqlite")); err != nil {
-		t.Fatalf("patch: %v", err)
-	}
-	got, _ := os.ReadFile(yamlPath)
-	out := string(got)
-
-	mustContain(t, out,
-		"modules:",
-		"  sqlx:",
-		"    enabled: true",
-		"    driver: sqlite3",
-		"    dsn: app.dat",
-	)
-}
-
-func TestPatchAppYaml_FreshInsertPostgres(t *testing.T) {
-	root := t.TempDir()
-	yamlPath := filepath.Join(root, "etc", "app.yaml")
-	writeStub(t, yamlPath, "modules:\n  systray:\n    enabled: true\n")
-
-	if err := patchAppYaml(root, dialect.MustNew("postgres")); err != nil {
-		t.Fatalf("patch: %v", err)
-	}
-	got, _ := os.ReadFile(yamlPath)
-	out := string(got)
-
-	mustContain(t, out,
-		"  sqlx:",
-		"    driver: pgx",
-		"    dsn: postgres://user:pass@",
-		"  systray:", // existing block survives
-	)
-}
-
-func TestPatchAppYaml_FreshInsertMySQL(t *testing.T) {
-	root := t.TempDir()
-	yamlPath := filepath.Join(root, "etc", "app.yaml")
-	writeStub(t, yamlPath, "name: example\n")
-
-	if err := patchAppYaml(root, dialect.MustNew("mysql")); err != nil {
-		t.Fatalf("patch: %v", err)
-	}
-	got, _ := os.ReadFile(yamlPath)
-	out := string(got)
-
-	mustContain(t, out,
-		"  sqlx:",
-		"    driver: mysql",
-		"    dsn: user:pass@tcp(127.0.0.1:3306)/app",
-	)
-}
-
-func TestPatchAppYaml_IdempotentWhenSqlxAlreadyPresent(t *testing.T) {
-	root := t.TempDir()
-	yamlPath := filepath.Join(root, "etc", "app.yaml")
-	original := "modules:\n  sqlx:\n    enabled: true\n    driver: pgx\n    dsn: my-custom-dsn\n"
-	writeStub(t, yamlPath, original)
-
-	if err := patchAppYaml(root, dialect.MustNew("sqlite")); err != nil {
-		t.Fatalf("patch: %v", err)
-	}
-	got, _ := os.ReadFile(yamlPath)
-	if string(got) != original {
-		t.Errorf("idempotent patch should not modify file. got:\n%s\nwant:\n%s", got, original)
-	}
 }

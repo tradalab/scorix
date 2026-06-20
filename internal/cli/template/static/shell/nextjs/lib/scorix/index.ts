@@ -2,6 +2,20 @@
 
 export type ScorixStatus = "connected" | "connecting" | "disconnected";
 
+// A server-stream call: async-iterable of typed messages, cancelable. The loop
+// ends on the server's `done` frame and throws on `error`.
+export interface ServerStream<T> extends AsyncIterable<T> {
+  cancel(): void;
+}
+
+// A bidirectional call: async-iterable of server messages (Out), plus send(In)
+// to push a client message, end() to half-close, and cancel() to abort.
+export interface Duplex<In, Out> extends AsyncIterable<Out> {
+  send(data: In): void;
+  end(): void;
+  cancel(): void;
+}
+
 // Matches the window.scorix bridge the Go app injects; apps must not ship their own.
 export interface ScorixAPI {
   mode?: "app" | "web";
@@ -10,6 +24,8 @@ export interface ScorixAPI {
     params?: any,
     options?: { timeout?: number; onChunk?: (chunk: any) => void },
   ): Promise<T>;
+  serverStream?<T = any>(method: string, params?: any): ServerStream<T>;
+  duplex?<In = any, Out = any>(method: string): Duplex<In, Out>;
   emit(topic: string, data?: any): void | Promise<void>;
   on(topic: string, callback: (data: any, error?: string) => void): () => void;
   resolve(name: string, handler: (data: any) => any): void;
@@ -28,8 +44,10 @@ declare global {
 
 // The exported wrapper is always async (it awaits bridge readiness), so its
 // emit is a Promise even though the raw injected bridge returns void.
-export interface ScorixClient extends Omit<ScorixAPI, "emit"> {
+export interface ScorixClient extends Omit<ScorixAPI, "emit" | "serverStream" | "duplex"> {
   emit(topic: string, data?: any): Promise<void>;
+  serverStream<T = any>(method: string, params?: any): ServerStream<T>;
+  duplex<In = any, Out = any>(method: string): Duplex<In, Out>;
 }
 
 let _cachedApi: ScorixAPI | null = null;
@@ -74,7 +92,60 @@ const scorix: ScorixClient = {
     const api = await getScorix();
     return api.invoke(method, params, options);
   },
-  
+
+  // serverStream is synchronous (returns the iterable immediately); the first
+  // iteration awaits bridge readiness, then delegates to the bridge stream.
+  serverStream<T = any>(method: string, params?: any): ServerStream<T> {
+    let inner: ServerStream<T> | null = null;
+    let cancelled = false;
+    async function* gen(): AsyncGenerator<T> {
+      const api = await getScorix();
+      if (!api.serverStream) throw new Error("scorix: bridge does not support serverStream");
+      inner = api.serverStream<T>(method, params);
+      if (cancelled) { inner.cancel(); return; }
+      yield* inner;
+    }
+    const it = gen();
+    return {
+      [Symbol.asyncIterator]: () => it,
+      cancel: () => {
+        cancelled = true;
+        if (inner) inner.cancel();
+        else if (it.return) it.return(undefined as any);
+      },
+    };
+  },
+
+  // duplex opens a bidirectional call. Sends issued before the bridge is ready
+  // (or before iteration starts) are buffered and flushed when it opens.
+  duplex<In = any, Out = any>(method: string): Duplex<In, Out> {
+    let inner: Duplex<In, Out> | null = null;
+    let cancelled = false;
+    let ended = false;
+    const pending: In[] = [];
+    async function* gen(): AsyncGenerator<Out> {
+      const api = await getScorix();
+      if (!api.duplex) throw new Error("scorix: bridge does not support duplex");
+      inner = api.duplex<In, Out>(method);
+      if (cancelled) { inner.cancel(); return; }
+      for (const d of pending) inner.send(d);
+      pending.length = 0;
+      if (ended) inner.end();
+      yield* inner;
+    }
+    const it = gen();
+    return {
+      [Symbol.asyncIterator]: () => it,
+      send: (data: In) => { if (inner) inner.send(data); else pending.push(data); },
+      end: () => { if (inner) inner.end(); else ended = true; },
+      cancel: () => {
+        cancelled = true;
+        if (inner) inner.cancel();
+        else if (it.return) it.return(undefined as any);
+      },
+    };
+  },
+
   async emit(topic: string, data?: any): Promise<void> {
     const api = await getScorix();
     await api.emit(topic, data);

@@ -12,7 +12,7 @@ import (
 
 func newDispatcher(reg *ipc.Registry) (*ipc.Dispatcher, *[][]byte) {
 	var sent [][]byte
-	d := ipc.NewDispatcher(reg, func(b []byte) { sent = append(sent, b) })
+	d := ipc.NewDispatcher(reg, func(b []byte) error { sent = append(sent, b); return nil })
 	return d, &sent
 }
 

@@ -8,17 +8,12 @@ import (
 )
 
 type Dialect interface {
-	// Name returns "sqlite" | "mysql" | "postgres".
 	Name() string
-	// DriverName returns the sql.Register name: "sqlite3" | "mysql" | "pgx".
 	DriverName() string
-	// Quote wraps an identifier — emitted unconditionally so reserved words
-	// (group, order, user) never collide with keywords.
+	// Quote is emitted unconditionally so reserved words (group, order, user) never collide with keywords.
 	Quote(ident string) string
-	// Placeholder returns the marker at 1-indexed position. SQLite/MySQL
-	// ignore pos and return "?"; Postgres returns "$1", "$2", etc.
+	// Placeholder is 1-indexed: SQLite/MySQL ignore pos ("?"); Postgres returns "$N".
 	Placeholder(pos int) string
-	// PlaceholderList returns n comma-separated placeholders starting at start.
 	PlaceholderList(start, n int) string
 	MapType(sqlType string, nullable bool) GoType
 }

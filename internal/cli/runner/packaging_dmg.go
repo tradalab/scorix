@@ -52,8 +52,7 @@ func (darwinPackager) Package(ctx context.Context, bc *BuildContext) (string, er
 		}
 	}
 
-	// Info.plist: use the app's if present, else scaffold. Patch the version so
-	// the bundle tracks etc/app.yaml.
+	// Use the app's Info.plist if present, else scaffold; patch version to track scorix.yaml.
 	plistSrc := filepath.Join(bc.Root, "installer", "mac", "Info.plist")
 	if _, err := os.Stat(plistSrc); err != nil {
 		fmt.Println("==> Info.plist not found — scaffolding installer/mac/")
