@@ -10,8 +10,7 @@ import (
 
 var _ window.Driver = driver{}
 
-// New returns the non-Windows stub: NewRuntime errors so the kernel can fall
-// back (e.g. to headless).
+// New returns the non-Windows stub: NewRuntime errors so the app can fall back (e.g. to headless).
 func New() window.Driver { return driver{} }
 
 type driver struct{}

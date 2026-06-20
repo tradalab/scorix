@@ -64,6 +64,11 @@ var (
 
 const (
 	wsOverlappedWindow uintptr = 0x00CF0000
+	wsPopup            uintptr = 0x80000000
+	wsThickFrame       uintptr = 0x00040000 // resize border
+	wsMaximizeBox      uintptr = 0x00010000
+	wsExTopmost        uintptr = 0x00000008
+	cwUseDefault       uintptr = 0x80000000 // CW_USEDEFAULT
 
 	swHide       uintptr = 0
 	swShowNormal uintptr = 1
@@ -162,26 +167,37 @@ func ensureClass() error {
 	return classRegErr
 }
 
-func createWindow(title string, messageOnly bool) (windows.Handle, error) {
+func createWindow(opts window.Options, messageOnly bool) (windows.Handle, error) {
 	if err := ensureClass(); err != nil {
 		return 0, err
 	}
 	hInst, _, _ := procGetModuleHandleW.Call(0)
-	titlePtr := mustUTF16(title)
+	titlePtr := mustUTF16(opts.Title)
 
-	var style, parent uintptr
+	var style, exStyle, parent uintptr
+	x, y := cwUseDefault, cwUseDefault
 	if messageOnly {
 		parent = hwndMessage
 	} else {
-		style = wsOverlappedWindow
+		style = windowStyle(opts)
+		if opts.AlwaysOnTop {
+			exStyle |= wsExTopmost
+		}
+		// Initial position; SetSize/Center still run afterward in manager.New.
+		if opts.X != nil {
+			x = uintptr(uint32(int32(*opts.X)))
+		}
+		if opts.Y != nil {
+			y = uintptr(uint32(int32(*opts.Y)))
+		}
 	}
 
 	hwnd, _, err := procCreateWindowExW.Call(
-		0,
+		exStyle,
 		uintptr(unsafe.Pointer(className)),
 		uintptr(unsafe.Pointer(titlePtr)),
 		style,
-		0, 0, 0, 0,
+		x, y, 0, 0,
 		parent, 0, hInst, 0,
 	)
 	if hwnd == 0 {
@@ -190,10 +206,27 @@ func createWindow(title string, messageOnly bool) (windows.Handle, error) {
 	return windows.Handle(hwnd), nil
 }
 
+// windowStyle maps Options to a Win32 window style. Frameless drops the
+// caption/border (WS_POPUP); non-resizable drops the resize border + maximize box.
+func windowStyle(opts window.Options) uintptr {
+	if opts.Frameless {
+		style := wsPopup
+		if opts.Resizable {
+			style |= wsThickFrame
+		}
+		return style
+	}
+	style := wsOverlappedWindow
+	if !opts.Resizable {
+		style &^= wsThickFrame | wsMaximizeBox
+	}
+	return style
+}
+
 // wndProc must take only uintptr-sized args (windows.NewCallback requirement).
 func wndProc(hwnd, message, wParam, lParam uintptr) uintptr {
-	// Invoked by DispatchMessage (C): a Go panic unwinding across that frame is
-	// undefined behavior, so contain it — a handler bug must not crash the app.
+	// Invoked by DispatchMessage (C), where a Go panic is undefined behavior;
+	// contain it so a handler bug can't crash the app.
 	defer func() { _ = recover() }()
 	activeMu.Lock()
 	rt := activeRT
@@ -221,7 +254,9 @@ func wndProc(hwnd, message, wParam, lParam uintptr) uintptr {
 					procShowWindow.Call(hwnd, swHide)
 					return 0
 				}
-				w.fire(window.EventClose)
+				if w.fireClose() { // an EventClose handler called PreventDefault
+					return 0 // returning 0 from WM_CLOSE cancels the close
+				}
 			}
 			procDestroyWindow.Call(hwnd)
 			return 0
@@ -258,7 +293,7 @@ func (r *runtime) Run() error {
 	activeRT = r
 	activeMu.Unlock()
 
-	hwnd, err := createWindow("", true) // message-only window for Dispatch wakeups
+	hwnd, err := createWindow(window.Options{}, true) // message-only window for Dispatch wakeups
 	if err != nil {
 		return err
 	}
@@ -340,7 +375,7 @@ type manager struct {
 }
 
 func (m *manager) New(opts window.Options) (window.Window, error) {
-	hwnd, err := createWindow(opts.Title, false)
+	hwnd, err := createWindow(opts, false)
 	if err != nil {
 		return nil, err
 	}
@@ -439,6 +474,8 @@ type win struct {
 	env         unsafe.Pointer // ICoreWebView2Environment (set async)
 	events      map[window.Event][]func(window.EventData)
 	handlers    handlerSet // per-window COM callbacks, unpinned on dispose
+	envKeep     []any      // env-options objects pinned in handlerKeep, unpinned on dispose
+	closeFired  bool       // EventClose already fired (WM_CLOSE path); dispose won't re-fire
 }
 
 func (w *win) ID() window.ID      { return w.id }
@@ -460,12 +497,15 @@ func (w *win) startAttach(_ string) error {
 	// Empty userDataFolder => WebView2 picks the default per-user location.
 	// w.handlers.add tracks the env/controller completion handlers so they're
 	// unpinned when the window is disposed.
-	return createEnvironment(w.hwnd, "", schemeNames, w.handlers.add, func(core, controller, env unsafe.Pointer) {
-		// controller/core/env are *borrowed* references inside this callback;
-		// AddRef to retain them, else WebView2 releases them and our stored
-		// pointers dangle (crash on next use, e.g. WM_SIZE -> PutBounds on move).
+	keepEnv := func(objs []any) { w.mu.Lock(); w.envKeep = objs; w.mu.Unlock() }
+	return createEnvironment(w.hwnd, "", schemeNames, w.handlers.add, keepEnv, func(core, controller, env unsafe.Pointer) {
+		// controller/env are borrowed here; AddRef to retain them or WebView2
+		// releases them and our stored pointers dangle (crash on next use, e.g.
+		// WM_SIZE -> PutBounds). `core` is NOT AddRef'd: it came from
+		// get_CoreWebView2 (comCallOut), an [out,retval] getter that already returns
+		// an owned ref — dispose()'s single Release balances it. (AddRef'ing here too
+		// was a +1 leak per window. NEEDS Windows runtime validation.)
 		comCall(controller, iunknownAddRef)
-		comCall(core, iunknownAddRef)
 		comCall(env, iunknownAddRef)
 
 		w.mu.Lock()
@@ -600,9 +640,12 @@ func (w *win) State() window.State {
 	return w.state
 }
 
-// Close destroys the window. DestroyWindow must run on the thread that created
-// the window (the UI thread), so route it through the runtime dispatch instead
-// of calling it from whatever goroutine invokes Close.
+// Close destroys the window via the runtime dispatch, since DestroyWindow must
+// run on the creating (UI) thread.
+//
+// Close destroys the window. Programmatic close goes straight to WM_DESTROY
+// (bypassing WM_CLOSE/hideOnClose/PreventDefault — code that calls Close means
+// it); dispose() fires EventClose on that path so app teardown still runs.
 func (w *win) Close() {
 	hwnd := w.hwnd
 	if w.rt != nil {
@@ -612,14 +655,22 @@ func (w *win) Close() {
 	procDestroyWindow.Call(uintptr(hwnd))
 }
 
-// dispose closes the WebView2 controller and releases the COM objects we
-// AddRef'd in startAttach (controller/core/env). Called on WM_DESTROY so closing
-// a window doesn't leak the webview. Idempotent.
+// dispose closes the controller and releases the COM objects AddRef'd in
+// startAttach (controller/core/env). Called on WM_DESTROY. Idempotent.
 func (w *win) dispose() {
 	w.mu.Lock()
+	fireClose := !w.closeFired // WM_CLOSE already fired it on a user close
+	w.closeFired = true
 	core, controller, env := w.core, w.controller, w.env
 	w.core, w.controller, w.env = nil, nil, nil
+	envKeep := w.envKeep
+	w.envKeep = nil
 	w.mu.Unlock()
+	// On a programmatic Close (no WM_CLOSE), fire EventClose here so the app's
+	// per-window teardown (removeSender, bridge removal, winClose drain) runs.
+	if fireClose {
+		w.fire(window.EventClose)
+	}
 	if controller != nil {
 		comCall(controller, ctrlClose)
 		comCall(controller, iunknownRelease)
@@ -630,9 +681,12 @@ func (w *win) dispose() {
 	if env != nil {
 		comCall(env, iunknownRelease)
 	}
-	// WebView2 released its references above; now unpin our per-window COM
-	// callbacks so the handlers (and the *win they capture) can be collected.
+	// WebView2 has released its refs; now unpin our per-window callbacks AND the
+	// env-options graph so they (and the *win they capture) can be collected.
 	w.handlers.release()
+	for _, o := range envKeep {
+		handlerKeep.Delete(o)
+	}
 }
 func (w *win) SetHideOnClose(on bool) { w.mu.Lock(); w.hideOnClose = on; w.mu.Unlock() }
 
@@ -680,4 +734,24 @@ func (w *win) fire(evt window.Event) {
 	for _, fn := range fns {
 		fn(window.EventData{Window: id})
 	}
+}
+
+// fireClose dispatches EventClose and reports whether a handler vetoed via
+// PreventDefault. Handlers run synchronously on the UI thread, so `prevented`
+// needs no synchronization.
+func (w *win) fireClose() (prevented bool) {
+	w.mu.Lock()
+	fns := append([]func(window.EventData){}, w.events[window.EventClose]...)
+	id := w.id
+	w.mu.Unlock()
+	data := window.EventData{Window: id, PreventDefault: func() { prevented = true }}
+	for _, fn := range fns {
+		fn(data)
+	}
+	if !prevented { // close proceeds to WM_DESTROY; dispose must not re-fire EventClose
+		w.mu.Lock()
+		w.closeFired = true
+		w.mu.Unlock()
+	}
+	return prevented
 }

@@ -47,8 +47,7 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 	if nw == 0 {
 		return nil, fmt.Errorf("wkwebview: NSWindow init failed")
 	}
-	// We manage lifetime through the manager map — never let AppKit free the
-	// object underneath us on close.
+	// We own lifetime via the manager map; don't let AppKit free it on close.
 	nw.Send(sel("setReleasedWhenClosed:"), false)
 	if opts.Title != "" {
 		nw.Send(sel("setTitle:"), nsString(opts.Title))
@@ -132,8 +131,28 @@ type win struct {
 	view        *view
 	hideOnClose bool
 
-	mu     sync.Mutex
-	events map[window.Event][]func(window.EventData)
+	mu         sync.Mutex
+	events     map[window.Event][]func(window.EventData)
+	closeFired bool // EventClose already fired (windowShouldClose:); windowWillClose: won't re-fire
+}
+
+// fireClose dispatches a cancelable EventClose and reports whether a handler
+// vetoed via PreventDefault. Runs on the UI thread, so `prevented` needs no sync.
+func (w *win) fireClose() (prevented bool) {
+	w.mu.Lock()
+	fns := append([]func(window.EventData){}, w.events[window.EventClose]...)
+	id := w.id
+	w.mu.Unlock()
+	data := window.EventData{Window: id, PreventDefault: func() { prevented = true }}
+	for _, fn := range fns {
+		fn(data)
+	}
+	if !prevented {
+		w.mu.Lock()
+		w.closeFired = true
+		w.mu.Unlock()
+	}
+	return prevented
 }
 
 func (w *win) ID() window.ID      { return w.id }
@@ -201,9 +220,15 @@ func (w *win) SetAlwaysOnTop(on bool) {
 	dispatchMain(func() { w.nw.Send(sel("setLevel:"), level) })
 }
 
-func (w *win) IsVisible() bool { return true } // TODO: isVisible readback (hardware validation)
+func (w *win) IsVisible() bool {
+	ch := make(chan bool, 1)
+	dispatchMain(func() { ch <- w.nw.Send(sel("isVisible")) != 0 })
+	return <-ch
+}
 
-func (w *win) State() window.State { return window.StateNormal } // TODO
+// State is not tracked (would need NSWindow notification observers); the
+// minimize/maximize setters above still work.
+func (w *win) State() window.State { return window.StateNormal }
 
 func (w *win) Close() { dispatchMain(func() { w.nw.Send(sel("close")) }) }
 
@@ -246,6 +271,7 @@ func registerWinDelegate(w *win) {
 					// hide-on-close: intercept before the window is destroyed
 					Cmd: sel("windowShouldClose:"),
 					Fn: func(self objc.ID, _ objc.SEL, sender objc.ID) bool {
+						defer recoverCB("windowShouldClose:")
 						v, ok := winByDelegate.Load(self)
 						if !ok {
 							return true
@@ -258,19 +284,33 @@ func registerWinDelegate(w *win) {
 							w.Hide()
 							return false
 						}
+						if w.fireClose() { // EventClose handler called PreventDefault
+							return false
+						}
 						return true
 					},
 				},
 				{
 					Cmd: sel("windowWillClose:"),
 					Fn: func(self objc.ID, _ objc.SEL, _ objc.ID) {
+						defer recoverCB("windowWillClose:")
 						v, ok := winByDelegate.Load(self)
 						if !ok {
 							return
 						}
 						w := v.(*win)
 						winByDelegate.Delete(self)
-						w.fire(window.EventClose)
+						viewByWK.Delete(w.view.wk)    // drop the Go-side view pin
+						w.nw.Send(sel("autorelease")) // we owned it (setReleasedWhenClosed:false)
+						// PreventDefault was already offered by windowShouldClose: (which
+						// sets closeFired when the close proceeds). Programmatic -close
+						// skips windowShouldClose:, so fire EventClose here if it didn't.
+						w.mu.Lock()
+						fired := w.closeFired
+						w.mu.Unlock()
+						if !fired {
+							w.fire(window.EventClose)
+						}
 						if w.rt.manager.remove(w.id) == 0 {
 							w.rt.Quit()
 						}
@@ -279,6 +319,7 @@ func registerWinDelegate(w *win) {
 				{
 					Cmd: sel("windowDidResize:"),
 					Fn: func(self objc.ID, _ objc.SEL, _ objc.ID) {
+						defer recoverCB("windowDidResize:")
 						if v, ok := winByDelegate.Load(self); ok {
 							v.(*win).fire(window.EventResize)
 						}
@@ -287,6 +328,7 @@ func registerWinDelegate(w *win) {
 				{
 					Cmd: sel("windowDidBecomeKey:"),
 					Fn: func(self objc.ID, _ objc.SEL, _ objc.ID) {
+						defer recoverCB("windowDidBecomeKey:")
 						if v, ok := winByDelegate.Load(self); ok {
 							v.(*win).fire(window.EventFocus)
 						}
@@ -295,6 +337,7 @@ func registerWinDelegate(w *win) {
 				{
 					Cmd: sel("windowDidResignKey:"),
 					Fn: func(self objc.ID, _ objc.SEL, _ objc.ID) {
+						defer recoverCB("windowDidResignKey:")
 						if v, ok := winByDelegate.Load(self); ok {
 							v.(*win).fire(window.EventBlur)
 						}

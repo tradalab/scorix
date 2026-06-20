@@ -132,6 +132,7 @@ func newScriptHandler() objc.ID {
 				{
 					Cmd: sel("userContentController:didReceiveScriptMessage:"),
 					Fn: func(self objc.ID, _ objc.SEL, _ objc.ID, message objc.ID) {
+						defer recoverCB("didReceiveScriptMessage")
 						wk := message.Send(sel("webView"))
 						body := message.Send(sel("body"))
 						raw := nsStringToGo(body)
@@ -168,6 +169,7 @@ func newSchemeHandler() objc.ID {
 				{
 					Cmd: sel("webView:startURLSchemeTask:"),
 					Fn: func(self objc.ID, _ objc.SEL, _ objc.ID, task objc.ID) {
+						defer recoverCB("startURLSchemeTask")
 						serveSchemeTask(task)
 					},
 				},
@@ -225,9 +227,8 @@ func serveSchemeTask(task objc.ID) {
 	if len(body) > 0 {
 		ptr = unsafe.Pointer(&body[0])
 	}
-	// dataWithBytes:length: COPIES the buffer synchronously during the call
-	// (unlike dataWithBytesNoCopy:), and purego keeps ptr alive for the call —
-	// so handing it Go-managed memory is safe; NSData owns its own copy after.
+	// dataWithBytes:length: copies synchronously (unlike dataWithBytesNoCopy:) and
+	// purego keeps ptr alive for the call, so passing Go memory is safe.
 	data := msgSendBytesLen(objc.ID(cls("NSData")), sel("dataWithBytes:length:"), ptr, uint64(len(body)))
 	task.Send(sel("didReceiveData:"), data)
 	task.Send(sel("didFinish"))

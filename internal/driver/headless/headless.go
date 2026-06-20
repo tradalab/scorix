@@ -153,8 +153,15 @@ type win struct {
 	x, y    int
 	state   window.State
 	visible bool
+	closed  bool
 	view    *view
 	events  map[window.Event][]func(window.EventData)
+}
+
+func (w *win) Closed() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.closed
 }
 
 func (w *win) ID() window.ID      { return w.id }
@@ -234,7 +241,23 @@ func (w *win) State() window.State {
 	return w.state
 }
 
-func (w *win) Close()              { w.fire(window.EventClose) }
+func (w *win) Close() {
+	w.mu.Lock()
+	fns := append([]func(window.EventData){}, w.events[window.EventClose]...)
+	data := window.EventData{Window: w.id, W: w.w, H: w.h, X: w.x, Y: w.y}
+	w.mu.Unlock()
+	prevented := false
+	data.PreventDefault = func() { prevented = true }
+	for _, fn := range fns {
+		fn(data)
+	}
+	if prevented {
+		return
+	}
+	w.mu.Lock()
+	w.closed = true
+	w.mu.Unlock()
+}
 func (w *win) SetHideOnClose(bool) {}
 
 func (w *win) On(evt window.Event, fn func(window.EventData)) {

@@ -118,6 +118,7 @@ var (
 func initDispatch() {
 	idleOnce.Do(func() {
 		idleCB = purego.NewCallback(func(data uintptr) uintptr {
+			defer recoverCB("dispatch-idle")
 			taskMu.Lock()
 			fn := taskMap[data]
 			delete(taskMap, data)

@@ -31,10 +31,17 @@ var (
 func initWinSignals() {
 	winSignals.Do(func() {
 		destroyCB = purego.NewCallback(func(widget, _ uintptr) uintptr {
+			defer recoverCB("window-destroy")
 			if v, ok := winByWidget.Load(widget); ok {
 				w := v.(*win)
 				winByWidget.Delete(widget)
-				w.fire(window.EventClose)
+				viewByUcm.Delete(w.view.ucm)
+				w.mu.Lock()
+				fired := w.closeFired
+				w.mu.Unlock()
+				if !fired {
+					w.fire(window.EventClose)
+				}
 				if w.rt.manager.remove(w.id) == 0 {
 					gtkMainQuit()
 				}
@@ -44,6 +51,7 @@ func initWinSignals() {
 		// "delete-event": close button pressed — TRUE swallows the close
 		// (hide-on-close), FALSE lets GTK destroy the window.
 		deleteCB = purego.NewCallback(func(widget, _, _ uintptr) uintptr {
+			defer recoverCB("window-delete-event")
 			if v, ok := winByWidget.Load(widget); ok {
 				w := v.(*win)
 				w.mu.Lock()
@@ -51,10 +59,13 @@ func initWinSignals() {
 				w.mu.Unlock()
 				if hide {
 					gtkWidgetHide(widget)
+					return 1 // TRUE: swallow the close
+				}
+				if w.fireClose() { // EventClose handler called PreventDefault
 					return 1
 				}
 			}
-			return 0
+			return 0 // FALSE: let GTK destroy the window
 		})
 	})
 }
@@ -158,8 +169,26 @@ type win struct {
 	view        *view
 	hideOnClose bool
 
-	mu     sync.Mutex
-	events map[window.Event][]func(window.EventData)
+	mu         sync.Mutex
+	events     map[window.Event][]func(window.EventData)
+	closeFired bool // EventClose already fired (delete-event); destroy won't re-fire
+}
+
+func (w *win) fireClose() (prevented bool) {
+	w.mu.Lock()
+	fns := append([]func(window.EventData){}, w.events[window.EventClose]...)
+	id := w.id
+	w.mu.Unlock()
+	data := window.EventData{Window: id, PreventDefault: func() { prevented = true }}
+	for _, fn := range fns {
+		fn(data)
+	}
+	if !prevented {
+		w.mu.Lock()
+		w.closeFired = true
+		w.mu.Unlock()
+	}
+	return prevented
 }
 
 func (w *win) ID() window.ID      { return w.id }
@@ -199,10 +228,13 @@ func (w *win) Position() (int, int) {
 	return int(p.x), int(p.y)
 }
 
-func (w *win) SetMinSize(int, int) {} // TODO: gtk_widget_set_size_request / geometry hints
-func (w *win) SetMaxSize(int, int) {} // TODO: GdkGeometry hints
+func (w *win) SetMinSize(width, height int) {
+	dispatchMain(func() { gtkWidgetSetSizeReq(w.gw, int32(width), int32(height)) })
+}
 
-func (w *win) Center() {} // GTK3 centers via gtk_window_set_position before show — TODO
+func (w *win) SetMaxSize(int, int) {} // GdkGeometry max hints — not wired (rarely used)
+
+func (w *win) Center() { dispatchMain(func() { gtkWindowSetPosition(w.gw, 1) }) }
 
 func (w *win) Show() { dispatchMain(func() { gtkWidgetShowAll(w.gw); gtkWindowPresent(w.gw) }) }
 func (w *win) Hide() { dispatchMain(func() { gtkWidgetHide(w.gw) }) }
@@ -232,8 +264,13 @@ func (w *win) SetAlwaysOnTop(on bool) {
 	dispatchMain(func() { gtkWindowKeepAbove(w.gw, v) })
 }
 
-func (w *win) IsVisible() bool     { return true }              // TODO: gtk_widget_get_visible
-func (w *win) State() window.State { return window.StateNormal } // TODO
+func (w *win) IsVisible() bool {
+	ch := make(chan bool, 1)
+	dispatchMain(func() { ch <- gtkWidgetGetVisible(w.gw) != 0 })
+	return <-ch
+}
+
+func (w *win) State() window.State { return window.StateNormal }
 
 func (w *win) Close() { dispatchMain(func() { gtkWidgetDestroy(w.gw) }) }
 

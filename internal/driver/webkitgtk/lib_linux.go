@@ -18,7 +18,7 @@ import (
 const (
 	gtkWindowToplevel int32 = 0
 
-	webkitInjectAllFrames    int32 = 0 // WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES
+	webkitInjectAllFrames     int32 = 0 // WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES
 	webkitInjectDocumentStart int32 = 0 // WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START
 )
 
@@ -46,16 +46,19 @@ var (
 	gtkWindowKeepAbove   func(uintptr, int32)
 	gtkWindowSetDecor    func(uintptr, int32)
 	gtkWindowSetResize   func(uintptr, int32)
+	gtkWindowSetPosition func(uintptr, int32)
 	gtkWidgetShowAll     func(uintptr)
 	gtkWidgetHide        func(uintptr)
 	gtkWidgetShow        func(uintptr)
 	gtkWidgetDestroy     func(uintptr)
+	gtkWidgetSetSizeReq  func(uintptr, int32, int32)
+	gtkWidgetGetVisible  func(uintptr) int32
 	gtkContainerAdd      func(uintptr, uintptr)
 
 	gSignalConnectData func(uintptr, string, uintptr, uintptr, uintptr, int32) uint64
 	gIdleAdd           func(uintptr, uintptr) uint32
-	gFreeAddr          uintptr        // g_free as a GDestroyNotify (passed to g_memory_input_stream_new_from_data)
-	gFree              func(uintptr)  // g_free as a callable (frees gchar* from jsc_value_to_string etc.)
+	gFreeAddr          uintptr       // g_free as a GDestroyNotify (passed to g_memory_input_stream_new_from_data)
+	gFree              func(uintptr) // g_free as a callable (frees gchar* from jsc_value_to_string etc.)
 	gMemdup            func(unsafe.Pointer, uint64) uintptr
 	gMemStreamNew      func(uintptr, int64, uintptr) uintptr
 
@@ -156,10 +159,13 @@ func initLibs() error {
 		purego.RegisterLibFunc(&gtkWindowKeepAbove, gtk, "gtk_window_set_keep_above")
 		purego.RegisterLibFunc(&gtkWindowSetDecor, gtk, "gtk_window_set_decorated")
 		purego.RegisterLibFunc(&gtkWindowSetResize, gtk, "gtk_window_set_resizable")
+		purego.RegisterLibFunc(&gtkWindowSetPosition, gtk, "gtk_window_set_position")
 		purego.RegisterLibFunc(&gtkWidgetShowAll, gtk, "gtk_widget_show_all")
 		purego.RegisterLibFunc(&gtkWidgetHide, gtk, "gtk_widget_hide")
 		purego.RegisterLibFunc(&gtkWidgetShow, gtk, "gtk_widget_show")
 		purego.RegisterLibFunc(&gtkWidgetDestroy, gtk, "gtk_widget_destroy")
+		purego.RegisterLibFunc(&gtkWidgetSetSizeReq, gtk, "gtk_widget_set_size_request")
+		purego.RegisterLibFunc(&gtkWidgetGetVisible, gtk, "gtk_widget_get_visible")
 		purego.RegisterLibFunc(&gtkContainerAdd, gtk, "gtk_container_add")
 
 		purego.RegisterLibFunc(&gSignalConnectData, gobject, "g_signal_connect_data")

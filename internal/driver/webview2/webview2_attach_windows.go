@@ -106,7 +106,7 @@ func extractEmbeddedLoader() (string, error) {
 // createEnvironment starts the async WebView2 bring-up for hwnd. schemes are
 // registered as custom schemes (e.g. "scorix"). onCore runs on the UI thread
 // once the ICoreWebView2 + controller exist.
-func createEnvironment(hwnd windows.Handle, userDataFolder string, schemes []string, track func(*handler) *handler, onCore func(core, controller, env unsafe.Pointer)) error {
+func createEnvironment(hwnd windows.Handle, userDataFolder string, schemes []string, track func(*handler) *handler, keepEnv func([]any), onCore func(core, controller, env unsafe.Pointer)) error {
 	create, err := loadCreateEnv()
 	if err != nil {
 		return err
@@ -114,11 +114,15 @@ func createEnvironment(hwnd windows.Handle, userDataFolder string, schemes []str
 
 	var optionsPtr uintptr
 	if len(schemes) > 0 {
-		optionsPtr = uintptr(buildEnvOptions(schemes))
+		ptr, keep := buildEnvOptions(schemes)
+		optionsPtr = uintptr(ptr)
+		if keepEnv != nil {
+			keepEnv(keep) // caller unpins these in dispose()
+		}
 	}
 
-	// Held by the closures + handlerKeep, so safe from GC. track records them so
-	// they're unpinned when the window is disposed (else they leak per window).
+	// track records these completion handlers so they're unpinned on dispose
+	// (else they leak per window).
 	envHandler := track(newHandler(func(_ /*hr*/, env unsafe.Pointer) {
 		if env == nil {
 			return
@@ -135,9 +139,8 @@ func createEnvironment(hwnd windows.Handle, userDataFolder string, schemes []str
 		comCall(env, envCreateController, uintptr(hwnd), uintptr(unsafe.Pointer(ctrlHandler)))
 	}))
 
-	// Pass a real NULL (not a pointer to an empty UTF-16 string) when no folder
-	// is configured, so WebView2 uses its default per-user location instead of
-	// possibly rejecting "" or writing beside the exe.
+	// Pass real NULL (not a pointer to "") when unset, so WebView2 uses its
+	// default per-user location instead of rejecting "" / writing beside the exe.
 	var udf *uint16
 	var udfArg uintptr
 	if userDataFolder != "" {

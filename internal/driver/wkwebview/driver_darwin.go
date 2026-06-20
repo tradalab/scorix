@@ -79,10 +79,9 @@ func (r *rt) Run() error {
 	return nil
 }
 
-// Quit stops the event loop. -stop: only takes effect once an event is
-// processed, so a no-op application-defined event is posted to wake the loop —
-// the standard AppKit idiom for programmatic termination that RETURNS (unlike
-// -terminate:, which exits the process and would skip Go-side shutdown).
+// Quit stops the event loop. -stop: only takes effect on the next event, so a
+// no-op event is posted to wake the loop. (-terminate: would exit the process
+// and skip Go-side shutdown, so it's avoided.)
 func (r *rt) Quit() {
 	r.fire(window.RuntimeBeforeQuit)
 	dispatchMain(func() {
@@ -132,6 +131,7 @@ func newAppDelegate(r *rt) objc.ID {
 				{
 					Cmd: sel("applicationDidFinishLaunching:"),
 					Fn: func(self objc.ID, _ objc.SEL, _ objc.ID) {
+						defer recoverCB("applicationDidFinishLaunching")
 						activeMu.Lock()
 						rt := activeRT
 						activeMu.Unlock()

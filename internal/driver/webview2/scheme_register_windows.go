@@ -150,22 +150,28 @@ type schemeReg struct {
 	name string
 }
 
-// buildEnvOptions creates the COM options object registering each scheme name,
-// and returns the ICoreWebView2EnvironmentOptions* (base head). All objects are
-// pinned against GC for the process lifetime.
-func buildEnvOptions(schemes []string) unsafe.Pointer {
+// buildEnvOptions builds the COM options object registering each scheme name and
+// returns the ICoreWebView2EnvironmentOptions* (base head) plus the GC-pin keys.
+// Objects are pinned in handlerKeep so the GC can't move/collect them while
+// WebView2 reads them during environment creation; the caller unpins the returned
+// keys in dispose() (WebView2 consumes the options object during creation and
+// doesn't retain it), so a scheme-registered window no longer leaks them for the
+// process lifetime. NEEDS Windows runtime validation.
+func buildEnvOptions(schemes []string) (unsafe.Pointer, []any) {
 	owner := &envOptions{}
+	var keep []any
+	pin := func(o any) { handlerKeep.Store(o, struct{}{}); keep = append(keep, o) }
 	for _, s := range schemes {
 		sr := &schemeReg{vtbl: uintptr(unsafe.Pointer(schemeRegVtbl)), name: s}
-		handlerKeep.Store(sr, struct{}{})
+		pin(sr)
 		owner.regs = append(owner.regs, sr)
 	}
 	owner.baseHead = &envOptHead{vtbl: uintptr(unsafe.Pointer(envOptionsBaseVtbl)), owner: owner}
 	owner.opts4Head = &envOptHead{vtbl: uintptr(unsafe.Pointer(envOptions4Vtbl)), owner: owner}
-	handlerKeep.Store(owner, struct{}{})
-	handlerKeep.Store(owner.baseHead, struct{}{})
-	handlerKeep.Store(owner.opts4Head, struct{}{})
-	return unsafe.Pointer(owner.baseHead)
+	pin(owner)
+	pin(owner.baseHead)
+	pin(owner.opts4Head)
+	return unsafe.Pointer(owner.baseHead), keep
 }
 
 // ── trampolines (C boundary: uintptr args; see com_windows.go note) ──────────

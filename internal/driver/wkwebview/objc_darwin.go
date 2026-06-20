@@ -100,6 +100,7 @@ func initObjC() error {
 		mainQueue = mq
 
 		workCallback = purego.NewCallback(func(ctx uintptr) uintptr {
+			defer recoverCB("dispatchTask")
 			runDispatchTask(ctx)
 			return 0
 		})

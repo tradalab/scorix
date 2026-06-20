@@ -27,11 +27,11 @@ type view struct {
 }
 
 var (
-	viewByUcm   sync.Map // ucm ptr -> *view
-	scriptCB    uintptr
-	scriptOnce  sync.Once
-	schemeCB    uintptr
-	schemeOnce  sync.Once
+	viewByUcm  sync.Map // ucm ptr -> *view
+	scriptCB   uintptr
+	scriptOnce sync.Once
+	schemeCB   uintptr
+	schemeOnce sync.Once
 )
 
 func newView(r *rt, opts window.Options) (*view, error) {
@@ -42,6 +42,7 @@ func newView(r *rt, opts window.Options) (*view, error) {
 
 	scriptOnce.Do(func() {
 		scriptCB = purego.NewCallback(func(ucm, jsResult, _ uintptr) uintptr {
+			defer recoverCB("script-message-received")
 			if vv, ok := viewByUcm.Load(ucm); ok {
 				val := wkJSResultGetValue(jsResult)
 				// jsc_value_to_string returns a gchar* the caller owns — read it
@@ -76,6 +77,7 @@ func newView(r *rt, opts window.Options) (*view, error) {
 func registerSchemes(r *rt) {
 	schemeOnce.Do(func() {
 		schemeCB = purego.NewCallback(func(req, _ uintptr) uintptr {
+			defer recoverCB("scheme-request")
 			serveSchemeRequest(req)
 			return 0
 		})
@@ -121,8 +123,8 @@ func serveSchemeRequest(req uintptr) {
 		}
 	}
 
-	// Copy into C memory (g_memdup2) — WebKit consumes the stream async, so
-	// handing it Go-managed bytes would race the GC. g_free owns the copy.
+	// Copy into C memory (g_memdup2): WebKit drains the stream async, so Go bytes
+	// would race the GC. g_free owns the copy.
 	var src unsafe.Pointer
 	if len(body) > 0 {
 		src = unsafe.Pointer(&body[0])

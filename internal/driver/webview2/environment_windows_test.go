@@ -6,6 +6,8 @@ import (
 	goruntime "runtime"
 	"testing"
 	"unsafe"
+
+	"github.com/tradalab/scorix/window"
 )
 
 // TestEnvironmentOptionsAccepted creates a real WebView2 environment with the
@@ -21,7 +23,7 @@ func TestEnvironmentOptionsAccepted(t *testing.T) {
 
 	// Message-only window suffices: CreateCoreWebView2EnvironmentWithOptions
 	// validates the options object synchronously, before the hwnd is used.
-	hwnd, err := createWindow("", true)
+	hwnd, err := createWindow(window.Options{}, true)
 	if err != nil {
 		t.Fatalf("createWindow: %v", err)
 	}
@@ -29,7 +31,7 @@ func TestEnvironmentOptionsAccepted(t *testing.T) {
 	var pinned []*handler // keep callbacks alive past the (queued) async bring-up
 	track := func(h *handler) *handler { pinned = append(pinned, h); return h }
 
-	err = createEnvironment(hwnd, "", []string{"scorix"}, track, func(_, _, _ unsafe.Pointer) {})
+	err = createEnvironment(hwnd, "", []string{"scorix"}, track, nil, func(_, _, _ unsafe.Pointer) {})
 	if err != nil {
 		t.Fatalf("WebView2 rejected the environment options object: %v\n"+
 			"a hand-rolled ICoreWebView2EnvironmentOptions getter returns a value the runtime rejects "+
