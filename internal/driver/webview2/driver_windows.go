@@ -59,6 +59,10 @@ var (
 	procIsWindowVisible  = user32.NewProc("IsWindowVisible")
 	procSetForegroundWin = user32.NewProc("SetForegroundWindow")
 	procLoadCursorW      = user32.NewProc("LoadCursorW")
+	procMonitorFromWin   = user32.NewProc("MonitorFromWindow")
+	procGetMonitorInfoW  = user32.NewProc("GetMonitorInfoW")
+	procGetWindowLongPtr = user32.NewProc("GetWindowLongPtrW")
+	procSetWindowLongPtr = user32.NewProc("SetWindowLongPtrW")
 	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
 )
 
@@ -79,16 +83,21 @@ const (
 	smCxScreen uintptr = 0
 	smCyScreen uintptr = 1
 
-	swpNoSize     uintptr = 0x0001
-	swpNoMove     uintptr = 0x0002
-	swpNoZOrder   uintptr = 0x0004
-	swpNoActivate uintptr = 0x0010
+	swpNoSize       uintptr = 0x0001
+	swpNoMove       uintptr = 0x0002
+	swpNoZOrder     uintptr = 0x0004
+	swpNoActivate   uintptr = 0x0010
+	swpFrameChanged uintptr = 0x0020
 
-	wmDestroy uint32 = 0x0002
-	wmMove    uint32 = 0x0003
-	wmSize    uint32 = 0x0005
-	wmClose   uint32 = 0x0010
-	wmApp     uint32 = 0x8000
+	gwlStyle                 = ^uintptr(15) // GWL_STYLE (-16)
+	monitorToNearest uintptr = 2            // MONITOR_DEFAULTTONEAREST
+
+	wmDestroy       uint32 = 0x0002
+	wmMove          uint32 = 0x0003
+	wmSize          uint32 = 0x0005
+	wmClose         uint32 = 0x0010
+	wmGetMinMaxInfo uint32 = 0x0024
+	wmApp           uint32 = 0x8000
 
 	sizeMinimized uintptr = 1
 	sizeMaximized uintptr = 2
@@ -129,6 +138,21 @@ type tagMSG struct {
 }
 
 type tagRECT struct{ left, top, right, bottom int32 }
+
+type tagMINMAXINFO struct {
+	ptReserved     tagPOINT
+	ptMaxSize      tagPOINT
+	ptMaxPosition  tagPOINT
+	ptMinTrackSize tagPOINT
+	ptMaxTrackSize tagPOINT
+}
+
+type monitorInfo struct {
+	cbSize    uint32
+	rcMonitor tagRECT
+	rcWork    tagRECT
+	dwFlags   uint32
+}
 
 var (
 	classOnce   sync.Once
@@ -248,6 +272,10 @@ func wndProc(hwnd, message, wParam, lParam uintptr) uintptr {
 				w.fire(window.EventMove)
 			}
 			return 0
+		case wmGetMinMaxInfo:
+			if w := rt.manager.byHandle(h); w != nil && w.applyMinMax(lParam) {
+				return 0 // we set the limits; otherwise fall through to DefWindowProc
+			}
 		case wmClose:
 			if w := rt.manager.byHandle(h); w != nil {
 				if w.hideOnCloseEnabled() {
@@ -476,6 +504,10 @@ type win struct {
 	handlers    handlerSet // per-window COM callbacks, unpinned on dispose
 	envKeep     []any      // env-options objects pinned in handlerKeep, unpinned on dispose
 	closeFired  bool       // EventClose already fired (WM_CLOSE path); dispose won't re-fire
+
+	fullscreen bool    // currently borderless-fullscreen
+	fsStyle    uintptr // windowed GWL_STYLE, restored on exit
+	fsRect     tagRECT // windowed rect, restored on exit
 }
 
 func (w *win) ID() window.ID      { return w.id }
@@ -592,6 +624,31 @@ func (w *win) SetMaxSize(a, b int) {
 	w.mu.Unlock()
 }
 
+func (w *win) applyMinMax(lParam uintptr) bool {
+	w.mu.Lock()
+	minW, minH := w.opts.MinWidth, w.opts.MinHeight
+	maxW, maxH := w.opts.MaxWidth, w.opts.MaxHeight
+	fs := w.fullscreen
+	w.mu.Unlock()
+	if fs || (minW <= 0 && minH <= 0 && maxW <= 0 && maxH <= 0) {
+		return false
+	}
+	mmi := (*tagMINMAXINFO)(unsafe.Pointer(lParam))
+	if minW > 0 {
+		mmi.ptMinTrackSize.x = int32(minW)
+	}
+	if minH > 0 {
+		mmi.ptMinTrackSize.y = int32(minH)
+	}
+	if maxW > 0 {
+		mmi.ptMaxTrackSize.x = int32(maxW)
+	}
+	if maxH > 0 {
+		mmi.ptMaxTrackSize.y = int32(maxH)
+	}
+	return true
+}
+
 func (w *win) Center() {
 	cw, ch := w.Size()
 	sw, _, _ := procGetSystemMetrics.Call(smCxScreen)
@@ -613,12 +670,40 @@ func (w *win) Restore()    { procShowWindow.Call(uintptr(w.hwnd), swRestore) }
 
 func (w *win) SetFullscreen(on bool) {
 	// Approximation via maximize; true borderless-fullscreen (style swap +
-	// monitor rect) is a follow-up.
-	if on {
-		procShowWindow.Call(uintptr(w.hwnd), swMaximize)
+	// monitor rect).
+	w.mu.Lock()
+	if on == w.fullscreen {
+		w.mu.Unlock()
 		return
 	}
-	procShowWindow.Call(uintptr(w.hwnd), swRestore)
+	if on {
+		style, _, _ := procGetWindowLongPtr.Call(uintptr(w.hwnd), gwlStyle)
+		w.fsStyle = style
+		procGetWindowRect.Call(uintptr(w.hwnd), uintptr(unsafe.Pointer(&w.fsRect)))
+		w.fullscreen = true
+		w.mu.Unlock()
+		// Strip the caption/border, then cover the monitor.
+		procSetWindowLongPtr.Call(uintptr(w.hwnd), gwlStyle, style&^wsOverlappedWindow)
+		mr := monitorRect(w.hwnd)
+		procSetWindowPos.Call(uintptr(w.hwnd), 0, uintptr(mr.left), uintptr(mr.top),
+			uintptr(mr.right-mr.left), uintptr(mr.bottom-mr.top), swpNoZOrder|swpFrameChanged)
+		return
+	}
+	style, r := w.fsStyle, w.fsRect
+	w.fullscreen = false
+	w.mu.Unlock()
+	procSetWindowLongPtr.Call(uintptr(w.hwnd), gwlStyle, style)
+	procSetWindowPos.Call(uintptr(w.hwnd), 0, uintptr(r.left), uintptr(r.top),
+		uintptr(r.right-r.left), uintptr(r.bottom-r.top), swpNoZOrder|swpFrameChanged)
+}
+
+// monitorRect returns the full bounds of the monitor the window is on.
+func monitorRect(hwnd windows.Handle) tagRECT {
+	hmon, _, _ := procMonitorFromWin.Call(uintptr(hwnd), monitorToNearest)
+	mi := monitorInfo{}
+	mi.cbSize = uint32(unsafe.Sizeof(mi))
+	procGetMonitorInfoW.Call(hmon, uintptr(unsafe.Pointer(&mi)))
+	return mi.rcMonitor
 }
 
 func (w *win) SetAlwaysOnTop(on bool) {

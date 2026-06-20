@@ -48,6 +48,12 @@ type WindowConfig struct {
 	Title       string `yaml:"title" json:"title" env:""`
 	Width       int    `yaml:"width" json:"width" env:""`
 	Height      int    `yaml:"height" json:"height" env:""`
+	MinWidth    int    `yaml:"min_width" json:"min_width"`
+	MinHeight   int    `yaml:"min_height" json:"min_height"`
+	MaxWidth    int    `yaml:"max_width" json:"max_width"`
+	MaxHeight   int    `yaml:"max_height" json:"max_height"`
+	Resizable   bool   `yaml:"resizable" json:"resizable"`
+	Frameless   bool   `yaml:"frameless" json:"frameless"`
 	Debug       bool   `yaml:"debug" json:"debug" env:""`
 	HideOnClose bool   `yaml:"hide_on_close" json:"hide_on_close" env:""`
 }

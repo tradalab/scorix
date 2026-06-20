@@ -10,6 +10,7 @@ func DefaultConfig() *Config {
 	cfg.Window.Title = "SCORIX"
 	cfg.Window.Width = 1000
 	cfg.Window.Height = 700
+	cfg.Window.Resizable = true
 	cfg.Window.Debug = false
 	cfg.Dev.HotReload = false
 	cfg.Security.CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';"

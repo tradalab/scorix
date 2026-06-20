@@ -109,6 +109,11 @@ func New(opts Options) (*App, error) {
 	if !hasManifest && cfg.Security.CSP == "" {
 		cfg.Security.CSP = "default"
 	}
+	// No-manifest path skips DefaultConfig, so default the main window to resizable
+	// (a bare Options{} would otherwise create a non-resizable window).
+	if !hasManifest {
+		cfg.Window.Resizable = true
+	}
 	// Re-validate: the overlay can push out-of-range values past FromBytes's check.
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("app: validate config after overrides: %w", err)
@@ -365,11 +370,17 @@ func (a *App) Run() error {
 
 	rt.On(window.RuntimeReady, func() {
 		aw, err := a.attachWindow(rt, window.Options{
-			Title:  a.opts.Title,
-			Width:  a.opts.Width,
-			Height: a.opts.Height,
-			Center: true,
-			URL:    mainURL,
+			Title:     a.opts.Title,
+			Width:     a.opts.Width,
+			Height:    a.opts.Height,
+			MinWidth:  a.cfg.Window.MinWidth,
+			MinHeight: a.cfg.Window.MinHeight,
+			MaxWidth:  a.cfg.Window.MaxWidth,
+			MaxHeight: a.cfg.Window.MaxHeight,
+			Resizable: a.cfg.Window.Resizable,
+			Frameless: a.cfg.Window.Frameless,
+			Center:    true,
+			URL:       mainURL,
 		})
 		if err != nil {
 			logger.Error("app: failed to open main window — quitting", "err", err)
