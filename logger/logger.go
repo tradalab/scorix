@@ -4,14 +4,15 @@ import (
 	"io"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
 var (
-	log         *zap.Logger
-	sugar       *zap.SugaredLogger
+	logPtr      atomic.Pointer[zap.Logger]
+	sugarPtr    atomic.Pointer[zap.SugaredLogger]
 	defaultOnce sync.Once
 )
 
@@ -39,12 +40,13 @@ func New(cfg Config) {
 
 	core := zapcore.NewCore(encoder, zapcore.AddSync(writer), level)
 
-	log = zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
-	sugar = log.Sugar()
+	l := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
+	logPtr.Store(l)
+	sugarPtr.Store(l.Sugar())
 }
 
 func ensure() {
-	if log != nil {
+	if logPtr.Load() != nil {
 		return
 	}
 	defaultOnce.Do(func() {
@@ -57,4 +59,9 @@ func ensure() {
 			MaxAge:  7,
 		})
 	})
+}
+
+func get() *zap.SugaredLogger {
+	ensure()
+	return sugarPtr.Load()
 }
