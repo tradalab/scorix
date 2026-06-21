@@ -86,7 +86,7 @@ func Init(ctx context.Context, opt InitOptions) error {
 	fmt.Println("==> Running initial scorix generate proto...")
 	if err := GenerateProto(ctx, GenerateProtoOptions{
 		Dir:   root,
-		Proto: filepath.Join(root, "proto", "app.proto"),
+		Proto: filepath.Join(root, "idl", "app.proto"),
 		Force: true,
 	}); err != nil {
 		fmt.Printf("warning: initial generate proto failed: %v\n", err)

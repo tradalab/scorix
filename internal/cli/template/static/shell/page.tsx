@@ -63,7 +63,7 @@ export default function Home() {
           <div className="p-6 text-left bg-slate-900/40 border border-slate-800 rounded-3xl opacity-60">
             <h3 className="text-lg font-semibold">Project Root &rarr;</h3>
             <p className="mt-2 text-sm text-slate-500 leading-relaxed">
-              Start by editing <code className="text-slate-300">proto/app.proto</code> to define your services.
+              Start by editing <code className="text-slate-300">idl/app.proto</code> to define your services.
             </p>
           </div>
         </div>

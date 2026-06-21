@@ -12,7 +12,7 @@ import (
 
 func GenerateProto(ctx context.Context, opt GenerateProtoOptions) error {
 	if opt.Proto == "" {
-		opt.Proto = "proto/app.proto"
+		opt.Proto = "idl/app.proto"
 	}
 	if opt.Dir == "" {
 		opt.Dir = "."
@@ -23,6 +23,13 @@ func GenerateProto(ctx context.Context, opt GenerateProtoOptions) error {
 		return err
 	}
 	protoPath := opt.Proto
+	// Flag default (untouched by the caller) yields to scorix.yaml's proto: key;
+	// an explicit --proto still wins. Missing/unreadable manifest → keep default.
+	if protoPath == "idl/app.proto" {
+		if cfg, cfgErr := loadProjectConfig(filepath.Join(root, "scorix.yaml")); cfgErr == nil && cfg.Proto != "" {
+			protoPath = cfg.Proto
+		}
+	}
 	if !filepath.IsAbs(protoPath) {
 		protoPath = filepath.Join(root, protoPath)
 	}

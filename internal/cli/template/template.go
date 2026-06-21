@@ -26,7 +26,7 @@ const (
 	ShellHooksEvents = "static/shell/hooks_events.ts"
 
 	ProjectScorixYaml = "static/project/scorix.yaml"
-	ProjectProto      = "static/project/proto/app.proto"
+	ProjectProto      = "static/project/idl/app.proto"
 
 	InstallerWindows = "static/project/installer/windows"
 	InstallerLinux   = "static/project/installer/linux"

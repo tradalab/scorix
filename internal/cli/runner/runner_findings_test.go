@@ -124,7 +124,7 @@ func TestGenerateProto_RenderFailureWritesNothing(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, "go.mod"), "module example.com/app\n\ngo 1.26\n")
 	// Empty proto → GenerateProto errors before producing files.
-	mustWrite(t, filepath.Join(root, "proto", "app.proto"), "")
+	mustWrite(t, filepath.Join(root, "idl", "app.proto"), "")
 
 	err := GenerateProto(context.Background(), GenerateProtoOptions{Dir: root})
 	if err == nil {

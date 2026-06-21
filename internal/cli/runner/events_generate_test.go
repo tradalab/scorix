@@ -63,10 +63,10 @@ func TestGenerateProto_Events(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/demo\n\ngo 1.26\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(dir, "proto"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "idl"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "proto", "app.proto"), []byte(eventsProto), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "idl", "app.proto"), []byte(eventsProto), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

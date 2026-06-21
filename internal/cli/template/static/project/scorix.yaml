@@ -3,7 +3,7 @@
 #   `app:` … `logger:`                    : runtime manifest, embedded via
 #   //go:embed scorix.yaml and read by app.New (one tauri.conf.json equivalent).
 name: {{ .Name }}
-proto: proto/app.proto
+proto: idl/app.proto
 shell:
   type: nextjs
   dir: shell

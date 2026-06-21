@@ -18,6 +18,7 @@ import (
 
 type ProjectConfig struct {
 	Name    string         `yaml:"name"`
+	Proto   string         `yaml:"proto"`
 	Model   *ModelConfig   `yaml:"model"`
 	Build   *BuildConfig   `yaml:"build"`
 	Package *PackageConfig `yaml:"package"`

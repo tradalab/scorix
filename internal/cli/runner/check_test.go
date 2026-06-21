@@ -35,10 +35,10 @@ func newCheckProject(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	files := map[string]string{
-		"go.mod":          "module example.com/demo\n\ngo 1.26\n",
-		"proto/app.proto": checkProto,
-		"scorix.yaml":     "name: example.com/demo\nmodel:\n  schema: etc/schema.sql\n  dialect: sqlite\napp:\n  name: demo\nmodules:\n  fs:\n    enabled: true\n",
-		"etc/schema.sql":  checkSchema,
+		"go.mod":         "module example.com/demo\n\ngo 1.26\n",
+		"idl/app.proto":  checkProto,
+		"scorix.yaml":    "name: example.com/demo\nmodel:\n  schema: etc/schema.sql\n  dialect: sqlite\napp:\n  name: demo\nmodules:\n  fs:\n    enabled: true\n",
+		"etc/schema.sql": checkSchema,
 	}
 	for rel, content := range files {
 		path := filepath.Join(dir, filepath.FromSlash(rel))
@@ -102,7 +102,7 @@ func TestGenerateProto_Check(t *testing.T) {
 	}
 
 	// 5. Edit the proto without regenerating → drift.
-	protoPath := filepath.Join(dir, "proto", "app.proto")
+	protoPath := filepath.Join(dir, "idl", "app.proto")
 	updated := strings.Replace(checkProto, "rpc Ping (PingReq) returns (PingRes);",
 		"rpc Ping (PingReq) returns (PingRes);\n  rpc Pong (PingReq) returns (PingRes);", 1)
 	if err := os.WriteFile(protoPath, []byte(updated), 0o644); err != nil {
@@ -131,6 +131,40 @@ func TestGenerateProto_Check_CRLFNoFalseDrift(t *testing.T) {
 	}
 	if err := GenerateProto(ctx, GenerateProtoOptions{Dir: dir, Check: true}); err != nil {
 		t.Fatalf("CRLF line endings must not be reported as drift: %v", err)
+	}
+}
+
+func TestGenerateProto_HonorsManifestProtoPath(t *testing.T) {
+	dir := t.TempDir()
+	// Proto lives at a NON-default path so this proves the manifest overrides the
+	// idl/app.proto default — not that it merely happens to match it.
+	files := map[string]string{
+		"go.mod":        "module example.com/demo\n\ngo 1.26\n",
+		"api/app.proto": checkProto,
+		"scorix.yaml":   "name: example.com/demo\nproto: api/app.proto\napp:\n  name: demo\n",
+	}
+	for rel, content := range files {
+		path := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx := context.Background()
+
+	// No .Proto set → flag default → must resolve via scorix.yaml's proto: api/app.proto.
+	if err := GenerateProto(ctx, GenerateProtoOptions{Dir: dir}); err != nil {
+		t.Fatalf("generate must read proto path from scorix.yaml: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "internal", "handler", "handler.go")); err != nil {
+		t.Fatalf("expected handler generated from api/ proto: %v", err)
+	}
+
+	// An explicit --proto still wins over the manifest (here it points nowhere → fail).
+	if err := GenerateProto(ctx, GenerateProtoOptions{Dir: dir, Proto: "nope/app.proto"}); err == nil {
+		t.Fatal("explicit --proto must override manifest and fail on the missing file")
 	}
 }
 
