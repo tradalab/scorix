@@ -53,7 +53,6 @@ var (
 	procPostMessageW     = user32.NewProc("PostMessageW")
 	procDestroyWindow    = user32.NewProc("DestroyWindow")
 	procSetWindowTextW   = user32.NewProc("SetWindowTextW")
-	procGetSystemMetrics = user32.NewProc("GetSystemMetrics")
 	procGetWindowRect    = user32.NewProc("GetWindowRect")
 	procGetClientRect    = user32.NewProc("GetClientRect")
 	procIsWindowVisible  = user32.NewProc("IsWindowVisible")
@@ -80,9 +79,6 @@ const (
 	swMinimize   uintptr = 6
 	swRestore    uintptr = 9
 
-	smCxScreen uintptr = 0
-	smCyScreen uintptr = 1
-
 	swpNoSize       uintptr = 0x0001
 	swpNoMove       uintptr = 0x0002
 	swpNoZOrder     uintptr = 0x0004
@@ -97,6 +93,7 @@ const (
 	wmSize          uint32 = 0x0005
 	wmClose         uint32 = 0x0010
 	wmGetMinMaxInfo uint32 = 0x0024
+	wmDpiChanged    uint32 = 0x02E0
 	wmApp           uint32 = 0x8000
 
 	sizeMinimized uintptr = 1
@@ -199,20 +196,12 @@ func createWindow(opts window.Options, messageOnly bool) (windows.Handle, error)
 	titlePtr := mustUTF16(opts.Title)
 
 	var style, exStyle, parent uintptr
-	x, y := cwUseDefault, cwUseDefault
 	if messageOnly {
 		parent = hwndMessage
 	} else {
 		style = windowStyle(opts)
 		if opts.AlwaysOnTop {
 			exStyle |= wsExTopmost
-		}
-		// Initial position; SetSize/Center still run afterward in manager.New.
-		if opts.X != nil {
-			x = uintptr(uint32(int32(*opts.X)))
-		}
-		if opts.Y != nil {
-			y = uintptr(uint32(int32(*opts.Y)))
 		}
 	}
 
@@ -221,7 +210,7 @@ func createWindow(opts window.Options, messageOnly bool) (windows.Handle, error)
 		uintptr(unsafe.Pointer(className)),
 		uintptr(unsafe.Pointer(titlePtr)),
 		style,
-		x, y, 0, 0,
+		cwUseDefault, cwUseDefault, 0, 0,
 		parent, 0, hInst, 0,
 	)
 	if hwnd == 0 {
@@ -276,6 +265,11 @@ func wndProc(hwnd, message, wParam, lParam uintptr) uintptr {
 			if w := rt.manager.byHandle(h); w != nil && w.applyMinMax(lParam) {
 				return 0 // we set the limits; otherwise fall through to DefWindowProc
 			}
+		case wmDpiChanged:
+			nr := (*tagRECT)(unsafe.Pointer(lParam))
+			procSetWindowPos.Call(hwnd, 0, uintptr(nr.left), uintptr(nr.top),
+				uintptr(nr.right-nr.left), uintptr(nr.bottom-nr.top), swpNoZOrder|swpNoActivate)
+			return 0
 		case wmClose:
 			if w := rt.manager.byHandle(h); w != nil {
 				if w.hideOnCloseEnabled() {
@@ -315,7 +309,8 @@ type runtime struct {
 
 func (r *runtime) Run() error {
 	goruntime.LockOSThread()
-	coInitSTA() // WebView2 requires an STA UI thread
+	enableDPIAwareness() // before any window: otherwise Windows blurs us via DPI virtualization
+	coInitSTA()          // WebView2 requires an STA UI thread
 
 	activeMu.Lock()
 	activeRT = r
@@ -436,8 +431,19 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 	if opts.Width > 0 && opts.Height > 0 {
 		w.SetSize(opts.Width, opts.Height)
 	}
-	if opts.Center {
+	switch {
+	case opts.Center:
 		w.Center()
+	case opts.X != nil || opts.Y != nil:
+		// Keep whichever axis the caller left unset at the OS default position.
+		x, y := w.Position()
+		if opts.X != nil {
+			x = *opts.X
+		}
+		if opts.Y != nil {
+			y = *opts.Y
+		}
+		w.SetPosition(x, y)
 	}
 
 	// Bring up the WebView2 control asynchronously; the callbacks run on the UI
@@ -593,23 +599,35 @@ func (w *win) SetTitle(title string) {
 
 func (w *win) SetSize(cw, ch int) {
 	cw, ch = clampSize(cw, ch, w.opts.MinWidth, w.opts.MinHeight, w.opts.MaxWidth, w.opts.MaxHeight)
-	procSetWindowPos.Call(uintptr(w.hwnd), 0, 0, 0, uintptr(cw), uintptr(ch), swpNoMove|swpNoZOrder|swpNoActivate)
+	dpi := w.windowDPI()
+	procSetWindowPos.Call(uintptr(w.hwnd), 0, 0, 0,
+		uintptr(toPhysical(cw, dpi)), uintptr(toPhysical(ch, dpi)), swpNoMove|swpNoZOrder|swpNoActivate)
 }
 
-func (w *win) Size() (int, int) {
+// physSize is the outer window size in physical pixels.
+func (w *win) physSize() (int, int) {
 	var r tagRECT
 	procGetWindowRect.Call(uintptr(w.hwnd), uintptr(unsafe.Pointer(&r)))
 	return int(r.right - r.left), int(r.bottom - r.top)
 }
 
+func (w *win) Size() (int, int) {
+	pw, ph := w.physSize()
+	dpi := w.windowDPI()
+	return toLogical(pw, dpi), toLogical(ph, dpi)
+}
+
 func (w *win) SetPosition(x, y int) {
-	procSetWindowPos.Call(uintptr(w.hwnd), 0, uintptr(x), uintptr(y), 0, 0, swpNoSize|swpNoZOrder|swpNoActivate)
+	dpi := w.windowDPI()
+	procSetWindowPos.Call(uintptr(w.hwnd), 0,
+		uintptr(toPhysical(x, dpi)), uintptr(toPhysical(y, dpi)), 0, 0, swpNoSize|swpNoZOrder|swpNoActivate)
 }
 
 func (w *win) Position() (int, int) {
 	var r tagRECT
 	procGetWindowRect.Call(uintptr(w.hwnd), uintptr(unsafe.Pointer(&r)))
-	return int(r.left), int(r.top)
+	dpi := w.windowDPI()
+	return toLogical(int(r.left), dpi), toLogical(int(r.top), dpi)
 }
 
 func (w *win) SetMinSize(a, b int) {
@@ -633,28 +651,29 @@ func (w *win) applyMinMax(lParam uintptr) bool {
 	if fs || (minW <= 0 && minH <= 0 && maxW <= 0 && maxH <= 0) {
 		return false
 	}
+	dpi := w.windowDPI() // MINMAXINFO track sizes are physical pixels
 	mmi := (*tagMINMAXINFO)(unsafe.Pointer(lParam))
 	if minW > 0 {
-		mmi.ptMinTrackSize.x = int32(minW)
+		mmi.ptMinTrackSize.x = int32(toPhysical(minW, dpi))
 	}
 	if minH > 0 {
-		mmi.ptMinTrackSize.y = int32(minH)
+		mmi.ptMinTrackSize.y = int32(toPhysical(minH, dpi))
 	}
 	if maxW > 0 {
-		mmi.ptMaxTrackSize.x = int32(maxW)
+		mmi.ptMaxTrackSize.x = int32(toPhysical(maxW, dpi))
 	}
 	if maxH > 0 {
-		mmi.ptMaxTrackSize.y = int32(maxH)
+		mmi.ptMaxTrackSize.y = int32(toPhysical(maxH, dpi))
 	}
 	return true
 }
 
 func (w *win) Center() {
-	cw, ch := w.Size()
-	sw, _, _ := procGetSystemMetrics.Call(smCxScreen)
-	sh, _, _ := procGetSystemMetrics.Call(smCyScreen)
-	x, y := centerPosition(cw, ch, int(sw), int(sh))
-	w.SetPosition(x, y)
+	cw, ch := w.physSize() // physical px throughout: work area, size and SetWindowPos all match
+	wr := monitorWorkRect(w.hwnd)
+	x, y := centerPosition(cw, ch, int(wr.right-wr.left), int(wr.bottom-wr.top))
+	procSetWindowPos.Call(uintptr(w.hwnd), 0,
+		uintptr(int(wr.left)+x), uintptr(int(wr.top)+y), 0, 0, swpNoSize|swpNoZOrder|swpNoActivate)
 }
 
 func (w *win) Show() {
@@ -699,11 +718,21 @@ func (w *win) SetFullscreen(on bool) {
 
 // monitorRect returns the full bounds of the monitor the window is on.
 func monitorRect(hwnd windows.Handle) tagRECT {
+	return monitorInfoFor(hwnd).rcMonitor
+}
+
+// monitorWorkRect returns the work area (full bounds minus taskbar) of the
+// window's monitor — the region to center within.
+func monitorWorkRect(hwnd windows.Handle) tagRECT {
+	return monitorInfoFor(hwnd).rcWork
+}
+
+func monitorInfoFor(hwnd windows.Handle) monitorInfo {
 	hmon, _, _ := procMonitorFromWin.Call(uintptr(hwnd), monitorToNearest)
 	mi := monitorInfo{}
 	mi.cbSize = uint32(unsafe.Sizeof(mi))
 	procGetMonitorInfoW.Call(hmon, uintptr(unsafe.Pointer(&mi)))
-	return mi.rcMonitor
+	return mi
 }
 
 func (w *win) SetAlwaysOnTop(on bool) {

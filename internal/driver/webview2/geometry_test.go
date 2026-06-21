@@ -11,6 +11,24 @@ func TestCenterPosition(t *testing.T) {
 	}
 }
 
+func TestDPIScaling(t *testing.T) {
+	// 100% (96 dpi) is identity; 150% (144) and 200% (192) scale round-trip.
+	for _, tc := range []struct{ logical, dpi, phys int }{
+		{1024, 96, 1024},
+		{1024, 144, 1536},
+		{1024, 192, 2048},
+		{800, 120, 1000}, // 125%
+		{0, 0, 0},        // dpi 0 treated as 96 (1:1)
+	} {
+		if got := toPhysical(tc.logical, tc.dpi); got != tc.phys {
+			t.Errorf("toPhysical(%d, %d) = %d, want %d", tc.logical, tc.dpi, got, tc.phys)
+		}
+		if got := toLogical(tc.phys, tc.dpi); got != tc.logical {
+			t.Errorf("toLogical(%d, %d) = %d, want %d", tc.phys, tc.dpi, got, tc.logical)
+		}
+	}
+}
+
 func TestClampSize(t *testing.T) {
 	if w, h := clampSize(100, 100, 200, 200, 0, 0); w != 200 || h != 200 {
 		t.Fatalf("min clamp = %d,%d, want 200,200", w, h)
