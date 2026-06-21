@@ -521,7 +521,7 @@ func (w *win) View() webview.View { return w.view }
 
 // startAttach kicks off the async WebView2 bring-up. onCore runs on the UI
 // thread and wires bounds, the JS->Go message channel and the initial nav.
-func (w *win) startAttach(_ string) error {
+func (w *win) startAttach(identifier string) error {
 	// Collect registered scheme names to register as custom schemes at env
 	// creation (must happen before navigation to scorix://...).
 	var schemeNames []string
@@ -532,11 +532,14 @@ func (w *win) startAttach(_ string) error {
 		}
 		w.rt.mu.Unlock()
 	}
-	// Empty userDataFolder => WebView2 picks the default per-user location.
-	// w.handlers.add tracks the env/controller completion handlers so they're
-	// unpinned when the window is disposed.
+	// A writable, per-user userDataFolder is REQUIRED: passing "" makes WebView2
+	// default to "<exe>.WebView2" next to the executable, which is unwritable when
+	// the app is installed under C:\Program Files — env creation then fails and the
+	// window never loads (the app looks like it "won't open"). See
+	// webviewUserDataFolder. w.handlers.add tracks the env/controller completion
+	// handlers so they're unpinned when the window is disposed.
 	keepEnv := func(objs []any) { w.mu.Lock(); w.envKeep = objs; w.mu.Unlock() }
-	return createEnvironment(w.hwnd, "", schemeNames, w.handlers.add, keepEnv, func(core, controller, env unsafe.Pointer) {
+	return createEnvironment(w.hwnd, webviewUserDataFolder(identifier), schemeNames, w.handlers.add, keepEnv, func(core, controller, env unsafe.Pointer) {
 		// controller/env are borrowed here; AddRef to retain them or WebView2
 		// releases them and our stored pointers dangle (crash on next use, e.g.
 		// WM_SIZE -> PutBounds). `core` is NOT AddRef'd: it came from

@@ -103,6 +103,31 @@ func extractEmbeddedLoader() (string, error) {
 	return path, nil
 }
 
+// webviewUserDataFolder returns a per-user, writable folder for WebView2's user
+// data (cache, cookies, IndexedDB, GPU shaders), keyed by the app identifier.
+//
+// This MUST be non-empty. Passing "" / NULL makes WebView2 default the folder to
+// "<exe-name>.exe.WebView2" NEXT TO THE EXECUTABLE; once the app is installed
+// under a read-only location like C:\Program Files, creating it fails with
+// access-denied, environment creation fails, and the window never loads its
+// content — the app appears not to open at all.
+func webviewUserDataFolder(identifier string) string {
+	name := identifier
+	if name == "" {
+		name = "scorix-app"
+	}
+	base := os.Getenv("LOCALAPPDATA") // non-roaming: browser cache shouldn't roam
+	if base == "" {
+		base = os.Getenv("APPDATA")
+	}
+	if base == "" {
+		base = os.TempDir()
+	}
+	dir := filepath.Join(base, name, "WebView2")
+	_ = os.MkdirAll(dir, 0o755) // best-effort; WebView2 also creates it when the parent is writable
+	return dir
+}
+
 // createEnvironment starts the async WebView2 bring-up for hwnd. schemes are
 // registered as custom schemes (e.g. "scorix"). onCore runs on the UI thread
 // once the ICoreWebView2 + controller exist.
@@ -139,8 +164,10 @@ func createEnvironment(hwnd windows.Handle, userDataFolder string, schemes []str
 		comCall(env, envCreateController, uintptr(hwnd), uintptr(unsafe.Pointer(ctrlHandler)))
 	}))
 
-	// Pass real NULL (not a pointer to "") when unset, so WebView2 uses its
-	// default per-user location instead of rejecting "" / writing beside the exe.
+	// Callers pass a writable folder (webviewUserDataFolder); the empty-string
+	// branch passes real NULL rather than a pointer to "" only as a defensive
+	// fallback (WebView2 rejects an empty string). NULL means "beside the exe",
+	// which can be unwritable — avoid relying on it.
 	var udf *uint16
 	var udfArg uintptr
 	if userDataFolder != "" {
