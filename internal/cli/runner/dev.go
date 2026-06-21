@@ -79,6 +79,13 @@ func Dev(ctx context.Context, opt DevOptions) error {
 		devURL = ""
 	}
 
+	// `go run` below has to compile `//go:embed all:.scorix/dist`, which fails on
+	// a fresh project where no frontend has been built yet. The dev window loads
+	// from the HMR server, not these assets, so a placeholder is enough.
+	if err := ensureEmbedDir(filepath.Join(root, ".scorix", "dist")); err != nil {
+		return err
+	}
+
 	args := []string{"run"}
 	if cfg, _ := loadProjectConfig(cfgPath); cfg != nil && cfg.Build != nil && len(cfg.Build.Tags) > 0 {
 		args = append(args, "-tags", strings.Join(cfg.Build.Tags, ","))

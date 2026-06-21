@@ -289,16 +289,24 @@ func buildFrontend(ctx context.Context, bc *BuildContext) error {
 // ensureDist guarantees .scorix/dist exists and is non-empty so the binary's
 // //go:embed all:.scorix/dist directive resolves even when frontend is skipped.
 func ensureDist(bc *BuildContext) error {
-	if err := os.MkdirAll(bc.DistDir, 0o755); err != nil {
+	return ensureEmbedDir(bc.DistDir)
+}
+
+// ensureEmbedDir guarantees distDir exists and is non-empty so a binary's
+// //go:embed all:.scorix/dist directive compiles. Needed wherever Go is invoked
+// before a frontend exists — `scorix build --skip-frontend` and `scorix dev`
+// (which serves the HMR window but still has to compile the embed).
+func ensureEmbedDir(distDir string) error {
+	if err := os.MkdirAll(distDir, 0o755); err != nil {
 		return err
 	}
-	entries, err := os.ReadDir(bc.DistDir)
+	entries, err := os.ReadDir(distDir)
 	if err != nil {
 		return err
 	}
 	if len(entries) == 0 {
-		fmt.Println("warning: .scorix/dist is empty — building without a bundled frontend")
-		return os.WriteFile(filepath.Join(bc.DistDir, ".keep"), nil, 0o644)
+		fmt.Printf("warning: %s is empty — using a placeholder (no bundled frontend)\n", distDir)
+		return os.WriteFile(filepath.Join(distDir, ".keep"), nil, 0o644)
 	}
 	return nil
 }
