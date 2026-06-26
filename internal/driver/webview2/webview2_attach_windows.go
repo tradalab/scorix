@@ -29,6 +29,7 @@ const (
 	// ICoreWebView2
 	cwvNavigate                = 5
 	cwvNavigateToString        = 6
+	cwvAddPermissionRequested  = 23
 	cwvAddScriptOnDocCreated   = 27
 	cwvExecuteScript           = 29
 	cwvPostWebMessageString    = 33
@@ -45,6 +46,16 @@ const (
 	reqGetUri = 3
 	// COREWEBVIEW2_WEB_RESOURCE_CONTEXT
 	webResourceContextAll = 0
+	// ICoreWebView2PermissionRequestedEventArgs vtable: IUnknown 0-2, get_Uri 3,
+	// get_PermissionKind 4, get_IsUserInitiated 5, get_State 6, put_State 7,
+	// GetDeferral 8. Handled is on ...EventArgs2, not here — calling a wrong slot
+	// crashes (0xC0000005).
+	permArgsGetPermissionKind  = 4
+	permArgsPutPermissionState = 7
+	// COREWEBVIEW2_PERMISSION_KIND: microphone (what getUserMedia({audio}) needs).
+	permKindMicrophone = 1
+	// COREWEBVIEW2_PERMISSION_STATE: allow grants without prompting.
+	permStateAllow = 1
 )
 
 var (

@@ -57,8 +57,9 @@ var (
 
 	gSignalConnectData func(uintptr, string, uintptr, uintptr, uintptr, int32) uint64
 	gIdleAdd           func(uintptr, uintptr) uint32
-	gFreeAddr          uintptr       // g_free as a GDestroyNotify (passed to g_memory_input_stream_new_from_data)
-	gFree              func(uintptr) // g_free as a callable (frees gchar* from jsc_value_to_string etc.)
+	gTypeIsA           func(uintptr, uintptr) int32 // g_type_check_instance_is_a(instance, GType)
+	gFreeAddr          uintptr                      // g_free as a GDestroyNotify (passed to g_memory_input_stream_new_from_data)
+	gFree              func(uintptr)                // g_free as a callable (frees gchar* from jsc_value_to_string etc.)
 	gMemdup            func(unsafe.Pointer, uint64) uintptr
 	gMemStreamNew      func(uintptr, int64, uintptr) uintptr
 
@@ -75,6 +76,11 @@ var (
 	wkSchemeReqGetURI   func(uintptr) uintptr
 	wkSchemeReqFinish   func(uintptr, uintptr, int64, string)
 	wkJSResultGetValue  func(uintptr) uintptr
+
+	wkUserMediaType    func() uintptr      // webkit_user_media_permission_request_get_type -> GType
+	wkUserMediaIsAudio func(uintptr) int32 // is_for_audio_device
+	wkUserMediaIsVideo func(uintptr) int32 // is_for_video_device
+	wkPermReqAllow     func(uintptr)       // webkit_permission_request_allow
 
 	jscValueToString func(uintptr) uintptr
 )
@@ -169,6 +175,7 @@ func initLibs() error {
 		purego.RegisterLibFunc(&gtkContainerAdd, gtk, "gtk_container_add")
 
 		purego.RegisterLibFunc(&gSignalConnectData, gobject, "g_signal_connect_data")
+		purego.RegisterLibFunc(&gTypeIsA, gobject, "g_type_check_instance_is_a")
 		purego.RegisterLibFunc(&gIdleAdd, glib, "g_idle_add")
 		if addr, err := purego.Dlsym(glib, "g_free"); err == nil {
 			gFreeAddr = addr
@@ -194,6 +201,10 @@ func initLibs() error {
 		purego.RegisterLibFunc(&wkSchemeReqGetURI, webkit, "webkit_uri_scheme_request_get_uri")
 		purego.RegisterLibFunc(&wkSchemeReqFinish, webkit, "webkit_uri_scheme_request_finish")
 		purego.RegisterLibFunc(&wkJSResultGetValue, webkit, "webkit_javascript_result_get_js_value")
+		purego.RegisterLibFunc(&wkUserMediaType, webkit, "webkit_user_media_permission_request_get_type")
+		purego.RegisterLibFunc(&wkUserMediaIsAudio, webkit, "webkit_user_media_permission_request_is_for_audio_device")
+		purego.RegisterLibFunc(&wkUserMediaIsVideo, webkit, "webkit_user_media_permission_request_is_for_video_device")
+		purego.RegisterLibFunc(&wkPermReqAllow, webkit, "webkit_permission_request_allow")
 
 		purego.RegisterLibFunc(&jscValueToString, jsc, "jsc_value_to_string")
 	})

@@ -36,6 +36,12 @@ const (
 	wkInjectAtDocumentStart int64 = 0
 
 	nsEventTypeApplicationDefined uint64 = 15
+
+	// WKMediaCaptureType: the kind getUserMedia({audio}) requests.
+	wkMediaCaptureMicrophone int64 = 1
+	// WKPermissionDecision handed to the media-capture decision handler.
+	wkPermissionGrant int64 = 1
+	wkPermissionDeny  int64 = 2
 )
 
 var (
@@ -162,4 +168,16 @@ func nsStringToGo(str objc.ID) string {
 
 func nsURL(u string) objc.ID {
 	return objc.ID(cls("NSURL")).Send(sel("URLWithString:"), nsString(u))
+}
+
+// invokeCaptureDecision calls a WKPermissionDecisionHandler block,
+// void (^)(WKPermissionDecision). A block's invoke fn pointer sits at offset
+// 16 on 64-bit (isa 0, flags 8, reserved 12); call it as invoke(block, arg).
+// Called synchronously inside the delegate, so no Block_copy is needed.
+func invokeCaptureDecision(handler objc.ID, decision int64) {
+	if handler == 0 {
+		return
+	}
+	invoke := *(*uintptr)(unsafe.Pointer(uintptr(handler) + 16))
+	purego.SyscallN(invoke, uintptr(handler), uintptr(decision))
 }

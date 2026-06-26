@@ -32,6 +32,8 @@ var (
 	scriptOnce sync.Once
 	schemeCB   uintptr
 	schemeOnce sync.Once
+	permCB     uintptr
+	permOnce   sync.Once
 )
 
 func newView(r *rt, opts window.Options) (*view, error) {
@@ -69,6 +71,25 @@ func newView(r *rt, opts window.Options) (*view, error) {
 	}
 
 	v.wk = wkViewNewWithUcm(v.ucm)
+
+	permOnce.Do(func() {
+		permCB = purego.NewCallback(func(_, request, _ uintptr) uintptr {
+			defer recoverCB("permission-request")
+			// Grant microphone-only capture (getUserMedia({audio}) voice input).
+			// The type check MUST gate is_for_audio_device: that call is only
+			// valid on a WebKitUserMediaPermissionRequest. Return TRUE to mark the
+			// request handled; FALSE lets every other kind fall through to
+			// WebKit's default (deny).
+			if gTypeIsA(request, wkUserMediaType()) != 0 &&
+				wkUserMediaIsAudio(request) != 0 && wkUserMediaIsVideo(request) == 0 {
+				wkPermReqAllow(request)
+				return 1
+			}
+			return 0
+		})
+	})
+	signalConnect(v.wk, "permission-request", permCB, 0)
+
 	return v, nil
 }
 

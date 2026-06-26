@@ -55,10 +55,51 @@ func newView(r *rt, opts window.Options) (*view, error) {
 		return nil, fmt.Errorf("wkwebview: WKWebView init failed")
 	}
 	wk.Send(sel("setAutoresizingMask:"), uint64(2|16)) // NSViewWidthSizable|NSViewHeightSizable
+	wk.Send(sel("setUIDelegate:"), uiDelegate())
 
 	v.wk = wk
 	viewByWK.Store(wk, v)
 	return v, nil
+}
+
+var (
+	uiDelegateOnce sync.Once
+	uiDelegateObj  objc.ID
+)
+
+// uiDelegate returns the shared WKUIDelegate that auto-grants microphone
+// capture for getUserMedia({audio}) (voice input). WKWebView holds UIDelegate
+// weakly, so the +1 from new is parked in a package var (never released) to
+// keep the object alive.
+func uiDelegate() objc.ID {
+	uiDelegateOnce.Do(func() {
+		_, err := objc.RegisterClass(
+			"ScorixUIDelegate",
+			cls("NSObject"),
+			[]*objc.Protocol{objc.GetProtocol("WKUIDelegate")},
+			nil,
+			[]objc.MethodDef{
+				{
+					Cmd: sel("webView:requestMediaCapturePermissionForOrigin:initiatedByFrame:type:decisionHandler:"),
+					Fn: func(_ objc.ID, _ objc.SEL, _, _, _ objc.ID, captureType int64, handler objc.ID) {
+						defer recoverCB("requestMediaCapturePermission")
+						// The handler MUST run on every request or the getUserMedia
+						// promise hangs; grant microphone, deny camera/combined.
+						decision := wkPermissionDeny
+						if captureType == wkMediaCaptureMicrophone {
+							decision = wkPermissionGrant
+						}
+						invokeCaptureDecision(handler, decision)
+					},
+				},
+			},
+		)
+		if err != nil {
+			panic(fmt.Sprintf("wkwebview: register UI delegate: %v", err))
+		}
+		uiDelegateObj = objc.ID(cls("ScorixUIDelegate")).Send(sel("new"))
+	})
+	return uiDelegateObj
 }
 
 func addUserScript(ucc objc.ID, js string) {

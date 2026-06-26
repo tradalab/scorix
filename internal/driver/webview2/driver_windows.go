@@ -580,6 +580,26 @@ func (w *win) startAttach(identifier string) error {
 		token := new(int64) // heap: GC-stable address for the out-param
 		comCall(core, cwvAddWebMessageReceived, uintptr(unsafe.Pointer(msgHandler)), uintptr(unsafe.Pointer(token)))
 
+		// Auto-grant microphone: WebView2 denies it by default and never
+		// prompts, so in-page getUserMedia({audio}) rejects silently without
+		// this handler. Only microphone is allowed; other kinds fall through
+		// to the default deny.
+		permHandler := w.handlers.add(newHandler(func(_ /*sender*/, args unsafe.Pointer) {
+			if args == nil {
+				return
+			}
+			kind := new(int32) // heap: GC-stable out-param
+			comCall(args, permArgsGetPermissionKind, uintptr(unsafe.Pointer(kind)))
+			if *kind == permKindMicrophone {
+				// Don't touch a Handled property: it's not on the base
+				// PermissionRequestedEventArgs vtable (only on ...EventArgs2),
+				// so calling that slot overruns the vtable and crashes.
+				comCall(args, permArgsPutPermissionState, uintptr(permStateAllow))
+			}
+		}))
+		permToken := new(int64)
+		comCall(core, cwvAddPermissionRequested, uintptr(unsafe.Pointer(permHandler)), uintptr(unsafe.Pointer(permToken)))
+
 		w.view.ready(core)
 	})
 }
