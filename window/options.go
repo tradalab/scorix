@@ -26,6 +26,9 @@ type Options struct {
 
 	URL        string // initial content, e.g. "scorix://app/index.html"
 	InitScript string // injected before page scripts on every navigation
+
+	// IconPath is a native window icon (.ico); empty/missing uses the exe's own icon.
+	IconPath string
 }
 
 func DefaultOptions() Options {

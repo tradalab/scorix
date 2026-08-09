@@ -381,6 +381,7 @@ func (a *App) Run() error {
 			Frameless: a.cfg.Window.Frameless,
 			Center:    true,
 			URL:       mainURL,
+			IconPath:  a.cfg.App.Icon,
 		})
 		if err != nil {
 			logger.Error("app: failed to open main window — quitting", "err", err)

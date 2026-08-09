@@ -15,6 +15,8 @@ type Config struct {
 		Version        string `yaml:"version" json:"version" env:""`
 		Identifier     string `yaml:"identifier" json:"identifier"`
 		SingleInstance bool   `yaml:"single_instance" json:"single_instance"`
+		// Icon (.ico) is used for the native window title bar; see the Windows driver.
+		Icon string `yaml:"icon" json:"icon"`
 	} `yaml:"app" json:"app"`
 
 	Dev struct {

@@ -4,6 +4,7 @@ package webview2
 
 import (
 	"fmt"
+	"os"
 	goruntime "runtime"
 	"sync"
 	"unsafe"
@@ -62,7 +63,13 @@ var (
 	procGetMonitorInfoW  = user32.NewProc("GetMonitorInfoW")
 	procGetWindowLongPtr = user32.NewProc("GetWindowLongPtrW")
 	procSetWindowLongPtr = user32.NewProc("SetWindowLongPtrW")
+	procLoadImageW       = user32.NewProc("LoadImageW")
+	procSendMessageW     = user32.NewProc("SendMessageW")
+	procDestroyIcon      = user32.NewProc("DestroyIcon")
 	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
+
+	shell32          = windows.NewLazySystemDLL("shell32.dll")
+	procExtractIconW = shell32.NewProc("ExtractIconW")
 )
 
 const (
@@ -95,6 +102,13 @@ const (
 	wmGetMinMaxInfo uint32 = 0x0024
 	wmDpiChanged    uint32 = 0x02E0
 	wmApp           uint32 = 0x8000
+	wmSetIcon       uint32 = 0x0080
+
+	iconSmall uintptr = 0 // ICON_SMALL (title bar / taskbar)
+	iconBig   uintptr = 1 // ICON_BIG (alt-tab)
+
+	imageIcon      uintptr = 1      // IMAGE_ICON
+	lrLoadFromFile uintptr = 0x0010 // LR_LOADFROMFILE
 
 	sizeMinimized uintptr = 1
 	sizeMaximized uintptr = 2
@@ -216,7 +230,96 @@ func createWindow(opts window.Options, messageOnly bool) (windows.Handle, error)
 	if hwnd == 0 {
 		return 0, fmt.Errorf("CreateWindowEx: %w", err)
 	}
+	if !messageOnly {
+		setWindowIcon(windows.Handle(hwnd), opts.IconPath)
+	}
 	return windows.Handle(hwnd), nil
+}
+
+// setWindowIcon sets the title-bar/taskbar icon from iconPath, or the exe's
+// embedded icon when the file is absent (packaged builds). Best-effort.
+func setWindowIcon(hwnd windows.Handle, iconPath string) {
+	// DPI-scaled size (20/40 at 125%), not a fixed 16/32: else a small bitmap is
+	// upscaled into a blur instead of downscaled from a larger .ico image.
+	dpi := dpiForHWND(hwnd)
+	smSize := 16 * dpi / defaultDPI
+	bigSize := 32 * dpi / defaultDPI
+
+	small := loadIconFromFile(iconPath, smSize, smSize)
+	big := loadIconFromFile(iconPath, bigSize, bigSize)
+
+	// Load the two slots separately so they never share (and double-free) an HICON.
+	if small == 0 {
+		small = exeIcon()
+	}
+	if big == 0 {
+		big = exeIcon()
+	}
+
+	applyIcon(hwnd, iconSmall, small)
+	applyIcon(hwnd, iconBig, big)
+}
+
+// applyIcon sets one WM_SETICON slot and frees the icon it replaced, so the
+// WM_DPICHANGED re-scale doesn't leak a handle per monitor move.
+func applyIcon(hwnd windows.Handle, which uintptr, icon windows.Handle) {
+	if icon == 0 {
+		return
+	}
+	prev, _, _ := procSendMessageW.Call(uintptr(hwnd), uintptr(wmSetIcon), which, uintptr(icon))
+	if prev != 0 {
+		procDestroyIcon.Call(prev)
+	}
+}
+
+// loadIconFromFile loads a cx*cy HICON from an .ico on disk (0 on any failure).
+func loadIconFromFile(path string, cx, cy int) windows.Handle {
+	if path == "" {
+		return 0
+	}
+	p, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return 0
+	}
+	h, _, _ := procLoadImageW.Call(
+		0,
+		uintptr(unsafe.Pointer(p)),
+		imageIcon,
+		uintptr(cx), uintptr(cy),
+		lrLoadFromFile,
+	)
+	return windows.Handle(h)
+}
+
+// exeIcon returns the first icon embedded in the running executable, or 0.
+func exeIcon() windows.Handle {
+	exe, err := os.Executable()
+	if err != nil {
+		return 0
+	}
+	p, err := windows.UTF16PtrFromString(exe)
+	if err != nil {
+		return 0
+	}
+	hInst, _, _ := procGetModuleHandleW.Call(0)
+	// ExtractIcon: 1 = no icons, 0 = error; otherwise a valid HICON.
+	h, _, _ := procExtractIconW.Call(hInst, uintptr(unsafe.Pointer(p)), 0)
+	if h == 0 || h == 1 {
+		return 0
+	}
+	return windows.Handle(h)
+}
+
+// dpiForHWND returns the window's monitor DPI (defaultDPI on pre-1607 Windows).
+func dpiForHWND(hwnd windows.Handle) int {
+	if procGetDpiForWindow.Find() != nil {
+		return defaultDPI
+	}
+	d, _, _ := procGetDpiForWindow.Call(uintptr(hwnd))
+	if d == 0 {
+		return defaultDPI
+	}
+	return int(d)
 }
 
 // windowStyle maps Options to a Win32 window style. Frameless drops the
@@ -269,6 +372,10 @@ func wndProc(hwnd, message, wParam, lParam uintptr) uintptr {
 			nr := (*tagRECT)(unsafe.Pointer(lParam))
 			procSetWindowPos.Call(hwnd, 0, uintptr(nr.left), uintptr(nr.top),
 				uintptr(nr.right-nr.left), uintptr(nr.bottom-nr.top), swpNoZOrder|swpNoActivate)
+			// Re-scale the icon to the new DPI so it stays crisp across monitors.
+			if w := rt.manager.byHandle(h); w != nil {
+				setWindowIcon(h, w.opts.IconPath)
+			}
 			return 0
 		case wmClose:
 			if w := rt.manager.byHandle(h); w != nil {
