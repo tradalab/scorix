@@ -24,7 +24,7 @@ mode: app
 # web mode: override per-deploy via SCORIX_WEB_HOST / SCORIX_WEB_PORT.
 web:
   host: 127.0.0.1
-  port: 8080
+  port: 7000
 
 window:
   title: {{ .Name }}
