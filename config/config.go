@@ -21,6 +21,7 @@ type Config struct {
 
 	Dev struct {
 		HotReload bool `yaml:"hot_reload" json:"hot_reload" env:""`
+		Port      int  `yaml:"port" json:"port" env:"" validate:"omitempty,gte=0,lte=65535"`
 	} `yaml:"dev" json:"dev"`
 
 	// Mode is advisory only (SEALED); the real backend is chosen by entrypoint

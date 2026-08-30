@@ -22,6 +22,11 @@ type ProjectConfig struct {
 	Model   *ModelConfig   `yaml:"model"`
 	Build   *BuildConfig   `yaml:"build"`
 	Package *PackageConfig `yaml:"package"`
+	Dev     *DevConfig     `yaml:"dev"`
+}
+
+type DevConfig struct {
+	Port int `yaml:"port"`
 }
 
 type ModelConfig struct {

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -20,7 +21,20 @@ type DevOptions struct {
 	Legacy bool
 }
 
-const defaultDevURL = "http://localhost:3000"
+const defaultDevPort = 3000
+
+func devServerPort(cfgPath string) int {
+	if v := strings.TrimSpace(os.Getenv("SCORIX_DEV_PORT")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n < 65536 {
+			return n
+		}
+		fmt.Fprintf(os.Stderr, "==> ignoring SCORIX_DEV_PORT=%q: not a port\n", v)
+	}
+	if cfg, _ := loadProjectConfig(cfgPath); cfg != nil && cfg.Dev != nil && cfg.Dev.Port > 0 {
+		return cfg.Dev.Port
+	}
+	return defaultDevPort
+}
 
 // Dev starts the shell dev server, waits until it answers, then runs the Go app
 // with SCORIX_DEV_URL pointing the window at it for HMR. The dev server dies
@@ -48,9 +62,11 @@ func Dev(ctx context.Context, opt DevOptions) error {
 
 	devURL := opt.URL
 	if !opt.Legacy && hasShell && devURL == "" {
-		fmt.Println("==> Starting shell dev server (pnpm dev)...")
+		port := devServerPort(cfgPath)
+		fmt.Printf("==> Starting shell dev server (pnpm dev) on port %d...\n", port)
 		devCmd := exec.CommandContext(ctx, "pnpm", "dev")
 		devCmd.Dir = shellDir
+		devCmd.Env = append(os.Environ(), "PORT="+strconv.Itoa(port))
 		devCmd.Stdout = os.Stdout
 		devCmd.Stderr = os.Stderr
 		if err := devCmd.Start(); err != nil {
@@ -58,7 +74,7 @@ func Dev(ctx context.Context, opt DevOptions) error {
 		}
 		defer func() { _ = devCmd.Process.Kill() }()
 
-		devURL = defaultDevURL
+		devURL = fmt.Sprintf("http://localhost:%d", port)
 		if err := waitForServer(ctx, devURL, 60*time.Second); err != nil {
 			return err
 		}
