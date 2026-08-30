@@ -370,18 +370,19 @@ func (a *App) Run() error {
 
 	rt.On(window.RuntimeReady, func() {
 		aw, err := a.attachWindow(rt, window.Options{
-			Title:     a.opts.Title,
-			Width:     a.opts.Width,
-			Height:    a.opts.Height,
-			MinWidth:  a.cfg.Window.MinWidth,
-			MinHeight: a.cfg.Window.MinHeight,
-			MaxWidth:  a.cfg.Window.MaxWidth,
-			MaxHeight: a.cfg.Window.MaxHeight,
-			Resizable: a.cfg.Window.Resizable,
-			Frameless: a.cfg.Window.Frameless,
-			Center:    true,
-			URL:       mainURL,
-			IconPath:  a.cfg.App.Icon,
+			Title:       a.opts.Title,
+			Width:       a.opts.Width,
+			Height:      a.opts.Height,
+			MinWidth:    a.cfg.Window.MinWidth,
+			MinHeight:   a.cfg.Window.MinHeight,
+			MaxWidth:    a.cfg.Window.MaxWidth,
+			MaxHeight:   a.cfg.Window.MaxHeight,
+			Resizable:   a.cfg.Window.Resizable,
+			Frameless:   a.cfg.Window.Frameless,
+			HideOnClose: a.cfg.Window.HideOnClose,
+			Center:      true,
+			URL:         mainURL,
+			IconPath:    a.cfg.App.Icon,
 		})
 		if err != nil {
 			logger.Error("app: failed to open main window — quitting", "err", err)
