@@ -475,7 +475,7 @@ func (r *runtime) Run() error {
 
 func (r *runtime) Quit() {
 	r.fire(window.RuntimeBeforeQuit)
-	procPostQuitMessage.Call(0)
+	r.Dispatch(func() { procPostQuitMessage.Call(0) })
 }
 
 func (r *runtime) Dispatch(fn func()) {
