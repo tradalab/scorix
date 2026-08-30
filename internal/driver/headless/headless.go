@@ -113,6 +113,7 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 	}
 	w := &win{
 		id:      id,
+		opts:    opts,
 		w:       opts.Width,
 		h:       opts.Height,
 		visible: true,
@@ -121,6 +122,19 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 	}
 	m.windows[id] = w
 	return w, nil
+}
+
+func Fire(rt window.Runtime, evt window.RuntimeEvent) {
+	if r, ok := rt.(*runtime); ok {
+		r.fire(evt)
+	}
+}
+
+func OptionsOf(w window.Window) window.Options {
+	if hw, ok := w.(*win); ok {
+		return hw.opts
+	}
+	return window.Options{}
 }
 
 func (m *manager) Get(id window.ID) (window.Window, bool) {
@@ -149,10 +163,12 @@ func (m *manager) Count() int {
 type win struct {
 	mu      sync.Mutex
 	id      window.ID
+	opts    window.Options // creation options, for OptionsOf assertions
 	w, h    int
 	x, y    int
 	state   window.State
 	visible bool
+	drags   int
 	closed  bool
 	view    *view
 	events  map[window.Event][]func(window.EventData)
@@ -228,6 +244,21 @@ func (w *win) SetFullscreen(on bool) {
 }
 
 func (w *win) SetAlwaysOnTop(bool) {}
+
+func (w *win) StartDrag() {
+	w.mu.Lock()
+	w.drags++
+	w.mu.Unlock()
+}
+
+func DragCount(w window.Window) int {
+	if hw, ok := w.(*win); ok {
+		hw.mu.Lock()
+		defer hw.mu.Unlock()
+		return hw.drags
+	}
+	return 0
+}
 
 func (w *win) IsVisible() bool {
 	w.mu.Lock()

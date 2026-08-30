@@ -6,11 +6,12 @@ package ipc
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"os"
 	"sync"
 	"time"
 
+	"github.com/tradalab/scorix/fault"
 	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/webview"
 )
@@ -28,6 +29,23 @@ func errStr(err error) string {
 		return ""
 	}
 	return err.Error()
+}
+
+func applyError(m *webview.Message, err error) {
+	if fe, ok := errors.AsType[*fault.Error](err); ok {
+		m.Error = fe.Message
+		m.ErrorCode = fe.Code
+		if len(fe.Details) > 0 {
+			if data, mErr := json.Marshal(fe.Details); mErr == nil {
+				m.ErrorData = data
+			}
+		}
+		return
+	}
+	m.Error = err.Error()
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		m.ErrorCode = fault.CodeCanceled
+	}
 }
 
 type Dispatcher struct {
@@ -145,7 +163,9 @@ func (d *Dispatcher) handleRPC(msg webview.Message) {
 func (d *Dispatcher) openRPC(msg webview.Message) {
 	e, ok := d.reg.rpc(msg.Name)
 	if !ok {
-		d.emit(webview.Message{ID: msg.ID, Kind: webview.KindRPC, Name: msg.Name, State: webview.StateError, Error: "no handler: " + msg.Name})
+		reply := webview.Message{ID: msg.ID, Kind: webview.KindRPC, Name: msg.Name, State: webview.StateError}
+		applyError(&reply, fault.Errorf(fault.CodeNotFound, "no handler: %s", msg.Name))
+		d.emit(reply)
 		return
 	}
 
@@ -187,7 +207,7 @@ func (d *Dispatcher) openRPC(msg webview.Message) {
 			select {
 			case d.streamSem <- struct{}{}:
 			default:
-				d.finishRPC(msg.ID, msg.Name, fmt.Errorf("too many concurrent streams (max %d)", DefaultMaxStreams))
+				d.finishRPC(msg.ID, msg.Name, fault.Errorf(fault.CodeOverloaded, "too many concurrent streams (max %d)", DefaultMaxStreams))
 				return
 			}
 			defer func() { <-d.streamSem }()
@@ -197,7 +217,7 @@ func (d *Dispatcher) openRPC(msg webview.Message) {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					err = fmt.Errorf("handler panicked: %v", r)
+					err = fault.Errorf(fault.CodeInternal, "handler panicked: %v", r)
 				}
 			}()
 			err = e.fn(ctx, rs)
@@ -220,7 +240,9 @@ func (d *Dispatcher) feedRPC(id string, data json.RawMessage, end bool) {
 	if rs == nil {
 		// Call already gone server-side: signal closed so a duplex consumer awaiting
 		// frames doesn't hang. (JS drops terminal frames for ids it finished.)
-		d.emit(webview.Message{ID: id, Kind: webview.KindRPC, State: webview.StateError, Error: "stream closed"})
+		reply := webview.Message{ID: id, Kind: webview.KindRPC, State: webview.StateError}
+		applyError(&reply, fault.New(fault.CodeUnavailable, "stream closed"))
+		d.emit(reply)
 		return
 	}
 	if len(data) > 0 {
@@ -249,7 +271,7 @@ func (d *Dispatcher) finishRPC(id, name string, err error) {
 	reply := webview.Message{ID: id, Kind: webview.KindRPC, Name: name, State: webview.StateDone}
 	if err != nil {
 		reply.State = webview.StateError
-		reply.Error = err.Error()
+		applyError(&reply, err)
 	}
 	d.emit(reply)
 }
@@ -281,7 +303,9 @@ func (d *Dispatcher) dispatchEvent(msg webview.Message) {
 func (d *Dispatcher) dispatchCommand(msg webview.Message) {
 	fn, ok := d.reg.command(msg.Name)
 	if !ok {
-		d.emit(webview.Message{ID: msg.ID, Kind: "command", Name: msg.Name, State: "error", Error: "no handler: " + msg.Name})
+		reply := webview.Message{ID: msg.ID, Kind: "command", Name: msg.Name, State: "error"}
+		applyError(&reply, fault.Errorf(fault.CodeNotFound, "no handler: %s", msg.Name))
+		d.emit(reply)
 		return
 	}
 
@@ -328,7 +352,7 @@ func (d *Dispatcher) dispatchCommand(msg webview.Message) {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					res, err = nil, fmt.Errorf("handler panicked: %v", r)
+					res, err = nil, fault.Errorf(fault.CodeInternal, "handler panicked: %v", r)
 				}
 			}()
 			res, err = fn(ctx, msg.Data, s)
@@ -345,7 +369,7 @@ func (d *Dispatcher) dispatchCommand(msg webview.Message) {
 		switch {
 		case err != nil:
 			reply.State = "error"
-			reply.Error = err.Error()
+			applyError(&reply, err)
 		case res != nil:
 			if data, mErr := json.Marshal(res); mErr == nil {
 				reply.Data = data

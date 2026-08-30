@@ -608,3 +608,5 @@ func (m *UpdaterModule) FullUpdate(ctx context.Context) (*Result, error) {
 	}
 	return res, nil
 }
+
+func (m *UpdaterModule) Capability() string { return "shell" }

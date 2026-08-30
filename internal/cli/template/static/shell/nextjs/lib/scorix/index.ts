@@ -2,6 +2,17 @@
 
 export type ScorixStatus = "connected" | "connecting" | "disconnected";
 
+// Branch/translate on `code`, never on `message`. Framework codes: internal ·
+// not_found · denied · canceled · overloaded · unavailable · timeout.
+export interface ScorixError extends Error {
+  code?: string;
+  details?: unknown;
+}
+
+export function isScorixError(e: unknown): e is ScorixError {
+  return e instanceof Error && (e.name === "ScorixError" || "code" in e);
+}
+
 // A server-stream call: async-iterable of typed messages, cancelable. The loop
 // ends on the server's `done` frame and throws on `error`.
 export interface ServerStream<T> extends AsyncIterable<T> {
@@ -16,9 +27,25 @@ export interface Duplex<In, Out> extends AsyncIterable<Out> {
   cancel(): void;
 }
 
+// Rejects with code "unavailable" in web mode. For titlebars prefer the
+// declarative data-scorix-drag / data-scorix-no-drag attributes.
+export interface ScorixWindow {
+  minimize(): Promise<void>;
+  toggleMaximize(): Promise<{ maximized: boolean }>;
+  isMaximized(): Promise<boolean>;
+  close(): Promise<void>;
+  hide(): Promise<void>;
+  show(): Promise<void>;
+  focus(): Promise<void>;
+  setTitle(title: string): Promise<void>;
+  fullscreen(on: boolean): Promise<void>;
+  startDrag(): Promise<void>;
+}
+
 // Matches the window.scorix bridge the Go app injects; apps must not ship their own.
 export interface ScorixAPI {
   mode?: "app" | "web";
+  win?: ScorixWindow;
   invoke<T = any>(
     method: string,
     params?: any,

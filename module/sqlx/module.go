@@ -464,3 +464,5 @@ func scanRows(rows *sqlx.Rows) ([]map[string]any, error) {
 	}
 	return result, rows.Err()
 }
+
+func (m *Module) Capability() string { return "db" }

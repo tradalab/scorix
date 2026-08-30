@@ -36,6 +36,8 @@ type Window interface {
 	IsVisible() bool
 	State() State
 
+	StartDrag()
+
 	Close()
 	SetHideOnClose(on bool)
 

@@ -3,40 +3,37 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/tradalab/scorix/config"
+	"github.com/tradalab/scorix/fault"
 	ipc "github.com/tradalab/scorix/internal/ipc"
 	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/module"
 	"github.com/tradalab/scorix/webview"
 )
 
-// moduleCapability maps a module to its gating allowlist capability; unlisted
-// modules are not capability-gated.
-var moduleCapability = map[string]string{
-	"fs":           "fs",
-	"clipboard":    "clipboard",
-	"browser":      "shell", // opens URLs / shells out to the OS handler
-	"dialog":       "shell",
-	"notification": "notification",
-	"updater":      "shell", // downloads + shell-executes a signed installer
-}
+type appController struct{ a *App }
 
-// capabilityForCommand returns the capability gating a "mod:<module>:<method>"
-// command, or "" if it isn't a gated module command.
-func capabilityForCommand(name string) string {
+func (c *appController) Show()  { c.a.Show() }
+func (c *appController) Close() { c.a.Quit() }
+
+func (a *App) capabilityOf(name string) string {
 	rest, ok := strings.CutPrefix(name, "mod:")
 	if !ok {
 		return ""
 	}
-	mod := rest
+	modName := rest
 	if i := strings.IndexByte(rest, ':'); i >= 0 {
-		mod = rest[:i]
+		modName = rest[:i]
 	}
-	return moduleCapability[mod]
+	if mod, ok := a.mods.Get(modName); ok {
+		if c, ok := mod.(module.Capable); ok {
+			return c.Capability()
+		}
+	}
+	return ""
 }
 
 // Module registers a Scorix module (enabled by default). MUST be called before
@@ -95,7 +92,27 @@ func (a *App) startModules() error {
 		a.resetStarted()
 		return err
 	}
+	a.auditAllowlist()
 	return nil
+}
+
+func (a *App) auditAllowlist() {
+	if a.opts.Security == nil {
+		return
+	}
+	declared := map[string]bool{}
+	for _, mod := range a.mods.List() {
+		if c, ok := mod.(module.Capable); ok {
+			capability := c.Capability()
+			declared[capability] = true
+			logger.Info("app: module gate", "module", mod.Name(), "capability", capability, "allowed", a.allowed(capability))
+		}
+	}
+	for capability, on := range a.cfg.Security.Allowlist {
+		if on && !declared[capability] {
+			logger.Warn("app: security.allowlist enables a capability no registered module declares (typo?)", "capability", capability)
+		}
+	}
 }
 
 func (a *App) resetStarted() {
@@ -117,10 +134,11 @@ type moduleCore struct {
 var _ module.Core = (*moduleCore)(nil)
 
 func (c *moduleCore) Register(name string, exec func(ctx context.Context, data json.RawMessage) (any, error)) {
-	capability := capabilityForCommand(name)
+	capability := c.app.capabilityOf(name)
 	c.reg.Command(name, func(ctx context.Context, data json.RawMessage, _ ipc.Stream) (any, error) {
 		if capability != "" && !c.app.allowed(capability) {
-			return nil, fmt.Errorf("capability %q denied by security.allowlist", capability)
+			return nil, fault.Errorf(fault.CodeDenied, "capability %q denied by security.allowlist", capability).
+				With("capability", capability)
 		}
 		return exec(ctx, data)
 	})

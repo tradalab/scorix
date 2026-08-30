@@ -35,6 +35,12 @@ func newView(r *rt, opts window.Options) (*view, error) {
 
 	ucc.Send(sel("addScriptMessageHandler:name:"), newScriptHandler(), nsString("scorix"))
 
+	if opts.DevTools {
+		prefs := cfg.Send(sel("preferences"))
+		yes := objc.ID(cls("NSNumber")).Send(sel("numberWithBool:"), true)
+		prefs.Send(sel("setValue:forKey:"), yes, nsString("developerExtrasEnabled"))
+	}
+
 	// Bridge / init script, before any page script on every navigation.
 	if opts.InitScript != "" {
 		addUserScript(ucc, opts.InitScript)

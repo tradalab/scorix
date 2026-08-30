@@ -68,6 +68,12 @@ func (m *Manager) moduleSectionCfg(name string) map[string]any {
 	return entry
 }
 
+func (m *Manager) SetAppController(c AppController) {
+	m.mu.Lock()
+	m.appCtrl = c
+	m.mu.Unlock()
+}
+
 func (m *Manager) SetRuntimeModules(mods map[string]any) {
 	m.mu.Lock()
 	m.runtimeModules = mods
@@ -123,6 +129,13 @@ func (m *Manager) Load(name string) error {
 	if !m.IsEnabled(name) {
 		logger.Info(fmt.Sprintf("[module] %s is disabled in config, skipping", name))
 		return nil
+	}
+
+	if _, ok := mod.(Capable); !ok {
+		if m.cfg != nil && m.cfg.Security.StrictModules {
+			return fmt.Errorf("module %s declares no capability (implement module.Capable); refused under security.strict_modules", name)
+		}
+		logger.Warn(fmt.Sprintf("[module] %s declares no capability (implement module.Capable) — its mod:%s:* commands are UNGATED", name, name))
 	}
 
 	appName := m.cfg.App.Name

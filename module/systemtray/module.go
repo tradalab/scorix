@@ -167,3 +167,5 @@ func (m *SystemTrayModule) SetTitle(_ context.Context, req SetTitleRequest) (int
 	systray.SetTitle(req.Title)
 	return "ok", nil
 }
+
+func (m *SystemTrayModule) Capability() string { return "tray" }

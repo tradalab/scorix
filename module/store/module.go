@@ -194,3 +194,5 @@ func (m *StoreModule) Keys(ctx context.Context) (interface{}, error) {
 	m.mu.RUnlock()
 	return keys, nil
 }
+
+func (m *StoreModule) Capability() string { return "store" }

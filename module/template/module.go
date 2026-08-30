@@ -77,3 +77,5 @@ func (m *TemplateModule) Hello(_ context.Context, req HelloRequest) (*HelloRespo
 	}
 	return &HelloResponse{Message: "Hello, " + name + "!"}, nil
 }
+
+func (m *TemplateModule) Capability() string { return "template" }

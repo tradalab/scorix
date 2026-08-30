@@ -246,6 +246,8 @@ func (w *win) Maximize()   { dispatchMain(func() { gtkWindowMaximize(w.gw) }) }
 func (w *win) Unmaximize() { dispatchMain(func() { gtkWindowUnmaximize(w.gw) }) }
 func (w *win) Restore()    { dispatchMain(func() { gtkWindowDeiconify(w.gw) }) }
 
+func (w *win) StartDrag() {}
+
 func (w *win) SetFullscreen(on bool) {
 	dispatchMain(func() {
 		if on {

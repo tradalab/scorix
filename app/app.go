@@ -25,11 +25,14 @@ import (
 
 	"github.com/tradalab/scorix/config"
 	"github.com/tradalab/scorix/internal/ipc"
+	"github.com/tradalab/scorix/internal/singleinstance"
 	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/module"
 	"github.com/tradalab/scorix/webview"
 	"github.com/tradalab/scorix/window"
 )
+
+var ErrAlreadyRunning = singleinstance.ErrAlreadyRunning
 
 //go:embed scorix.js
 var bridgeJS string
@@ -67,9 +70,22 @@ type App struct {
 	started bool
 	seq     atomic.Uint64
 
-	rt       window.Runtime      // running native runtime (app mode); for OpenWindow/Quit
-	bridges  []*ipc.NativeBridge // per-window dispatchers, drained on shutdown
-	winClose sync.WaitGroup      // per-window async Close goroutines (app mode)
+	rt       window.Runtime          // running native runtime (app mode); for OpenWindow/Quit
+	main     *AppWindow              // window Run opened; nil before RuntimeReady / in web mode
+	wins     map[ClientID]*AppWindow // caller-window resolution for win:* commands
+	bridges  []*ipc.NativeBridge     // per-window dispatchers, drained on shutdown
+	winClose sync.WaitGroup          // per-window async Close goroutines (app mode)
+
+	sysHandlers map[window.RuntimeEvent][]func() // OnSystemEvent subscribers, registered pre-Run
+}
+
+func (a *App) OnSystemEvent(evt window.RuntimeEvent, fn func()) {
+	a.mu.Lock()
+	if a.sysHandlers == nil {
+		a.sysHandlers = map[window.RuntimeEvent][]func(){}
+	}
+	a.sysHandlers[evt] = append(a.sysHandlers[evt], fn)
+	a.mu.Unlock()
 }
 
 // senderChan is a per-client outbound queue drained in order by a dedicated
@@ -154,8 +170,10 @@ func New(opts Options) (*App, error) {
 		opts:    opts,
 		schemes: map[string]fs.FS{},
 		senders: map[int]*senderChan{},
+		wins:    map[ClientID]*AppWindow{},
 		cfg:     cfg,
 	}
+	a.registerWindowCommands()
 	if a.cfg.App.Name == "" {
 		a.cfg.App.Name = opts.Identifier
 	}
@@ -192,21 +210,7 @@ func (a *App) allowed(capability string) bool {
 	if a.opts.Security == nil {
 		return true
 	}
-	al := a.cfg.Security.Allowlist
-	switch capability {
-	case "fs":
-		return al.FS
-	case "shell":
-		return al.Shell
-	case "http":
-		return al.HTTP
-	case "clipboard":
-		return al.Clipboard
-	case "notification":
-		return al.Notification
-	default:
-		return false // fail closed: unknown capability denied. capability=="" is ungated upstream.
-	}
+	return a.cfg.Security.Allowlist[capability]
 }
 
 // cspValue maps a symbolic security.csp to a header value; unrecognized = literal
@@ -224,8 +228,12 @@ func cspValue(s string) string {
 	}
 }
 
-// Command registers a request/reply handler callable from JS via scorix.invoke.
-func (a *App) Command(name string, fn ipc.CmdFunc) { a.reg.Command(name, fn) }
+func (a *App) Command(name string, fn ipc.CmdFunc) {
+	if strings.HasPrefix(name, "win:") || strings.HasPrefix(name, "mod:") {
+		logger.Warn("app: Command overrides a framework namespace", "name", name)
+	}
+	a.reg.Command(name, fn)
+}
 
 // Event registers a one-way handler for scorix.emit from JS.
 func (a *App) Event(name string, fn ipc.EvtFunc) { a.reg.Event(name, fn) }
@@ -339,6 +347,17 @@ func (a *App) removeSender(id int) {
 // Run opens the main native window and blocks on the event loop until the last
 // window closes or Quit is called. Additional windows: OpenWindow.
 func (a *App) Run() error {
+	if a.cfg.App.SingleInstance {
+		lock, err := singleinstance.Acquire(a.opts.Identifier, a.Show)
+		if err != nil {
+			if err == ErrAlreadyRunning {
+				logger.Info("app: another instance is already running — asked it to show and exiting")
+			}
+			return err
+		}
+		defer lock.Release()
+	}
+
 	rt, err := newDriver().NewRuntime(window.RuntimeConfig{Identifier: a.opts.Identifier})
 	if err != nil {
 		return err
@@ -350,8 +369,10 @@ func (a *App) Run() error {
 	}
 	a.mu.Unlock()
 	for scheme, fsys := range schemes {
-		rt.RegisterScheme(scheme, webview.SchemeFromFS(fsys))
+		rt.RegisterScheme(scheme, a.withCSP(webview.SchemeFromFS(fsys)))
 	}
+
+	a.mods.SetAppController(&appController{a: a})
 	if err := a.startModules(); err != nil { // registers handlers into reg
 		return err
 	}
@@ -363,9 +384,22 @@ func (a *App) Run() error {
 
 	// SCORIX_DEV_URL (set by `scorix dev`) points at a frontend dev server for HMR.
 	mainURL := a.opts.URL
-	if dev := os.Getenv("SCORIX_DEV_URL"); dev != "" {
-		logger.Info("app: dev mode — loading frontend from dev server", "url", dev)
-		mainURL = dev
+	devURL := os.Getenv("SCORIX_DEV_URL")
+	if devURL != "" {
+		logger.Info("app: dev mode — loading frontend from dev server", "url", devURL)
+		mainURL = devURL
+	}
+
+	for _, evt := range []window.RuntimeEvent{window.RuntimeThemeChanged, window.RuntimeSuspend, window.RuntimeResume} {
+		rt.On(evt, func() {
+			a.mu.Lock()
+			fns := append([]func(){}, a.sysHandlers[evt]...)
+			a.mu.Unlock()
+			for _, fn := range fns {
+				fn()
+			}
+			a.Emit("sys:"+string(evt), nil)
+		})
 	}
 
 	rt.On(window.RuntimeReady, func() {
@@ -380,6 +414,7 @@ func (a *App) Run() error {
 			Resizable:   a.cfg.Window.Resizable,
 			Frameless:   a.cfg.Window.Frameless,
 			HideOnClose: a.cfg.Window.HideOnClose,
+			DevTools:    a.cfg.Window.Debug || devURL != "",
 			Center:      true,
 			URL:         mainURL,
 			IconPath:    a.cfg.App.Icon,
@@ -389,6 +424,9 @@ func (a *App) Run() error {
 			rt.Quit()
 			return
 		}
+		a.mu.Lock()
+		a.main = aw
+		a.mu.Unlock()
 		for _, fn := range a.ready {
 			fn(a)
 		}
@@ -400,6 +438,7 @@ func (a *App) Run() error {
 	// (DB, etc.) underneath them; winClose covers mid-session window-close drains.
 	a.mu.Lock()
 	a.rt = nil
+	a.main = nil
 	bridges := a.bridges
 	a.bridges = nil
 	a.mu.Unlock()

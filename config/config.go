@@ -70,20 +70,15 @@ type LoggerConfig struct {
 	MaxAge  int    `yaml:"max_age" json:"max_age"`                                                     // days
 }
 
-type Allowlist struct {
-	FS           bool `yaml:"fs" json:"fs"`
-	Shell        bool `yaml:"shell" json:"shell"`
-	HTTP         bool `yaml:"http" json:"http"`
-	Clipboard    bool `yaml:"clipboard" json:"clipboard"`
-	Notification bool `yaml:"notification" json:"notification"`
-}
+type Allowlist map[string]bool
 
 // SandboxConfig is entirely SEALED (no `env` tags): env/overlay must not loosen
 // CSP or the capability allowlist (RCE/priv-esc vector). Changing it needs a
 // rebuild with a new embedded manifest.
 type SandboxConfig struct {
-	CSP             string    `yaml:"csp" json:"csp"` // "none", "default", "strict"
+	CSP             string    `yaml:"csp" json:"csp"` // "none", "default", "strict", or a literal policy
 	AllowRightClick bool      `yaml:"allow_right_click" json:"allow_right_click"`
+	StrictModules   bool      `yaml:"strict_modules" json:"strict_modules"`
 	Allowlist       Allowlist `yaml:"allowlist" json:"allowlist"`
 }
 

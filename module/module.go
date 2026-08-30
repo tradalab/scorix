@@ -10,3 +10,7 @@ type Module interface {
 	OnStop() error  // graceful shutdown, reverse order
 	OnUnload() error
 }
+
+type Capable interface {
+	Capability() string
+}

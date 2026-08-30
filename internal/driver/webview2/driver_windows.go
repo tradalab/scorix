@@ -7,6 +7,7 @@ import (
 	"os"
 	goruntime "runtime"
 	"sync"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -66,6 +67,7 @@ var (
 	procLoadImageW       = user32.NewProc("LoadImageW")
 	procSendMessageW     = user32.NewProc("SendMessageW")
 	procDestroyIcon      = user32.NewProc("DestroyIcon")
+	procReleaseCapture   = user32.NewProc("ReleaseCapture")
 	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
 
 	shell32          = windows.NewLazySystemDLL("shell32.dll")
@@ -103,6 +105,16 @@ const (
 	wmDpiChanged    uint32 = 0x02E0
 	wmApp           uint32 = 0x8000
 	wmSetIcon       uint32 = 0x0080
+
+	wmNCLButtonDown uint32  = 0x00A1 // WM_NCLBUTTONDOWN
+	htCaption       uintptr = 2      // HTCAPTION
+
+	wmSettingChange  uint32 = 0x001A // WM_SETTINGCHANGE
+	wmPowerBroadcast uint32 = 0x0218 // WM_POWERBROADCAST
+
+	pbtApmSuspend         uintptr = 0x4  // PBT_APMSUSPEND
+	pbtApmResumeSuspend   uintptr = 0x7  // PBT_APMRESUMESUSPEND (user-triggered wake)
+	pbtApmResumeAutomatic uintptr = 0x12 // PBT_APMRESUMEAUTOMATIC (any wake; fires before ResumeSuspend)
 
 	iconSmall uintptr = 0 // ICON_SMALL (title bar / taskbar)
 	iconBig   uintptr = 1 // ICON_BIG (alt-tab)
@@ -377,6 +389,18 @@ func wndProc(hwnd, message, wParam, lParam uintptr) uintptr {
 				setWindowIcon(h, w.opts.IconPath)
 			}
 			return 0
+		case wmSettingChange:
+			if lParam != 0 && windows.UTF16PtrToString((*uint16)(unsafe.Pointer(lParam))) == "ImmersiveColorSet" {
+				rt.fireSystem(window.RuntimeThemeChanged)
+			}
+		case wmPowerBroadcast:
+			switch wParam {
+			case pbtApmSuspend:
+				rt.fireSystem(window.RuntimeSuspend)
+			case pbtApmResumeAutomatic, pbtApmResumeSuspend:
+				rt.fireSystem(window.RuntimeResume)
+			}
+			return 1 // TRUE: processed
 		case wmClose:
 			if w := rt.manager.byHandle(h); w != nil {
 				if w.hideOnCloseEnabled() {
@@ -412,6 +436,7 @@ type runtime struct {
 	events  map[window.RuntimeEvent][]func()
 	schemes map[string]webview.SchemeHandler
 	msgHWND windows.Handle
+	lastSys map[window.RuntimeEvent]time.Time // fireSystem dedupe (per-window broadcasts)
 }
 
 func (r *runtime) Run() error {
@@ -485,6 +510,21 @@ func (r *runtime) On(evt window.RuntimeEvent, fn func()) {
 	r.mu.Lock()
 	r.events[evt] = append(r.events[evt], fn)
 	r.mu.Unlock()
+}
+
+func (r *runtime) fireSystem(evt window.RuntimeEvent) {
+	now := time.Now()
+	r.mu.Lock()
+	if r.lastSys == nil {
+		r.lastSys = map[window.RuntimeEvent]time.Time{}
+	}
+	if last, ok := r.lastSys[evt]; ok && now.Sub(last) < 200*time.Millisecond {
+		r.mu.Unlock()
+		return
+	}
+	r.lastSys[evt] = now
+	r.mu.Unlock()
+	r.fire(evt)
 }
 
 func (r *runtime) fire(evt window.RuntimeEvent) {
@@ -661,6 +701,16 @@ func (w *win) startAttach(identifier string) error {
 		w.mu.Unlock()
 
 		comCall(controller, ctrlPutIsVisible, 1)
+
+		if settings, hr := comCallOut(core, cwvGetSettings); hr == 0 && settings != nil {
+			enable := uintptr(0)
+			if w.opts.DevTools {
+				enable = 1
+			}
+			comCall(settings, settingsPutAreDevToolsEnabled, enable)
+			comCall(settings, iunknownRelease)
+		}
+
 		w.updateBounds()
 
 		// Wire any registered custom-scheme handlers (in-process asset serving).
@@ -816,6 +866,11 @@ func (w *win) Minimize()   { procShowWindow.Call(uintptr(w.hwnd), swMinimize) }
 func (w *win) Maximize()   { procShowWindow.Call(uintptr(w.hwnd), swMaximize) }
 func (w *win) Unmaximize() { procShowWindow.Call(uintptr(w.hwnd), swRestore) }
 func (w *win) Restore()    { procShowWindow.Call(uintptr(w.hwnd), swRestore) }
+
+func (w *win) StartDrag() {
+	procReleaseCapture.Call() // best-effort; the webview may hold capture
+	procPostMessageW.Call(uintptr(w.hwnd), uintptr(wmNCLButtonDown), htCaption, 0)
+}
 
 func (w *win) SetFullscreen(on bool) {
 	// Approximation via maximize; true borderless-fullscreen (style swap +

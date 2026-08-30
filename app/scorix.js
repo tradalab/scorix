@@ -49,6 +49,20 @@
     return { pushMsg, finish, iterable: { [Symbol.asyncIterator]: () => iterator, cancel } };
   }
 
+  function wireError(msg, fallback) {
+    const e = new Error(msg.error || fallback);
+    e.name = "ScorixError";
+    if (msg.errorCode) e.code = msg.errorCode;
+    if (msg.errorData !== undefined) e.details = msg.errorData;
+    return e;
+  }
+  function localError(code, message) {
+    const e = new Error(message);
+    e.name = "ScorixError";
+    e.code = code;
+    return e;
+  }
+
   // "connected"|"connecting"|"disconnected" (app mode always connected).
   // Transitions fire a `scorix:connection:status` CustomEvent on window.
   let status = "connecting";
@@ -71,7 +85,7 @@
       if (!st) return; // unknown/closed call — drop (never resolve a foreign frame)
       if (msg.state === "msg") { st.pushMsg(msg.data); return; }
       if (msg.state === "done") { streams.delete(msg.id); st.finish(null); return; }
-      if (msg.state === "error") { streams.delete(msg.id); st.finish(new Error(msg.error || "scorix: stream failed")); return; }
+      if (msg.state === "error") { streams.delete(msg.id); st.finish(wireError(msg, "scorix: stream failed")); return; }
       return;
     }
     const p = pending.get(msg.id);
@@ -79,14 +93,14 @@
       const st = streams.get(msg.id);
       if (st) {
         streams.delete(msg.id);
-        st.finish(new Error(msg.error || "scorix: protocol mismatch — rebuild/restart the app (backend is on an older protocol)"));
+        st.finish(wireError(msg, "scorix: protocol mismatch — rebuild/restart the app (backend is on an older protocol)"));
       }
       return;
     }
     if (msg.state === "chunk") { if (p.onChunk) p.onChunk(msg.data); return; }
     pending.delete(msg.id);
     if (p.timer) clearTimeout(p.timer);
-    if (msg.state === "error") p.reject(new Error(msg.error || "scorix: command failed"));
+    if (msg.state === "error") p.reject(wireError(msg, "scorix: command failed"));
     else p.resolve(msg.data);
   }
 
@@ -154,7 +168,7 @@
       ws.onclose = () => {
         ws = null;
         setStatus("disconnected");
-        failAll(new Error("scorix: connection lost"));
+        failAll(localError("unavailable", "scorix: connection lost"));
         queue = [];
         settleWaiters(new Error("scorix: connection failed"));
         schedule();
@@ -179,17 +193,17 @@
       const s = JSON.stringify(msg);
       if (ws && ws.readyState === WebSocket.OPEN) { ws.send(s); return; }
       if (status === "connecting") {
-        if (queue.length >= MAX_QUEUE) throw new Error("scorix: send queue full");
+        if (queue.length >= MAX_QUEUE) throw localError("overloaded", "scorix: send queue full");
         queue.push(s);
         return;
       }
-      throw new Error("scorix: offline");
+      throw localError("unavailable", "scorix: offline");
     };
 
     connect();
   }
 
-  window.scorix = {
+  const api = {
     mode, // "app" (native window) or "web" (browser over WebSocket)
 
     status() { return status; },
@@ -203,7 +217,7 @@
           entry.timer = setTimeout(() => {
             if (pending.delete(id)) {
               try { send({ id, state: "cancel" }); } catch (_) {}
-              reject(new Error("scorix: invoke '" + name + "' timed out after " + timeout + "ms"));
+              reject(localError("timeout", "scorix: invoke '" + name + "' timed out after " + timeout + "ms"));
             }
           }, timeout);
         }
@@ -269,7 +283,7 @@
       if (p) {
         pending.delete(id);
         if (p.timer) clearTimeout(p.timer);
-        p.reject(new Error("scorix: cancelled"));
+        p.reject(localError("canceled", "scorix: cancelled"));
       }
       send({ id, state: "cancel" });
     },
@@ -286,4 +300,33 @@
       set.add(handler);
     },
   };
+
+  api.win = {
+    minimize: () => api.invoke("win:minimize"),
+    toggleMaximize: () => api.invoke("win:toggleMaximize"), // resolves {maximized}
+    isMaximized: () => api.invoke("win:isMaximized").then((r) => !!(r && r.maximized)),
+    close: () => api.invoke("win:close"),
+    hide: () => api.invoke("win:hide"),
+    show: () => api.invoke("win:show"),
+    focus: () => api.invoke("win:focus"),
+    setTitle: (title) => api.invoke("win:setTitle", { title }),
+    fullscreen: (on) => api.invoke("win:fullscreen", { on: !!on }),
+    startDrag: () => api.invoke("win:startDrag"),
+  };
+
+  if (mode === "app") {
+    document.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      if (!(e.target instanceof Element)) return;
+      if (!e.target.closest("[data-scorix-drag]") || e.target.closest("[data-scorix-no-drag]")) return;
+      e.preventDefault();
+      if (e.detail >= 2) {
+        api.win.toggleMaximize().catch(() => {});
+      } else {
+        api.win.startDrag().catch(() => {});
+      }
+    });
+  }
+
+  window.scorix = api;
 })();

@@ -27,16 +27,18 @@ const (
 	ctrlClose           = 24
 	ctrlGetCoreWebView2 = 25
 	// ICoreWebView2
-	cwvNavigate                = 5
-	cwvNavigateToString        = 6
-	cwvAddPermissionRequested  = 23
-	cwvAddScriptOnDocCreated   = 27
-	cwvExecuteScript           = 29
-	cwvPostWebMessageString    = 33
-	cwvAddWebMessageReceived   = 34
-	cwvOpenDevToolsWindow      = 51
-	cwvAddWebResourceRequested = 55
-	cwvAddWebResourceReqFilter = 57
+	cwvGetSettings                = 3
+	cwvNavigate                   = 5
+	cwvNavigateToString           = 6
+	cwvAddPermissionRequested     = 23
+	cwvAddScriptOnDocCreated      = 27
+	cwvExecuteScript              = 29
+	cwvPostWebMessageString       = 33
+	cwvAddWebMessageReceived      = 34
+	cwvOpenDevToolsWindow         = 51
+	cwvAddWebResourceRequested    = 55
+	cwvAddWebResourceReqFilter    = 57
+	settingsPutAreDevToolsEnabled = 12
 	// ICoreWebView2WebMessageReceivedEventArgs
 	argsTryGetWebMessageAsString = 5
 	// ICoreWebView2WebResourceRequestedEventArgs

@@ -65,3 +65,5 @@ func (m *ClipboardModule) Write(_ context.Context, req WriteRequest) (string, er
 	}
 	return "ok", nil
 }
+
+func (m *ClipboardModule) Capability() string { return "clipboard" }

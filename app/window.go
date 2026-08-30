@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -63,14 +64,38 @@ func (a *App) Quit() {
 	}
 }
 
+func (a *App) MainWindow() *AppWindow {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.main
+}
+
+func (a *App) Show() {
+	a.mu.Lock()
+	rt, main := a.rt, a.main
+	a.mu.Unlock()
+	if rt == nil || main == nil {
+		return
+	}
+	rt.Dispatch(func() {
+		main.Show()
+		main.Focus()
+	})
+}
+
+const contextMenuGuardJS = `document.addEventListener("contextmenu",function(e){e.preventDefault()},true);`
+
 // MUST run on the UI thread (Manager.New contract).
 func (a *App) attachWindow(rt window.Runtime, opts window.Options) (*AppWindow, error) {
-	// Bridge runs before any page script; a caller InitScript runs after.
-	if opts.InitScript == "" {
-		opts.InitScript = bridgeJS
-	} else {
-		opts.InitScript = bridgeJS + "\n;" + opts.InitScript
+	scripts := make([]string, 0, 3)
+	if a.opts.Security != nil && !a.cfg.Security.AllowRightClick {
+		scripts = append(scripts, contextMenuGuardJS)
 	}
+	scripts = append(scripts, bridgeJS)
+	if opts.InitScript != "" {
+		scripts = append(scripts, opts.InitScript)
+	}
+	opts.InitScript = strings.Join(scripts, "\n;")
 
 	w, err := rt.Windows().New(opts)
 	if err != nil {
@@ -90,8 +115,10 @@ func (a *App) attachWindow(rt window.Runtime, opts window.Options) (*AppWindow, 
 	b := &ipc.NativeBridge{Dispatcher: d}
 	sid := a.addSender(func(raw []byte) { _ = send(raw) })
 	b.BindClient(ipc.ClientID(sid))
+	aw := &AppWindow{Window: w, Client: ipc.ClientID(sid)}
 	a.mu.Lock()
 	a.bridges = append(a.bridges, b)
+	a.wins[aw.Client] = aw
 	a.mu.Unlock()
 	// On close, cancel the bridge's handlers too: else a long-lived stream (monitor,
 	// pubsub) leaks a goroutine per closed window — native PostMessage can't report
@@ -99,6 +126,7 @@ func (a *App) attachWindow(rt window.Runtime, opts window.Options) (*AppWindow, 
 	w.On(window.EventClose, func(window.EventData) {
 		a.removeSender(sid)
 		a.mu.Lock()
+		delete(a.wins, aw.Client)
 		for i, x := range a.bridges {
 			if x == b {
 				a.bridges = append(a.bridges[:i], a.bridges[i+1:]...)
@@ -115,5 +143,5 @@ func (a *App) attachWindow(rt window.Runtime, opts window.Options) (*AppWindow, 
 			_ = b.Close(ctx)
 		}()
 	})
-	return &AppWindow{Window: w, Client: ipc.ClientID(sid)}, nil
+	return aw, nil
 }

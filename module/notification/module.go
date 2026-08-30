@@ -70,3 +70,5 @@ func (m *NotificationModule) Notify(_ context.Context, req NotifyRequest) (strin
 func NotifyDirect(title, text string) error {
 	return zenity.Notify(text, zenity.Title(title))
 }
+
+func (m *NotificationModule) Capability() string { return "notification" }

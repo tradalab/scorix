@@ -76,6 +76,8 @@ var (
 	wkSchemeReqGetURI   func(uintptr) uintptr
 	wkSchemeReqFinish   func(uintptr, uintptr, int64, string)
 	wkJSResultGetValue  func(uintptr) uintptr
+	wkViewGetSettings   func(uintptr) uintptr // webkit_web_view_get_settings (borrowed ref)
+	wkSettingsDevExtras func(uintptr, int32)  // webkit_settings_set_enable_developer_extras
 
 	wkUserMediaType    func() uintptr      // webkit_user_media_permission_request_get_type -> GType
 	wkUserMediaIsAudio func(uintptr) int32 // is_for_audio_device
@@ -201,6 +203,8 @@ func initLibs() error {
 		purego.RegisterLibFunc(&wkSchemeReqGetURI, webkit, "webkit_uri_scheme_request_get_uri")
 		purego.RegisterLibFunc(&wkSchemeReqFinish, webkit, "webkit_uri_scheme_request_finish")
 		purego.RegisterLibFunc(&wkJSResultGetValue, webkit, "webkit_javascript_result_get_js_value")
+		purego.RegisterLibFunc(&wkViewGetSettings, webkit, "webkit_web_view_get_settings")
+		purego.RegisterLibFunc(&wkSettingsDevExtras, webkit, "webkit_settings_set_enable_developer_extras")
 		purego.RegisterLibFunc(&wkUserMediaType, webkit, "webkit_user_media_permission_request_get_type")
 		purego.RegisterLibFunc(&wkUserMediaIsAudio, webkit, "webkit_user_media_permission_request_is_for_audio_device")
 		purego.RegisterLibFunc(&wkUserMediaIsVideo, webkit, "webkit_user_media_permission_request_is_for_video_device")

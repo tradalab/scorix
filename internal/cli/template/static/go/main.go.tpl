@@ -3,6 +3,7 @@ package main
 
 import (
 	"embed"
+	"errors"
 	"flag"
 	"io/fs"
 	"log"
@@ -56,6 +57,10 @@ func main() {
 		return
 	}
 	if err := a.Run(); err != nil {
+		// The running instance was activated; exiting cleanly is the point.
+		if errors.Is(err, app.ErrAlreadyRunning) {
+			return
+		}
 		log.Fatal(err)
 	}
 }

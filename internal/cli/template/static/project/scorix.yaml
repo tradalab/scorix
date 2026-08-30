@@ -16,6 +16,7 @@ app:
   name: {{ .Name }}
   version: 1.0.0
   identifier: com.example.{{ .Name }}
+  single_instance: true # a second launch activates the running window and exits
   description: "{{ .Name }} project"
   icon: assets/icon.ico # staged into the MSI/bundle by `scorix package`
 
@@ -36,13 +37,16 @@ window:
   debug: true
 
 # sealed: env / runtime overlay cannot loosen CSP or the allowlist (RCE guard).
+# csp applies in BOTH modes (web header; app header+meta). The `default` preset
+# keeps script-src 'unsafe-inline' — Next.js static export needs it.
 security:
-  csp: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
+  csp: default
   allow_right_click: true
+  # strict_modules: true # refuse modules that don't declare module.Capable
+  # keys = capability names declared by modules (built-ins: fs shell clipboard notification db store tray)
   allowlist:
     fs: true
     shell: true
-    http: true
     clipboard: true
     notification: true
 

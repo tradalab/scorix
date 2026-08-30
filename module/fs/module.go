@@ -96,3 +96,5 @@ func (m *FSModule) LogDir(ctx context.Context) (string, error) {
 func (m *FSModule) TempDir(ctx context.Context) (string, error) {
 	return filepath.Join(os.TempDir(), m.appName), nil
 }
+
+func (m *FSModule) Capability() string { return "fs" }

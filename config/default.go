@@ -13,7 +13,7 @@ func DefaultConfig() *Config {
 	cfg.Window.Resizable = true
 	cfg.Window.Debug = false
 	cfg.Dev.HotReload = false
-	cfg.Security.CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';"
+	cfg.Security.CSP = "default"
 	cfg.Security.AllowRightClick = false
 	return cfg
 }

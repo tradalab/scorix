@@ -132,3 +132,5 @@ func (m *DialogModule) Message(_ context.Context, req MessageRequest) (string, e
 	}
 	return "ok", nil
 }
+
+func (m *DialogModule) Capability() string { return "shell" }

@@ -3,12 +3,14 @@ package webview
 import "encoding/json"
 
 type Message struct {
-	ID    string          `json:"id"`
-	Kind  string          `json:"kind"` // command | event | module | rpc | push
-	Name  string          `json:"name"`
-	State string          `json:"state"`           // see the Kind* / State* constants
-	Error string          `json:"error,omitempty"` // set when State == error / StateError
-	Data  json.RawMessage `json:"data,omitempty"`
+	ID        string          `json:"id"`
+	Kind      string          `json:"kind"` // command | event | module | rpc | push
+	Name      string          `json:"name"`
+	State     string          `json:"state"`           // see the Kind* / State* constants
+	Error     string          `json:"error,omitempty"` // set when State == error / StateError
+	ErrorCode string          `json:"errorCode,omitempty"`
+	ErrorData json.RawMessage `json:"errorData,omitempty"`
+	Data      json.RawMessage `json:"data,omitempty"`
 }
 
 // Legacy command/event/module kinds coexist with v2 rpc/push during migration.

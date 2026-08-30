@@ -72,6 +72,12 @@ func newView(r *rt, opts window.Options) (*view, error) {
 
 	v.wk = wkViewNewWithUcm(v.ucm)
 
+	if opts.DevTools {
+		if s := wkViewGetSettings(v.wk); s != 0 {
+			wkSettingsDevExtras(s, 1)
+		}
+	}
+
 	permOnce.Do(func() {
 		permCB = purego.NewCallback(func(_, request, _ uintptr) uintptr {
 			defer recoverCB("permission-request")

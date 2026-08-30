@@ -5,9 +5,13 @@ import (
 	"context"
 	"fmt"
 	neturl "net/url"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"strings"
 
+	"github.com/tradalab/scorix/fault"
 	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/module"
 )
@@ -32,6 +36,8 @@ func (m *BrowserModule) OnLoad(ctx *module.Context) error {
 	logger.Info(fmt.Sprintf("[browser] loading (v%s)", m.Version()))
 
 	module.Expose(m, "OpenUrl", ctx.IPC)
+	module.Expose(m, "RevealPath", ctx.IPC)
+	module.Expose(m, "OpenPath", ctx.IPC)
 
 	return nil
 }
@@ -90,4 +96,40 @@ func (m *BrowserModule) OpenUrl(ctx context.Context, req interface{}) (interface
 	}
 
 	return nil, cmd.Start()
+}
+
+func (m *BrowserModule) Capability() string { return "shell" }
+
+type PathRequest struct {
+	Path string `json:"path"`
+}
+
+func (m *BrowserModule) RevealPath(_ context.Context, req PathRequest) (interface{}, error) {
+	clean, err := validateLocalPath(req.Path)
+	if err != nil {
+		return nil, err
+	}
+	return nil, revealCmd(clean).Start()
+}
+
+func (m *BrowserModule) OpenPath(_ context.Context, req PathRequest) (interface{}, error) {
+	clean, err := validateLocalPath(req.Path)
+	if err != nil {
+		return nil, err
+	}
+	return nil, openPathCmd(clean).Start()
+}
+
+func validateLocalPath(p string) (string, error) {
+	clean := filepath.Clean(strings.TrimSpace(p))
+	if clean == "" || clean == "." || !filepath.IsAbs(clean) {
+		return "", fault.New("invalid_path", "path must be absolute")
+	}
+	if runtime.GOOS == "windows" && strings.HasPrefix(clean, `\\`) {
+		return "", fault.New("invalid_path", "UNC paths are not allowed")
+	}
+	if _, err := os.Lstat(clean); err != nil {
+		return "", fault.Wrap(fault.CodeNotFound, err)
+	}
+	return clean, nil
 }

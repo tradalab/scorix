@@ -3,8 +3,7 @@ package window
 import "github.com/tradalab/scorix/webview"
 
 type RuntimeConfig struct {
-	Identifier     string
-	SingleInstance bool
+	Identifier string
 }
 
 type RuntimeEvent string
@@ -13,6 +12,10 @@ const (
 	RuntimeReady      RuntimeEvent = "ready"
 	RuntimeBeforeQuit RuntimeEvent = "before-quit"
 	RuntimeActivate   RuntimeEvent = "activate" // e.g. macOS dock re-open
+
+	RuntimeThemeChanged RuntimeEvent = "theme-changed" // OS light/dark flipped
+	RuntimeSuspend      RuntimeEvent = "suspend"       // system is going to sleep
+	RuntimeResume       RuntimeEvent = "resume"        // system woke up
 )
 
 // Runtime owns the OS event loop on the main thread; all window/webview mutations

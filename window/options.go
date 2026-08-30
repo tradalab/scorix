@@ -19,7 +19,6 @@ type Options struct {
 	Center      bool
 	Resizable   bool
 	Frameless   bool
-	Transparent bool
 	AlwaysOnTop bool
 	HideOnClose bool
 	DevTools    bool

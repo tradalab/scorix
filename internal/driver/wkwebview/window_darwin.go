@@ -208,6 +208,15 @@ func (w *win) Unmaximize() { w.Maximize() } // zoom: toggles
 
 func (w *win) Restore() { dispatchMain(func() { w.nw.Send(sel("deminiaturize:"), objc.ID(0)) }) }
 
+func (w *win) StartDrag() {
+	dispatchMain(func() {
+		app := objc.ID(cls("NSApplication")).Send(sel("sharedApplication"))
+		if ev := app.Send(sel("currentEvent")); ev != 0 {
+			w.nw.Send(sel("performWindowDragWithEvent:"), ev)
+		}
+	})
+}
+
 func (w *win) SetFullscreen(bool) {
 	dispatchMain(func() { w.nw.Send(sel("toggleFullScreen:"), objc.ID(0)) })
 }
