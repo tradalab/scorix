@@ -19,6 +19,11 @@ type DevOptions struct {
 	URL string
 	// Legacy disables HMR: build the shell once and serve the embedded assets.
 	Legacy bool
+	// Watch rebuilds and relaunches the Go app on source changes (proto/schema
+	// changes regenerate first). WatchSet marks an explicit flag, which beats
+	// scorix.yaml dev.hot_reload.
+	Watch    bool
+	WatchSet bool
 }
 
 const defaultDevPort = 3000
@@ -102,9 +107,27 @@ func Dev(ctx context.Context, opt DevOptions) error {
 		return err
 	}
 
+	cfg, _ := loadProjectConfig(cfgPath)
+	var tags []string
+	if cfg != nil && cfg.Build != nil {
+		tags = cfg.Build.Tags
+	}
+	env := os.Environ()
+	if devURL != "" {
+		env = append(env, "SCORIX_DEV_URL="+devURL)
+	}
+
+	watch := opt.Watch
+	if !opt.WatchSet && cfg != nil && cfg.Dev != nil && cfg.Dev.HotReload != nil {
+		watch = *cfg.Dev.HotReload
+	}
+	if watch {
+		return devWatch(ctx, root, cfg, tags, env)
+	}
+
 	args := []string{"run"}
-	if cfg, _ := loadProjectConfig(cfgPath); cfg != nil && cfg.Build != nil && len(cfg.Build.Tags) > 0 {
-		args = append(args, "-tags", strings.Join(cfg.Build.Tags, ","))
+	if len(tags) > 0 {
+		args = append(args, "-tags", strings.Join(tags, ","))
 	}
 	args = append(args, ".", "-mode", "app")
 
@@ -113,11 +136,61 @@ func Dev(ctx context.Context, opt DevOptions) error {
 	cmd.Dir = root
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env = os.Environ()
-	if devURL != "" {
-		cmd.Env = append(cmd.Env, "SCORIX_DEV_URL="+devURL)
-	}
+	cmd.Env = env
 	return cmd.Run()
+}
+
+func devWatch(ctx context.Context, root string, cfg *ProjectConfig, tags, env []string) error {
+	protoRel, schemaRel := "idl/app.proto", "etc/schema.sql"
+	if cfg != nil && cfg.Proto != "" {
+		protoRel = cfg.Proto
+	}
+	if cfg != nil && cfg.Model != nil && cfg.Model.Schema != "" {
+		schemaRel = cfg.Model.Schema
+	}
+	protoRel, schemaRel = filepath.ToSlash(protoRel), filepath.ToSlash(schemaRel)
+
+	if err := os.MkdirAll(filepath.Join(root, ".scorix", "dev"), 0o755); err != nil {
+		return err
+	}
+	ws := newWatchSet(root,
+		filepath.Join(root, "scorix.yaml"),
+		filepath.Join(root, filepath.FromSlash(protoRel)),
+		filepath.Join(root, filepath.FromSlash(schemaRel)))
+	ws.scan()
+
+	app := &devApp{ctx: ctx, root: root, env: env, tags: tags, done: make(chan struct{})}
+	fmt.Println("==> Building app...")
+	if err := app.build(); err != nil { // a broken tree fails here, not after a window opened
+		return fmt.Errorf("build failed: %w", err)
+	}
+	fmt.Println("==> Starting Scorix in dev mode (app, watching Go sources)...")
+	if err := app.restart(); err != nil {
+		return err
+	}
+	defer app.stop()
+
+	return devLoop(ctx, ws, protoRel, schemaRel, devHooks{
+		regenerate: func(proto, schema bool) error {
+			if proto {
+				fmt.Println("==> [watch] proto changed: regenerating")
+				if err := GenerateProto(ctx, GenerateProtoOptions{Proto: "idl/app.proto", Dir: root}); err != nil {
+					return err
+				}
+			}
+			if schema {
+				fmt.Println("==> [watch] schema changed: regenerating models")
+				if err := GenerateModel(ctx, GenerateModelOptions{Schema: "etc/schema.sql", Dir: root}); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+		build:   app.build,
+		restart: app.restart,
+		appDone: app.appDone,
+		out:     os.Stdout,
+	})
 }
 
 // waitForServer polls url until it answers (any HTTP status counts — Next dev

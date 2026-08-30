@@ -26,7 +26,8 @@ type ProjectConfig struct {
 }
 
 type DevConfig struct {
-	Port int `yaml:"port"`
+	Port      int   `yaml:"port"`
+	HotReload *bool `yaml:"hot_reload"` // nil = on; false turns the Go watcher off
 }
 
 type ModelConfig struct {

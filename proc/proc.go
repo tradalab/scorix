@@ -26,6 +26,8 @@ type Spec struct {
 
 	Restart  RestartPolicy // zero value: never restart
 	LogLines int           // stdout+stderr ring size; default 100
+	Stdout   io.Writer     // optional tee of the child's stdout (the ring still captures it)
+	Stderr   io.Writer     // optional tee of the child's stderr
 
 	OnExit func(err error, willRestart bool)
 }
@@ -82,10 +84,10 @@ func (p *Process) launch(ctx context.Context) (chan error, error) {
 	configureSysProc(cmd)
 
 	if pipe, err := cmd.StdoutPipe(); err == nil {
-		go drainToRing(pipe, p.logs)
+		go drainToRing(teeTo(pipe, p.spec.Stdout), p.logs)
 	}
 	if pipe, err := cmd.StderrPipe(); err == nil {
-		go drainToRing(pipe, p.logs)
+		go drainToRing(teeTo(pipe, p.spec.Stderr), p.logs)
 	}
 
 	if err := cmd.Start(); err != nil {
@@ -172,7 +174,7 @@ func (p *Process) supervise(exited chan error) {
 		}
 		backoff = min(backoff<<restarts, 30*time.Second)
 		restarts++
-		logger.Warn("proc: child exited — restarting", "path", p.spec.Path, "attempt", restarts, "backoff", backoff.String(), "err", errStr(werr))
+		logger.Warn("proc: child exited - restarting", "path", p.spec.Path, "attempt", restarts, "backoff", backoff.String(), "err", errStr(werr))
 		select {
 		case <-time.After(backoff):
 		case <-p.stopCh: // Stop must not wait out a 30s backoff
@@ -297,6 +299,13 @@ func (r *ring) lines() []string {
 		out = append(out, r.buf[(r.start+i)%len(r.buf)])
 	}
 	return out
+}
+
+func teeTo(r io.Reader, w io.Writer) io.Reader {
+	if w == nil {
+		return r
+	}
+	return io.TeeReader(r, w)
 }
 
 func drainToRing(pipe io.Reader, r *ring) {
