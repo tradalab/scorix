@@ -11,7 +11,7 @@ import (
 
 const pipePrefix = `\\.\pipe\scorix.`
 
-func Acquire(id string, onActivate func()) (*Lock, error) {
+func Acquire(id string, onActivate func(args []string)) (*Lock, error) {
 	name := sanitize(id)
 	mutexName, err := windows.UTF16PtrFromString(`Local\scorix.` + name)
 	if err != nil {
@@ -51,7 +51,7 @@ func Acquire(id string, onActivate func()) (*Lock, error) {
 	}}, nil
 }
 
-func serve(name string, onActivate func(), stop, done chan struct{}) {
+func serve(name string, onActivate func(args []string), stop, done chan struct{}) {
 	defer close(done)
 	pipeName, err := windows.UTF16PtrFromString(pipePrefix + name)
 	if err != nil {
@@ -82,11 +82,11 @@ func serve(name string, onActivate func(), stop, done chan struct{}) {
 			continue
 		}
 		var n uint32
-		buf := make([]byte, 16)
+		buf := make([]byte, 64*1024) // argv payload; connecting alone already means "activate"
 		_ = windows.ReadFile(h, buf, &n, nil)
 		_ = windows.CloseHandle(h)
 		if onActivate != nil {
-			onActivate()
+			onActivate(parsePayload(buf[:n]))
 		}
 	}
 }
@@ -96,7 +96,7 @@ func notify(name string) {
 	for {
 		f, err := os.OpenFile(pipePrefix+name, os.O_WRONLY, 0)
 		if err == nil {
-			_, _ = f.Write([]byte("activate\n"))
+			_, _ = f.Write(payload())
 			_ = f.Close()
 			return
 		}

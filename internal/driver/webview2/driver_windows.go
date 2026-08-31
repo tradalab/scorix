@@ -70,9 +70,18 @@ var (
 	procReleaseCapture   = user32.NewProc("ReleaseCapture")
 	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
 
-	shell32          = windows.NewLazySystemDLL("shell32.dll")
-	procExtractIconW = shell32.NewProc("ExtractIconW")
+	shell32             = windows.NewLazySystemDLL("shell32.dll")
+	procExtractIconW    = shell32.NewProc("ExtractIconW")
+	procDragAcceptFiles = shell32.NewProc("DragAcceptFiles")
+	procDragQueryFileW  = shell32.NewProc("DragQueryFileW")
+	procDragQueryPoint  = shell32.NewProc("DragQueryPoint")
+	procDragFinish      = shell32.NewProc("DragFinish")
 )
+
+var iidController4 = windows.GUID{
+	Data1: 0x97d418d5, Data2: 0xa426, Data3: 0x4e49,
+	Data4: [8]byte{0xa1, 0x51, 0xe1, 0xa1, 0x0f, 0x32, 0x7d, 0x9e},
+}
 
 const (
 	wsOverlappedWindow uintptr = 0x00CF0000
@@ -106,6 +115,7 @@ const (
 	wmApp           uint32 = 0x8000
 	wmSetIcon       uint32 = 0x0080
 
+	wmDropFiles     uint32  = 0x0233 // WM_DROPFILES
 	wmNCLButtonDown uint32  = 0x00A1 // WM_NCLBUTTONDOWN
 	htCaption       uintptr = 2      // HTCAPTION
 
@@ -401,6 +411,11 @@ func wndProc(hwnd, message, wParam, lParam uintptr) uintptr {
 				rt.fireSystem(window.RuntimeResume)
 			}
 			return 1 // TRUE: processed
+		case wmDropFiles:
+			if w := rt.manager.byHandle(h); w != nil {
+				w.handleDrop(wParam)
+			}
+			return 0
 		case wmClose:
 			if w := rt.manager.byHandle(h); w != nil {
 				if w.hideOnCloseEnabled() {
@@ -557,6 +572,9 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 		view:        newView(m.rt.Dispatch),
 		events:      map[window.Event][]func(window.EventData){},
 	}
+	if opts.FileDrop {
+		procDragAcceptFiles.Call(uintptr(hwnd), 1)
+	}
 	if opts.InitScript != "" {
 		w.view.InitScript(opts.InitScript)
 	}
@@ -702,6 +720,15 @@ func (w *win) startAttach(identifier string) error {
 
 		comCall(controller, ctrlPutIsVisible, 1)
 
+		if w.opts.FileDrop {
+			// The webview must stop accepting OLE drops or WM_DROPFILES never
+			// reaches the host window that DragAcceptFiles registered.
+			if c4, hr := comCallOut(controller, iunknownQueryInterface, uintptr(unsafe.Pointer(&iidController4))); hr == 0 && c4 != nil {
+				comCall(c4, ctrl4PutAllowExternalDrop, 0)
+				comCall(c4, iunknownRelease)
+			}
+		}
+
 		if settings, hr := comCallOut(core, cwvGetSettings); hr == 0 && settings != nil {
 			enable := uintptr(0)
 			if w.opts.DevTools {
@@ -759,6 +786,34 @@ func (w *win) startAttach(identifier string) error {
 
 		w.view.ready(core)
 	})
+}
+
+func (w *win) handleDrop(hDrop uintptr) {
+	const fromEnd = 0xFFFFFFFF
+	count, _, _ := procDragQueryFileW.Call(hDrop, fromEnd, 0, 0)
+	files := make([]string, 0, count)
+	buf := make([]uint16, 4096)
+	for i := uintptr(0); i < count; i++ {
+		n, _, _ := procDragQueryFileW.Call(hDrop, i, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+		if n > 0 {
+			files = append(files, windows.UTF16ToString(buf[:n]))
+		}
+	}
+	var pt tagPOINT
+	procDragQueryPoint.Call(hDrop, uintptr(unsafe.Pointer(&pt)))
+	procDragFinish.Call(hDrop)
+	if len(files) == 0 {
+		return
+	}
+	dpi := w.windowDPI()
+	w.mu.Lock()
+	fns := append([]func(window.EventData){}, w.events[window.EventFileDrop]...)
+	id := w.id
+	w.mu.Unlock()
+	data := window.EventData{Window: id, X: toLogical(int(pt.x), dpi), Y: toLogical(int(pt.y), dpi), Files: files}
+	for _, fn := range fns {
+		fn(data)
+	}
 }
 
 func (w *win) updateBounds() {

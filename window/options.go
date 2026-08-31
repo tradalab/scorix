@@ -22,6 +22,7 @@ type Options struct {
 	AlwaysOnTop bool
 	HideOnClose bool
 	DevTools    bool
+	FileDrop    bool
 
 	URL        string // initial content, e.g. "scorix://app/index.html"
 	InitScript string // injected before page scripts on every navigation

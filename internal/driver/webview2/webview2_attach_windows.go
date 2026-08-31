@@ -26,6 +26,11 @@ const (
 	ctrlPutBounds       = 6
 	ctrlClose           = 24
 	ctrlGetCoreWebView2 = 25
+	// ICoreWebView2Controller4 appends 12 slots after GetCoreWebView2=25
+	// (backgroundcolor 26/27, rasterization 28-33, boundsmode 34/35,
+	// allowexternaldrop 36/37); Close=24/GetCoreWebView2=25 cross-check the
+	// alignment against go-webview2's vtbl.
+	ctrl4PutAllowExternalDrop = 37
 	// ICoreWebView2
 	cwvGetSettings                = 3
 	cwvNavigate                   = 5

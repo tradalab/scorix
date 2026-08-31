@@ -16,7 +16,9 @@ type Config struct {
 		Identifier     string `yaml:"identifier" json:"identifier"`
 		SingleInstance bool   `yaml:"single_instance" json:"single_instance"`
 		// Icon (.ico) is used for the native window title bar; see the Windows driver.
-		Icon string `yaml:"icon" json:"icon"`
+		Icon      string   `yaml:"icon" json:"icon"`
+		Protocols []string `yaml:"protocols" json:"protocols"`   // custom URL schemes, e.g. [myapp]
+		FileTypes []string `yaml:"file_types" json:"file_types"` // extensions opened with the app, e.g. [".rdm"]
 	} `yaml:"app" json:"app"`
 
 	Dev struct {
@@ -59,6 +61,7 @@ type WindowConfig struct {
 	Frameless   bool   `yaml:"frameless" json:"frameless"`
 	Debug       bool   `yaml:"debug" json:"debug" env:""`
 	HideOnClose bool   `yaml:"hide_on_close" json:"hide_on_close" env:""`
+	FileDrop    bool   `yaml:"file_drop" json:"file_drop"`
 }
 
 type LoggerConfig struct {

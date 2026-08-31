@@ -17,7 +17,7 @@ func testID(t *testing.T) string {
 
 func TestSecondAcquireActivatesPrimary(t *testing.T) {
 	got := make(chan struct{}, 1)
-	l, err := Acquire(testID(t), func() {
+	l, err := Acquire(testID(t), func([]string) {
 		select {
 		case got <- struct{}{}:
 		default:
@@ -64,10 +64,10 @@ func TestCrossProcess(t *testing.T) {
 	}
 
 	id := testID(t)
-	got := make(chan struct{}, 1)
-	l, err := Acquire(id, func() {
+	got := make(chan []string, 1)
+	l, err := Acquire(id, func(args []string) {
 		select {
-		case got <- struct{}{}:
+		case got <- args:
 		default:
 		}
 	})
@@ -83,7 +83,11 @@ func TestCrossProcess(t *testing.T) {
 		t.Fatalf("helper err=%v out=%s", err, out)
 	}
 	select {
-	case <-got:
+	case args := <-got:
+		// The secondary forwards its argv; the helper's carries the -test.run flag.
+		if !strings.Contains(strings.Join(args, " "), "-test.run") {
+			t.Fatalf("forwarded args = %v, want the helper's own argv", args)
+		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("cross-process activation never reached the primary")
 	}

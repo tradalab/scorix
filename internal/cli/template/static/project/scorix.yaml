@@ -17,6 +17,8 @@ app:
   version: 1.0.0
   identifier: com.example.{{ .Name }}
   single_instance: true # a second launch activates the running window and exits
+  # protocols: [{{ .Name }}] # register {{ .Name }}:// links to open this app (sys:open-url)
+  # file_types: [".ext"] # open matching files with this app (sys:open-file)
   description: "{{ .Name }} project"
   icon: assets/icon.ico # staged into the MSI/bundle by `scorix package`
 
@@ -36,6 +38,7 @@ window:
   width: 800
   height: 600
   debug: true
+  # file_drop: true # deliver OS file drops as sys:file-drop with real paths
 
 # sealed: env / runtime overlay cannot loosen CSP or the allowlist (RCE guard).
 # csp applies in BOTH modes (web header; app header+meta). The `default` preset

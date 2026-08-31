@@ -77,6 +77,12 @@ type App struct {
 	winClose sync.WaitGroup          // per-window async Close goroutines (app mode)
 
 	sysHandlers map[window.RuntimeEvent][]func() // OnSystemEvent subscribers, registered pre-Run
+
+	openURLFns  []func(string)
+	openFileFns []func(string)
+	fileDropFns []func(*AppWindow, []string)
+	launchURLs  []string // everything this process was asked to open, for sys:launch
+	launchFiles []string
 }
 
 func (a *App) OnSystemEvent(evt window.RuntimeEvent, fn func()) {
@@ -174,6 +180,7 @@ func New(opts Options) (*App, error) {
 		cfg:     cfg,
 	}
 	a.registerWindowCommands()
+	a.registerLaunchCommand()
 	if a.cfg.App.Name == "" {
 		a.cfg.App.Name = opts.Identifier
 	}
@@ -348,7 +355,10 @@ func (a *App) removeSender(id int) {
 // window closes or Quit is called. Additional windows: OpenWindow.
 func (a *App) Run() error {
 	if a.cfg.App.SingleInstance {
-		lock, err := singleinstance.Acquire(a.opts.Identifier, a.Show)
+		lock, err := singleinstance.Acquire(a.opts.Identifier, func(args []string) {
+			a.Show()
+			a.dispatchOpenArgs(args)
+		})
 		if err != nil {
 			if err == ErrAlreadyRunning {
 				logger.Info("app: another instance is already running — asked it to show and exiting")
@@ -358,6 +368,7 @@ func (a *App) Run() error {
 		defer lock.Release()
 	}
 
+	a.registerOSHandlers()
 	rt, err := newDriver().NewRuntime(window.RuntimeConfig{Identifier: a.opts.Identifier})
 	if err != nil {
 		return err
@@ -415,6 +426,7 @@ func (a *App) Run() error {
 			Frameless:   a.cfg.Window.Frameless,
 			HideOnClose: a.cfg.Window.HideOnClose,
 			DevTools:    a.cfg.Window.Debug || devURL != "",
+			FileDrop:    a.cfg.Window.FileDrop,
 			Center:      true,
 			URL:         mainURL,
 			IconPath:    a.cfg.App.Icon,
@@ -431,6 +443,9 @@ func (a *App) Run() error {
 			fn(a)
 		}
 		aw.Show()
+		// Launch args (a protocol/file-type start) go out only now: earlier and
+		// neither the Go handlers nor a loaded frontend could have seen them.
+		go a.dispatchOpenArgs(launchArgs())
 	})
 	err = rt.Run()
 

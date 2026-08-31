@@ -124,6 +124,22 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 	return w, nil
 }
 
+func DropFiles(w window.Window, x, y int, paths ...string) {
+	hw, ok := w.(*win)
+	if !ok {
+		return
+	}
+	hw.mu.Lock()
+	fns := append([]func(window.EventData){}, hw.events[window.EventFileDrop]...)
+	id := hw.id
+	hw.mu.Unlock()
+	data := window.EventData{Window: id, X: x, Y: y, Files: paths}
+	for _, fn := range fns {
+		fn(data)
+	}
+}
+
+// Fire lets tests simulate driver-originated runtime events.
 func Fire(rt window.Runtime, evt window.RuntimeEvent) {
 	if r, ok := rt.(*runtime); ok {
 		r.fire(evt)

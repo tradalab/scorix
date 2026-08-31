@@ -10,7 +10,8 @@ const (
 	EventBlur     Event = "blur"
 	EventMinimize Event = "minimize"
 	EventMaximize Event = "maximize"
-	EventClose    Event = "close" // cancelable via EventData.PreventDefault
+	EventClose    Event = "close"     // cancelable via EventData.PreventDefault
+	EventFileDrop Event = "file-drop" // Files set; X/Y = drop point in logical client coords
 	EventReady    Event = "ready"
 )
 
@@ -24,4 +25,5 @@ type EventData struct {
 	W, H           int
 	X, Y           int
 	PreventDefault func()
+	Files          []string // EventFileDrop only
 }

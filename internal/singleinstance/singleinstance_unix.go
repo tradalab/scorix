@@ -18,12 +18,12 @@ func sockPath(name string) string {
 	return filepath.Join(dir, "scorix-"+name+".sock")
 }
 
-func Acquire(id string, onActivate func()) (*Lock, error) {
+func Acquire(id string, onActivate func(args []string)) (*Lock, error) {
 	name := sanitize(id)
 	sock := sockPath(name)
 
 	if c, err := net.DialTimeout("unix", sock, time.Second); err == nil {
-		_, _ = c.Write([]byte("activate\n"))
+		_, _ = c.Write(payload())
 		_ = c.Close()
 		return nil, ErrAlreadyRunning
 	}
@@ -37,7 +37,7 @@ func Acquire(id string, onActivate func()) (*Lock, error) {
 		deadline := time.Now().Add(2 * time.Second)
 		for time.Now().Before(deadline) {
 			if c, derr := net.Dial("unix", sock); derr == nil {
-				_, _ = c.Write([]byte("activate\n"))
+				_, _ = c.Write(payload())
 				_ = c.Close()
 				break
 			}
@@ -60,8 +60,8 @@ func Acquire(id string, onActivate func()) (*Lock, error) {
 			if aerr != nil {
 				return // listener closed by Release
 			}
-			buf := make([]byte, 16)
-			_, _ = c.Read(buf)
+			buf := make([]byte, 64*1024)
+			n, _ := c.Read(buf)
 			_ = c.Close()
 			select {
 			case <-stop:
@@ -69,7 +69,7 @@ func Acquire(id string, onActivate func()) (*Lock, error) {
 			default:
 			}
 			if onActivate != nil {
-				onActivate()
+				onActivate(parsePayload(buf[:n]))
 			}
 		}
 	}()

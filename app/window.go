@@ -120,6 +120,15 @@ func (a *App) attachWindow(rt window.Runtime, opts window.Options) (*AppWindow, 
 	a.bridges = append(a.bridges, b)
 	a.wins[aw.Client] = aw
 	a.mu.Unlock()
+	w.On(window.EventFileDrop, func(d window.EventData) {
+		a.mu.Lock()
+		fns := append([]func(*AppWindow, []string){}, a.fileDropFns...)
+		a.mu.Unlock()
+		for _, fn := range fns {
+			fn(aw, d.Files)
+		}
+		a.EmitTo(aw.Client, "sys:file-drop", map[string]any{"paths": d.Files, "x": d.X, "y": d.Y})
+	})
 	// On close, cancel the bridge's handlers too: else a long-lived stream (monitor,
 	// pubsub) leaks a goroutine per closed window — native PostMessage can't report
 	// the gone client.
