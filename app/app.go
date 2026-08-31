@@ -84,6 +84,9 @@ type App struct {
 	fileDropFns []func(*AppWindow, []string)
 	launchURLs  []string // everything this process was asked to open, for sys:launch
 	launchFiles []string
+
+	blobs map[string]blobEntry
+	calls map[string]pendingCall // in-flight reverse RPCs, keyed by frame id
 }
 
 func (a *App) OnSystemEvent(evt window.RuntimeEvent, fn func()) {
@@ -349,6 +352,7 @@ func (a *App) removeSender(id int) {
 	a.mu.Unlock()
 	if ok {
 		close(s.done) // map-delete guard guarantees a single close; never closes s.ch
+		a.failCallsFor(ClientID(id))
 	}
 }
 
@@ -381,7 +385,7 @@ func (a *App) Run() error {
 	}
 	a.mu.Unlock()
 	for scheme, fsys := range schemes {
-		rt.RegisterScheme(scheme, a.withCSP(webview.SchemeFromFS(fsys)))
+		rt.RegisterScheme(scheme, a.schemeWithBlobs(webview.SchemeFromFS(fsys)))
 	}
 
 	a.mods.SetAppController(&appController{a: a})
@@ -429,6 +433,7 @@ func (a *App) Run() error {
 			DevTools:    a.cfg.Window.Debug || devURL != "",
 			FileDrop:    a.cfg.Window.FileDrop,
 			Theme:       a.cfg.Window.Theme,
+			Backdrop:    a.cfg.Window.Backdrop,
 			Center:      true,
 			URL:         mainURL,
 			IconPath:    a.cfg.App.Icon,
@@ -436,7 +441,7 @@ func (a *App) Run() error {
 		var restored windowState
 		var hadState bool
 		if a.cfg.Window.RememberState {
-			if st, ok := a.loadWindowState(); ok {
+			if st, ok := a.loadWindowState("main"); ok {
 				restored, hadState = st, true
 				mainOpts.Width, mainOpts.Height = st.W, st.H
 				if stateOnScreen(st, screensOf(rt)) {
@@ -464,8 +469,7 @@ func (a *App) Run() error {
 			aw.Maximize()
 		}
 		if a.cfg.Window.RememberState {
-			aw.On(window.EventClose, func(window.EventData) { a.saveWindowState(aw) })
-			rt.On(window.RuntimeBeforeQuit, func() { a.saveWindowState(aw) })
+			a.hookWindowState(rt, aw, "main")
 		}
 		// Launch args (a protocol/file-type start) go out only now: earlier and
 		// neither the Go handlers nor a loaded frontend could have seen them.
@@ -633,6 +637,7 @@ func (a *App) Handler() http.Handler {
 			return c.WriteMessage(websocket.TextMessage, b)
 		}
 		d := ipc.NewDispatcher(a.reg, send)
+		d.SetReplyHandler(a.handleCallReply)
 		// Broadcast (Emit) shares this write mutex but ignores the per-write error;
 		// the rpc Send path propagates it.
 		id := a.addSender(func(b []byte) { _ = send(b) })
@@ -700,6 +705,17 @@ func (a *App) assetHandler(fsys fs.FS) http.Handler {
 			})
 		}
 		if fsys == nil {
+			http.NotFound(w, r)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, blobPathPrefix) {
+			if e, ok := a.blobFor(r.URL.Path); ok {
+				if e.ct != "" {
+					w.Header().Set("Content-Type", e.ct)
+				}
+				_, _ = w.Write(e.data)
+				return
+			}
 			http.NotFound(w, r)
 			return
 		}

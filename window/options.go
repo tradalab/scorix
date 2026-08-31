@@ -16,14 +16,16 @@ type Options struct {
 	X *int
 	Y *int
 
-	Center      bool
-	Resizable   bool
-	Frameless   bool
-	AlwaysOnTop bool
-	HideOnClose bool
-	DevTools    bool
-	FileDrop    bool
-	Theme       string
+	Center        bool
+	Resizable     bool
+	Frameless     bool
+	AlwaysOnTop   bool
+	HideOnClose   bool
+	DevTools      bool
+	FileDrop      bool
+	Theme         string
+	Backdrop      string
+	RememberState bool
 
 	URL        string // initial content, e.g. "scorix://app/index.html"
 	InitScript string // injected before page scripts on every navigation

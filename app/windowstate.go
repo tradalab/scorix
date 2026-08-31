@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"github.com/tradalab/scorix/module"
 	"github.com/tradalab/scorix/window"
@@ -17,16 +18,22 @@ type windowState struct {
 	Maximized bool `json:"maximized"`
 }
 
-func (a *App) windowStatePath() string {
+var stateKeyClean = regexp.MustCompile(`[^A-Za-z0-9._-]`)
+
+func (a *App) windowStatePath(key string) string {
 	name := a.cfg.App.Name
 	if name == "" {
 		name = a.opts.Identifier
 	}
-	return filepath.Join(module.DataDir(name), "window-state.json")
+	file := "window-state.json" // the main window keeps the pre-keyed filename
+	if key != "main" {
+		file = "window-state-" + stateKeyClean.ReplaceAllString(key, "-") + ".json"
+	}
+	return filepath.Join(module.DataDir(name), file)
 }
 
-func (a *App) loadWindowState() (windowState, bool) {
-	b, err := os.ReadFile(a.windowStatePath())
+func (a *App) loadWindowState(key string) (windowState, bool) {
+	b, err := os.ReadFile(a.windowStatePath(key))
 	if err != nil {
 		return windowState{}, false
 	}
@@ -37,8 +44,8 @@ func (a *App) loadWindowState() (windowState, bool) {
 	return st, true
 }
 
-func (a *App) saveWindowState(aw *AppWindow) {
-	st, had := a.loadWindowState()
+func (a *App) saveWindowState(key string, aw *AppWindow) {
+	st, had := a.loadWindowState(key)
 	switch aw.State() { // maximized/minimized must keep the last NORMAL rect, the classic remember-state bug
 	case window.StateNormal:
 		st.X, st.Y = aw.Position()
@@ -61,11 +68,24 @@ func (a *App) saveWindowState(aw *AppWindow) {
 	if err != nil {
 		return
 	}
-	path := a.windowStatePath()
+	path := a.windowStatePath(key)
 	if os.MkdirAll(filepath.Dir(path), 0o755) != nil {
 		return
 	}
 	_ = os.WriteFile(path, b, 0o644)
+}
+
+func (a *App) hookWindowState(rt window.Runtime, aw *AppWindow, key string) {
+	var closed bool
+	aw.On(window.EventClose, func(window.EventData) {
+		a.saveWindowState(key, aw)
+		closed = true
+	})
+	rt.On(window.RuntimeBeforeQuit, func() {
+		if !closed {
+			a.saveWindowState(key, aw)
+		}
+	})
 }
 
 func screensOf(rt window.Runtime) []window.Screen {

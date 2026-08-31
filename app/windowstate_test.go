@@ -29,8 +29,8 @@ func TestWindowStateRoundTrip(t *testing.T) {
 	id := "scorix-state-test"
 
 	a := newStateApp(t, id)
-	t.Cleanup(func() { _ = os.Remove(a.windowStatePath()) })
-	_ = os.Remove(a.windowStatePath())
+	t.Cleanup(func() { _ = os.Remove(a.windowStatePath("main")) })
+	_ = os.Remove(a.windowStatePath("main"))
 
 	stop := runHeadless(t, a)
 	w := a.MainWindow()
@@ -38,7 +38,7 @@ func TestWindowStateRoundTrip(t *testing.T) {
 	w.SetSize(1024, 700)
 	stop() // Quit -> RuntimeBeforeQuit -> saveWindowState
 
-	st, ok := a.loadWindowState()
+	st, ok := a.loadWindowState("main")
 	if !ok {
 		t.Fatal("state file not written on quit")
 	}
@@ -60,18 +60,18 @@ func TestWindowStateMaximizedKeepsNormalRect(t *testing.T) {
 	id := "scorix-state-max-test"
 
 	a := newStateApp(t, id)
-	t.Cleanup(func() { _ = os.Remove(a.windowStatePath()) })
-	_ = os.Remove(a.windowStatePath())
+	t.Cleanup(func() { _ = os.Remove(a.windowStatePath("main")) })
+	_ = os.Remove(a.windowStatePath("main"))
 
 	stop := runHeadless(t, a)
 	w := a.MainWindow()
 	w.SetPosition(50, 60)
 	w.SetSize(900, 500)
-	a.saveWindowState(a.MainWindow()) // snapshot the normal rect
+	a.saveWindowState("main", a.MainWindow()) // snapshot the normal rect
 	w.Maximize()
 	stop()
 
-	st, ok := a.loadWindowState()
+	st, ok := a.loadWindowState("main")
 	if !ok {
 		t.Fatal("no state file")
 	}
@@ -142,5 +142,35 @@ func TestStateOnScreen(t *testing.T) {
 	}
 	if !stateOnScreen(windowState{X: 99999}, nil) {
 		t.Fatal("no screen data must trust the state")
+	}
+}
+
+func TestSecondaryWindowRememberState(t *testing.T) {
+	withHeadlessDriver(t)
+	id := "scorix-state-secondary-test"
+
+	open := func(a *App) *AppWindow {
+		w, err := a.OpenWindow(window.Options{ID: "tools", RememberState: true, Width: 400, Height: 300})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return w
+	}
+
+	a := newStateApp(t, id)
+	t.Cleanup(func() { _ = os.Remove(a.windowStatePath("tools")) })
+	_ = os.Remove(a.windowStatePath("tools"))
+	stop := runHeadless(t, a)
+	w2 := open(a)
+	w2.SetPosition(300, 200)
+	w2.SetSize(640, 480)
+	stop()
+
+	b := newStateApp(t, id)
+	stopB := runHeadless(t, b)
+	defer stopB()
+	o := headless.OptionsOf(open(b).Window)
+	if o.Width != 640 || o.Height != 480 || o.X == nil || *o.X != 300 || o.Center {
+		t.Fatalf("restored secondary options = %+v", o)
 	}
 }

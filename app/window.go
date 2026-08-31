@@ -38,6 +38,21 @@ func (a *App) OpenWindow(opts window.Options) (*AppWindow, error) {
 		opts.URL = a.opts.URL
 	}
 
+	var restored windowState
+	var hadState bool
+	remember := opts.RememberState && opts.ID != ""
+	if remember {
+		if st, ok := a.loadWindowState(string(opts.ID)); ok {
+			restored, hadState = st, true
+			opts.Width, opts.Height = st.W, st.H
+			if stateOnScreen(st, screensOf(rt)) {
+				x, y := st.X, st.Y
+				opts.X, opts.Y = &x, &y
+				opts.Center = false
+			}
+		}
+	}
+
 	type result struct {
 		w   *AppWindow
 		err error
@@ -47,6 +62,12 @@ func (a *App) OpenWindow(opts window.Options) (*AppWindow, error) {
 		aw, err := a.attachWindow(rt, opts)
 		if err == nil {
 			aw.Show()
+			if hadState && restored.Maximized {
+				aw.Maximize()
+			}
+			if remember {
+				a.hookWindowState(rt, aw, string(opts.ID))
+			}
 		}
 		ch <- result{aw, err}
 	})
@@ -111,6 +132,7 @@ func (a *App) attachWindow(rt window.Runtime, opts window.Options) (*AppWindow, 
 		return view.PostMessage(raw)
 	}
 	d := ipc.NewDispatcher(a.reg, send)
+	d.SetReplyHandler(a.handleCallReply)
 	view.OnMessage(d.Handle)
 	b := &ipc.NativeBridge{Dispatcher: d}
 	sid := a.addSender(func(raw []byte) { _ = send(raw) })

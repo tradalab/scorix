@@ -256,6 +256,7 @@ func createWindow(opts window.Options, messageOnly bool) (windows.Handle, error)
 	if !messageOnly {
 		setWindowIcon(windows.Handle(hwnd), opts.IconPath)
 		applyTitlebarTheme(windows.Handle(hwnd), opts.Theme)
+		applyBackdrop(windows.Handle(hwnd), opts.Backdrop)
 	}
 	return windows.Handle(hwnd), nil
 }

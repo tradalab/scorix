@@ -80,6 +80,17 @@
       if (set) for (const fn of set) { try { fn(msg.data, msg.error); } catch (e) { console.error(e); } }
       return;
     }
+    if (msg.kind === "call") {
+      const set = listeners.get("__resolve__:" + msg.name);
+      const handler = set && set.size ? set.values().next().value : null;
+      const replyErr = (message) => { try { send({ id: msg.id, kind: "callreply", name: msg.name, state: "error", error: message }); } catch (_) {} };
+      if (!handler) { replyErr("scorix: no resolver for " + msg.name); return; }
+      Promise.resolve()
+        .then(() => handler(msg.data))
+        .then((result) => { try { send({ id: msg.id, kind: "callreply", name: msg.name, state: "done", data: result === undefined ? null : result }); } catch (_) {} })
+        .catch((e) => replyErr(String((e && e.message) || e)));
+      return;
+    }
     if (msg.kind === "rpc") {
       const st = streams.get(msg.id);
       if (!st) return; // unknown/closed call — drop (never resolve a foreign frame)

@@ -64,6 +64,7 @@ type WindowConfig struct {
 	FileDrop      bool   `yaml:"file_drop" json:"file_drop"`
 	RememberState bool   `yaml:"remember_state" json:"remember_state"`
 	Theme         string `yaml:"theme" json:"theme" validate:"omitempty,oneof=system dark light"`
+	Backdrop      string `yaml:"backdrop" json:"backdrop" validate:"omitempty,oneof=mica acrylic tabbed none"`
 }
 
 type LoggerConfig struct {

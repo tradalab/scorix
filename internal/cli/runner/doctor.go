@@ -37,6 +37,7 @@ func Doctor(ctx context.Context) error {
 	case "windows":
 		soft = append(soft,
 			tool{"wix", "Windows MSI packaging (scorix package) — `dotnet tool install --global wix`"},
+			tool{"makensis", "NSIS installer (scorix package --format nsis) - `winget install NSIS.NSIS`"},
 			tool{"signtool", "Windows code signing (optional; package.sign.windows) — ships with the Windows SDK"},
 		)
 	case "linux":

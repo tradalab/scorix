@@ -17,7 +17,17 @@ var (
 const (
 	dwmwaUseImmersiveDarkMode    = 20 // Windows 10 20H1+
 	dwmwaUseImmersiveDarkModeOld = 19 // 1809..1909 used the undocumented slot
+	dwmwaSystemBackdropType      = 38 // Windows 11 22H2+
 )
+
+func applyBackdrop(hwnd windows.Handle, backdrop string) {
+	v, ok := map[string]int32{"mica": 2, "acrylic": 3, "tabbed": 4, "none": 1}[backdrop]
+	if !ok {
+		return
+	}
+	procDwmSetWindowAttribute.Call(uintptr(hwnd), dwmwaSystemBackdropType,
+		uintptr(unsafe.Pointer(&v)), uintptr(unsafe.Sizeof(v))) // silently absent before Win11 22H2
+}
 
 func osPrefersDark() bool {
 	key, err := registry.OpenKey(registry.CURRENT_USER,

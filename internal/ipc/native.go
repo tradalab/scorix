@@ -55,6 +55,7 @@ type Dispatcher struct {
 	streamSem chan struct{} // bounds concurrent server-stream/duplex calls
 
 	mu      sync.Mutex
+	onReply func(ClientID, webview.Message) // kind "callreply" frames (reverse RPC), set by the app layer
 	pending map[string]context.CancelFunc
 	calls   map[string]*rawStream // active rpc calls, keyed by message id
 	client  ClientID
@@ -85,6 +86,12 @@ func (d *Dispatcher) begin() bool {
 	}
 	d.wg.Add(1)
 	return true
+}
+
+func (d *Dispatcher) SetReplyHandler(fn func(ClientID, webview.Message)) {
+	d.mu.Lock()
+	d.onReply = fn
+	d.mu.Unlock()
 }
 
 // BindClient must precede message delivery.
@@ -136,6 +143,14 @@ func (d *Dispatcher) Handle(raw []byte) {
 		logger.Info("ipc <-", "kind", msg.Kind, "name", msg.Name, "id", msg.ID, "state", msg.State, "bytes", len(raw))
 	}
 	switch {
+	case msg.Kind == "callreply":
+		d.mu.Lock()
+		fn := d.onReply
+		from := d.client
+		d.mu.Unlock()
+		if fn != nil {
+			fn(from, msg)
+		}
 	case msg.Kind == webview.KindRPC:
 		d.handleRPC(msg)
 	case msg.State == "cancel":
