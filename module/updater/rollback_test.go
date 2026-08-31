@@ -113,7 +113,7 @@ func TestCheckForUpdate_AcceptsAboveFloor(t *testing.T) {
 	m := newFloorModule(t, "1.0.0")
 	m.writeFloor("2.0.0")
 
-	fp := &fakeProvider{res: &Result{HasUpdate: true, NewVersion: "2.1.0", ArtifactURL: "https://x/y.msi"}}
+	fp := &fakeProvider{res: &Result{HasUpdate: true, NewVersion: "2.1.0", ArtifactURLs: []string{"https://x/y.msi"}}}
 	m.provider = fp
 
 	res, err := m.CheckForUpdate(context.Background())

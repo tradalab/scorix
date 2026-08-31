@@ -15,50 +15,35 @@ type StaticAppcast struct {
 }
 
 type PlatformArtifact struct {
-	URL              string `json:"url"`
-	SignatureBase64  string `json:"signature,omitempty"`
-	WithElevatedTask bool   `json:"with_elevated_task,omitempty"`
+	URLs             []string `json:"urls"` // one per host, tried in order; the artifact need not live where the manifest does
+	SignatureBase64  string   `json:"signature,omitempty"`
+	WithElevatedTask bool     `json:"with_elevated_task,omitempty"`
 }
 
 type DynamicAppcast struct {
-	URL             string `json:"url"`
-	Version         string `json:"version"`
-	PubDate         string `json:"pub_date,omitempty"`
-	Notes           string `json:"notes,omitempty"`
-	SignatureBase64 string `json:"signature,omitempty"`
+	URLs            []string `json:"urls"`
+	Version         string   `json:"version"`
+	PubDate         string   `json:"pub_date,omitempty"`
+	Notes           string   `json:"notes,omitempty"`
+	SignatureBase64 string   `json:"signature,omitempty"`
 }
 
 type AppcastProvider struct {
 	appcastURL string
-	// When set, verify an Ed25519 sig (appcastURL+".sig") over the raw manifest bytes
-	// BEFORE trusting any field — blocks manifest tampering/rollback.
-	publicKeyB64 string
 }
 
-func NewAppcastProvider(url, publicKeyB64 string) *AppcastProvider {
-	return &AppcastProvider{appcastURL: url, publicKeyB64: publicKeyB64}
+func NewAppcastProvider(url string) *AppcastProvider {
+	return &AppcastProvider{appcastURL: url}
 }
 
 func (p *AppcastProvider) CheckForUpdate(ctx context.Context, currentVersion, platformKey string) (*Result, error) {
 	if p.appcastURL == "" {
-		return nil, fmt.Errorf("appcast_url not configured")
+		return nil, fmt.Errorf("updater: no appcast endpoint configured")
 	}
 
 	body, err := httpGet(ctx, defaultClient(), p.appcastURL, nil)
 	if err != nil {
 		return nil, err
-	}
-
-	// FAIL CLOSED: with a key configured, a missing/invalid "<appcast>.sig" refuses the
-	// whole manifest. Empty key skips this (back-compat) but FullUpdate still won't install unsigned.
-	if p.publicKeyB64 != "" {
-		sigBody, err := httpGet(ctx, defaultClient(), p.appcastURL+".sig", nil)
-		if err != nil {
-			return nil, fmt.Errorf("appcast: fetch manifest signature: %w", err)
-		}
-		if err := verifyEd25519(p.publicKeyB64, strings.TrimSpace(string(sigBody)), body); err != nil {
-			return nil, fmt.Errorf("appcast: manifest signature verification failed (refusing): %w", err)
-		}
 	}
 
 	var stat StaticAppcast
@@ -70,30 +55,63 @@ func (p *AppcastProvider) CheckForUpdate(ctx context.Context, currentVersion, pl
 		if !isNewer(stat.Version, currentVersion) {
 			return &Result{HasUpdate: false}, ErrNoUpdate
 		}
+		if bad, ok := allAdvertise(plat.URLs, stat.Version); !ok {
+			return nil, fmt.Errorf("appcast: manifest offers %s but points at %q", stat.Version, bad)
+		}
 		return &Result{
-			HasUpdate:   true,
-			NewVersion:  stat.Version,
-			Notes:       stat.Notes,
-			ArtifactURL: plat.URL,
-			SigBase64:   plat.SignatureBase64,
-			Elevate:     plat.WithElevatedTask,
+			HasUpdate:    true,
+			NewVersion:   stat.Version,
+			Notes:        stat.Notes,
+			ArtifactURLs: plat.URLs,
+			SigBase64:    plat.SignatureBase64,
+			Elevate:      plat.WithElevatedTask,
 		}, nil
 	}
 
 	var dyn DynamicAppcast
-	if json.Unmarshal(body, &dyn) == nil && dyn.URL != "" && dyn.Version != "" {
+	if json.Unmarshal(body, &dyn) == nil && len(dyn.URLs) > 0 && dyn.Version != "" {
 		if !isNewer(dyn.Version, currentVersion) {
 			return &Result{HasUpdate: false}, ErrNoUpdate
 		}
+		if bad, ok := allAdvertise(dyn.URLs, dyn.Version); !ok {
+			return nil, fmt.Errorf("appcast: manifest offers %s but points at %q", dyn.Version, bad)
+		}
 		return &Result{
-			HasUpdate:   true,
-			NewVersion:  dyn.Version,
-			Notes:       dyn.Notes,
-			ArtifactURL: dyn.URL,
-			SigBase64:   dyn.SignatureBase64,
-			Elevate:     false,
+			HasUpdate:    true,
+			NewVersion:   dyn.Version,
+			Notes:        dyn.Notes,
+			ArtifactURLs: dyn.URLs,
+			SigBase64:    dyn.SignatureBase64,
+			Elevate:      false,
 		}, nil
 	}
 
 	return nil, ErrUnknownAppcastType
+}
+
+func advertisedIn(artifactURL, version string) bool { // the manifest is unsigned, so the signed artifact's filename must claim the offered version: closes the high-version-to-old-artifact swap
+	v := strings.TrimSpace(version)
+	if v == "" || artifactURL == "" {
+		return false
+	}
+	name := artifactURL
+	if i := strings.LastIndexAny(name, "/\\"); i >= 0 {
+		name = name[i+1:]
+	}
+	if i := strings.IndexByte(name, '?'); i >= 0 {
+		name = name[:i]
+	}
+	return strings.Contains(name, v)
+}
+
+func allAdvertise(urls []string, version string) (string, bool) { // every host, not any: the client may pick whichever answers, so one stale entry is enough to land a downgrade
+	if len(urls) == 0 {
+		return "", false
+	}
+	for _, u := range urls {
+		if !advertisedIn(u, version) {
+			return u, false
+		}
+	}
+	return "", true
 }

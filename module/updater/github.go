@@ -80,11 +80,11 @@ func (p *GitHubProvider) CheckForUpdate(ctx context.Context, currentVersion, pla
 	}
 
 	res := &Result{
-		HasUpdate:   true,
-		NewVersion:  release.TagName,
-		Notes:       release.Body,
-		ArtifactURL: artifactURL,
-		Elevate:     false, // GitHub provider relies on global ForceElevate config for this
+		HasUpdate:    true,
+		NewVersion:   release.TagName,
+		Notes:        release.Body,
+		ArtifactURLs: []string{artifactURL},
+		Elevate:      false, // GitHub provider relies on global ForceElevate config for this
 	}
 
 	if sigURL != "" {

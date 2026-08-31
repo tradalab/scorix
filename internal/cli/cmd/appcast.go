@@ -8,7 +8,7 @@ import (
 var (
 	appcastDir       string
 	appcastArtifacts string
-	appcastBaseURL   string
+	appcastBaseURLs  []string
 )
 
 var appcastCmd = &cobra.Command{
@@ -22,7 +22,7 @@ var appcastCmd = &cobra.Command{
 		return runner.Appcast(cmd.Context(), runner.AppcastOptions{
 			Dir:          appcastDir,
 			ArtifactsDir: appcastArtifacts,
-			BaseURL:      appcastBaseURL,
+			BaseURLs:     appcastBaseURLs,
 		})
 	},
 }
@@ -31,5 +31,5 @@ func init() {
 	rootCmd.AddCommand(appcastCmd)
 	appcastCmd.Flags().StringVarP(&appcastDir, "dir", "d", ".", "project root directory")
 	appcastCmd.Flags().StringVar(&appcastArtifacts, "artifacts", "", "artifacts directory (default: <dir>/artifacts)")
-	appcastCmd.Flags().StringVar(&appcastBaseURL, "base-url", "", "override package.update.base_url")
+	appcastCmd.Flags().StringArrayVar(&appcastBaseURLs, "base-url", nil, "host serving the artifacts; repeat for each mirror (overrides package.update.base_url)")
 }

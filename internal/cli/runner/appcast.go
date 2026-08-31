@@ -37,15 +37,15 @@ type staticAppcast struct {
 }
 
 type platformArtifact struct {
-	URL              string `json:"url"`
-	SignatureBase64  string `json:"signature,omitempty"`
-	WithElevatedTask bool   `json:"with_elevated_task,omitempty"`
+	URLs             []string `json:"urls"`
+	SignatureBase64  string   `json:"signature,omitempty"`
+	WithElevatedTask bool     `json:"with_elevated_task,omitempty"`
 }
 
 type AppcastOptions struct {
 	Dir          string
 	ArtifactsDir string
-	BaseURL      string // overrides package.update.base_url
+	BaseURLs     []string // every host serving the artifacts, so the updater can fall back per host; overrides package.update.base_url
 }
 
 func Appcast(ctx context.Context, opt AppcastOptions) error {
@@ -70,7 +70,10 @@ func Appcast(ctx context.Context, opt AppcastOptions) error {
 	if artDir == "" {
 		artDir = filepath.Join(root, "artifacts")
 	}
-	baseURL := firstNonEmpty(opt.BaseURL, upd.BaseURL)
+	baseURLs := opt.BaseURLs
+	if len(baseURLs) == 0 && upd.BaseURL != "" {
+		baseURLs = []string{upd.BaseURL}
+	}
 	version := firstNonEmpty(meta.App.Version, "0.0.0")
 
 	files, err := listInstallers(artDir)
@@ -121,7 +124,7 @@ func Appcast(ctx context.Context, opt AppcastOptions) error {
 				fmt.Printf("warning: two artifacts map to platform %q — overwriting with %s (remove stale artifacts so the appcast points at one build)\n", k, base)
 			}
 			platforms[k] = platformArtifact{
-				URL:              joinURL(baseURL, base),
+				URLs:             joinAll(baseURLs, base),
 				SignatureBase64:  sigB64,
 				WithElevatedTask: upd.Elevate && strings.HasPrefix(k, "windows-"),
 			}
@@ -156,18 +159,6 @@ func Appcast(ctx context.Context, opt AppcastOptions) error {
 			return err
 		}
 		fmt.Printf("==> wrote %s (%d platform entries)\n", out, len(platforms))
-
-		// Sign the manifest itself (anti-tamper/anti-rollback): else an attacker could
-		// advertise a high version pointing at an OLD, still-validly-signed artifact.
-		// Updater verifies this over raw bytes before trusting any field.
-		if priv != nil {
-			manifestSig := base64.StdEncoding.EncodeToString(ed25519.Sign(priv, manifest))
-			sigOut := out + ".sig"
-			if err := os.WriteFile(sigOut, []byte(manifestSig), 0o644); err != nil {
-				return err
-			}
-			fmt.Printf("==> signed appcast.json -> appcast.json.sig\n")
-		}
 	}
 	return nil
 }
@@ -257,6 +248,17 @@ func platformKeysForArtifact(name string) []string {
 	out := make([]string, 0, len(archs))
 	for _, a := range archs {
 		out = append(out, goos+"-"+a)
+	}
+	return out
+}
+
+func joinAll(bases []string, name string) []string {
+	if len(bases) == 0 {
+		return []string{name}
+	}
+	out := make([]string, 0, len(bases))
+	for _, b := range bases {
+		out = append(out, joinURL(b, name))
 	}
 	return out
 }

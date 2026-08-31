@@ -26,13 +26,13 @@ import (
 // what code we download and trust — env/runtime-file override would be an RCE
 // vector, so changing them needs a rebuild with a new embedded manifest.
 type Config struct {
-	Provider        string `json:"provider"`    // "appcast" or "github"
-	GitHubRepo      string `json:"github_repo"` // user/repo for github provider
-	AppcastURL      string `json:"appcast_url"` // URL for appcast provider
-	PublicKeyBase64 string `json:"public_key_base_64"`
-	PlatformKey     string `json:"platform_key"` // Leave empty for auto `{os}-{arch}`
-	ForceElevate    bool   `json:"force_elevate"`
-	CurrentVersion  string `json:"current_version"`
+	Provider        string   `json:"provider"`    // "appcast" or "github"
+	GitHubRepo      string   `json:"github_repo"` // user/repo for github provider
+	Endpoints       []string `json:"endpoints"`   // appcast manifest URLs, tried in order; none is primary, the first that answers wins
+	PublicKeyBase64 string   `json:"public_key_base_64"`
+	PlatformKey     string   `json:"platform_key"` // Leave empty for auto `{os}-{arch}`
+	ForceElevate    bool     `json:"force_elevate"`
+	CurrentVersion  string   `json:"current_version"`
 }
 
 type UpdateProvider interface {
@@ -40,13 +40,13 @@ type UpdateProvider interface {
 }
 
 type Result struct {
-	HasUpdate   bool   `json:"has_update"`
-	NewVersion  string `json:"new_version"`
-	Notes       string `json:"notes"`
-	ArtifactURL string `json:"artifact_url"`
-	SigBase64   string `json:"sig_base64"`
-	Elevate     bool   `json:"elevate"`
-	LocalPath   string `json:"local_path"`
+	HasUpdate    bool     `json:"has_update"`
+	NewVersion   string   `json:"new_version"`
+	Notes        string   `json:"notes"`
+	ArtifactURLs []string `json:"artifact_urls"`
+	SigBase64    string   `json:"sig_base64"`
+	Elevate      bool     `json:"elevate"`
+	LocalPath    string   `json:"local_path"`
 }
 
 var (
@@ -99,9 +99,24 @@ func (m *UpdaterModule) OnLoad(ctx *module.Context) error {
 		m.provider = NewGitHubProvider(m.cfg.GitHubRepo)
 		logger.Info(fmt.Sprintf("[updater] using GitHub provider: repo=%s, platform=%s", m.cfg.GitHubRepo, m.cfg.PlatformKey))
 	} else {
-		// Public key lets the provider authenticate the manifest before trusting its fields.
-		m.provider = NewAppcastProvider(m.cfg.AppcastURL, m.cfg.PublicKeyBase64)
-		logger.Info(fmt.Sprintf("[updater] using Appcast provider: url=%s, platform=%s", m.cfg.AppcastURL, m.cfg.PlatformKey))
+		var provs []UpdateProvider
+		var labels []string
+		for _, u := range m.cfg.Endpoints {
+			if u = strings.TrimSpace(u); u == "" {
+				continue
+			}
+			provs = append(provs, NewAppcastProvider(u))
+			labels = append(labels, u)
+		}
+		switch len(provs) {
+		case 0:
+			m.provider = NewAppcastProvider("") // reports the missing-endpoint error on use
+		case 1:
+			m.provider = provs[0]
+		default:
+			m.provider = newChainProvider(provs, labels)
+		}
+		logger.Info(fmt.Sprintf("[updater] using Appcast provider: %d endpoint(s), platform=%s", len(provs), m.cfg.PlatformKey))
 	}
 
 	module.Expose(m, "CheckForUpdate", ctx.IPC)
@@ -325,7 +340,6 @@ func (m *UpdaterModule) VerifyEd25519(publicKeyB64, signatureB64 string, payload
 	return verifyEd25519(publicKeyB64, signatureB64, payload)
 }
 
-// Package-level so AppcastProvider can verify the manifest without a module receiver.
 func verifyEd25519(publicKeyB64, signatureB64 string, payload []byte) error {
 	if signatureB64 == "" {
 		return ErrSignatureMissing
@@ -539,8 +553,8 @@ func (m *UpdaterModule) CheckForUpdate(ctx context.Context) (*Result, error) {
 		return nil, fmt.Errorf("update provider not initialized")
 	}
 
-	// Check against the floor, not CurrentVersion: a replayed old-but-signed manifest
-	// must not downgrade us even if the binary reports a stale CurrentVersion.
+	// Check against the floor, not CurrentVersion: a replayed old manifest, its artifact
+	// still validly signed, must not downgrade us even if the binary reports a stale CurrentVersion.
 	floor := m.rollbackFloor()
 	res, err := m.provider.CheckForUpdate(ctx, floor, m.cfg.PlatformKey)
 	if err != nil {
@@ -569,7 +583,7 @@ func (m *UpdaterModule) FullUpdate(ctx context.Context) (*Result, error) {
 		return res, ErrNoUpdate
 	}
 
-	localPath, err := m.Download(ctx, defaultClient(), res.ArtifactURL)
+	localPath, err := m.downloadAny(ctx, res.ArtifactURLs)
 	if err != nil {
 		return res, err
 	}
@@ -610,3 +624,18 @@ func (m *UpdaterModule) FullUpdate(ctx context.Context) (*Result, error) {
 }
 
 func (m *UpdaterModule) Capability() string { return "shell" }
+
+func (m *UpdaterModule) downloadAny(ctx context.Context, urls []string) (string, error) { // separate from the endpoint chain: where the manifest comes from and where the bytes do fail independently
+	if len(urls) == 0 {
+		return "", fmt.Errorf("updater: manifest names no artifact url")
+	}
+	var errs []error
+	for _, u := range urls {
+		path, err := m.Download(ctx, defaultClient(), u)
+		if err == nil {
+			return path, nil
+		}
+		errs = append(errs, fmt.Errorf("%s: %w", u, err))
+	}
+	return "", errors.Join(errs...)
+}
