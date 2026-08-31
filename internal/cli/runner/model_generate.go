@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/tradalab/scorix/internal/cli/runner/dialect"
@@ -295,11 +296,22 @@ func renderServiceContext(root, moduleName string, tables []sqlTable, schemaPkgI
 
 	var imports, fields, init, assigns string
 	if len(tables) > 0 {
-		imports = fmt.Sprintf(
-			"\t\"github.com/jmoiron/sqlx\"\n\t_ \"modernc.org/sqlite\"\n\tscorixsqlx \"github.com/tradalab/scorix/module/sqlx\"\n\t%q\n\t%q",
-			moduleName+"/internal/model",
-			schemaPkgImport,
-		)
+		importLines := []string{
+			"	\"github.com/jmoiron/sqlx\"",
+			"	_ \"modernc.org/sqlite\"",
+			"	scorixsqlx \"github.com/tradalab/scorix/module/sqlx\"",
+			"	" + strconv.Quote(moduleName+"/internal/model"),
+			"	" + strconv.Quote(schemaPkgImport),
+		}
+		outside := replaceBetweenMarkers(content, markerImports, "")
+		var kept []string
+		for _, line := range importLines {
+			path := line[strings.IndexByte(line, '"'):]
+			if !strings.Contains(outside, path) {
+				kept = append(kept, line)
+			}
+		}
+		imports = strings.Join(kept, "\n")
 
 		var fieldLines, assignLines []string
 		for _, t := range tables {
