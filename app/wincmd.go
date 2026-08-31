@@ -76,6 +76,9 @@ func (a *App) registerWindowCommands() {
 		w.StartDrag()
 		return nil, nil
 	})
+	a.reg.Command("win:screens", func(context.Context, json.RawMessage, ipc.Stream) (any, error) {
+		return map[string]any{"screens": a.Screens()}, nil
+	})
 }
 
 func (a *App) windowFrom(ctx context.Context) *AppWindow {

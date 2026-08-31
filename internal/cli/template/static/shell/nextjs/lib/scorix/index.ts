@@ -29,8 +29,18 @@ export interface Duplex<In, Out> extends AsyncIterable<Out> {
 
 // Rejects with code "unavailable" in web mode. For titlebars prefer the
 // declarative data-scorix-drag / data-scorix-no-drag attributes.
+export interface ScorixScreen {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  primary: boolean;
+  scale: number;
+}
+
 export interface ScorixWindow {
   minimize(): Promise<void>;
+  screens(): Promise<ScorixScreen[]>;
   toggleMaximize(): Promise<{ maximized: boolean }>;
   isMaximized(): Promise<boolean>;
   close(): Promise<void>;

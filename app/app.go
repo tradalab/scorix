@@ -78,6 +78,7 @@ type App struct {
 
 	sysHandlers map[window.RuntimeEvent][]func() // OnSystemEvent subscribers, registered pre-Run
 
+	shortcuts   []shortcut
 	openURLFns  []func(string)
 	openFileFns []func(string)
 	fileDropFns []func(*AppWindow, []string)
@@ -414,7 +415,7 @@ func (a *App) Run() error {
 	}
 
 	rt.On(window.RuntimeReady, func() {
-		aw, err := a.attachWindow(rt, window.Options{
+		mainOpts := window.Options{
 			Title:       a.opts.Title,
 			Width:       a.opts.Width,
 			Height:      a.opts.Height,
@@ -427,10 +428,25 @@ func (a *App) Run() error {
 			HideOnClose: a.cfg.Window.HideOnClose,
 			DevTools:    a.cfg.Window.Debug || devURL != "",
 			FileDrop:    a.cfg.Window.FileDrop,
+			Theme:       a.cfg.Window.Theme,
 			Center:      true,
 			URL:         mainURL,
 			IconPath:    a.cfg.App.Icon,
-		})
+		}
+		var restored windowState
+		var hadState bool
+		if a.cfg.Window.RememberState {
+			if st, ok := a.loadWindowState(); ok {
+				restored, hadState = st, true
+				mainOpts.Width, mainOpts.Height = st.W, st.H
+				if stateOnScreen(st, screensOf(rt)) {
+					x, y := st.X, st.Y
+					mainOpts.X, mainOpts.Y = &x, &y
+					mainOpts.Center = false
+				}
+			}
+		}
+		aw, err := a.attachWindow(rt, mainOpts)
 		if err != nil {
 			logger.Error("app: failed to open main window — quitting", "err", err)
 			rt.Quit()
@@ -443,6 +459,14 @@ func (a *App) Run() error {
 			fn(a)
 		}
 		aw.Show()
+		go a.registerShortcuts(rt) // NOT inline: RegisterHotkey blocks in a message loop that has not started yet
+		if hadState && restored.Maximized {
+			aw.Maximize()
+		}
+		if a.cfg.Window.RememberState {
+			aw.On(window.EventClose, func(window.EventData) { a.saveWindowState(aw) })
+			rt.On(window.RuntimeBeforeQuit, func() { a.saveWindowState(aw) })
+		}
 		// Launch args (a protocol/file-type start) go out only now: earlier and
 		// neither the Go handlers nor a loaded frontend could have seen them.
 		go a.dispatchOpenArgs(launchArgs())

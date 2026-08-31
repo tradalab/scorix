@@ -39,6 +39,8 @@ window:
   height: 600
   debug: true
   # file_drop: true # deliver OS file drops as sys:file-drop with real paths
+  # remember_state: true # restore last window position/size/maximized
+  # theme: system # system|dark|light native titlebar (Windows)
 
 # sealed: env / runtime overlay cannot loosen CSP or the allowlist (RCE guard).
 # csp applies in BOTH modes (web header; app header+meta). The `default` preset
@@ -53,6 +55,11 @@ security:
     shell: true
     clipboard: true
     notification: true
+
+# modules:
+#   http:
+#     enabled: true
+#     allow: ["api.example.com", "*.example.org"] # mod:http:Fetch denies everything else
 
 logger:
   level: info

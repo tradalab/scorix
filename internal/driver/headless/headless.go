@@ -76,6 +76,13 @@ func (r *runtime) Dispatch(fn func()) {
 
 func (r *runtime) Windows() window.Manager { return r.manager }
 
+func (r *runtime) Screens() []window.Screen {
+	// A fixture, not enumeration: headless has no display to query. Real
+	// monitors (any count/size/DPI) come from the webview2 driver; web mode
+	// returns nil because the screen belongs to the browser client.
+	return []window.Screen{{W: 1920, H: 1080, Primary: true, Scale: 1}}
+}
+
 func (r *runtime) RegisterScheme(scheme string, h webview.SchemeHandler) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

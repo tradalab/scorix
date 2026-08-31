@@ -312,6 +312,7 @@
     setTitle: (title) => api.invoke("win:setTitle", { title }),
     fullscreen: (on) => api.invoke("win:fullscreen", { on: !!on }),
     startDrag: () => api.invoke("win:startDrag"),
+    screens: () => api.invoke("win:screens").then((r) => (r && r.screens) || []),
   };
 
   if (mode === "app") {

@@ -119,6 +119,7 @@ const (
 	wmNCLButtonDown uint32  = 0x00A1 // WM_NCLBUTTONDOWN
 	htCaption       uintptr = 2      // HTCAPTION
 
+	wmHotkey         uint32 = 0x0312 // WM_HOTKEY
 	wmSettingChange  uint32 = 0x001A // WM_SETTINGCHANGE
 	wmPowerBroadcast uint32 = 0x0218 // WM_POWERBROADCAST
 
@@ -254,6 +255,7 @@ func createWindow(opts window.Options, messageOnly bool) (windows.Handle, error)
 	}
 	if !messageOnly {
 		setWindowIcon(windows.Handle(hwnd), opts.IconPath)
+		applyTitlebarTheme(windows.Handle(hwnd), opts.Theme)
 	}
 	return windows.Handle(hwnd), nil
 }
@@ -399,8 +401,16 @@ func wndProc(hwnd, message, wParam, lParam uintptr) uintptr {
 				setWindowIcon(h, w.opts.IconPath)
 			}
 			return 0
+		case wmHotkey:
+			rt.fireHotkey(wParam)
+			return 0
 		case wmSettingChange:
 			if lParam != 0 && windows.UTF16PtrToString((*uint16)(unsafe.Pointer(lParam))) == "ImmersiveColorSet" {
+				for _, ww := range rt.manager.All() {
+					if w, ok := ww.(*win); ok && (w.opts.Theme == "" || w.opts.Theme == "system") {
+						applyTitlebarTheme(w.hwnd, w.opts.Theme)
+					}
+				}
 				rt.fireSystem(window.RuntimeThemeChanged)
 			}
 		case wmPowerBroadcast:
@@ -452,6 +462,7 @@ type runtime struct {
 	schemes map[string]webview.SchemeHandler
 	msgHWND windows.Handle
 	lastSys map[window.RuntimeEvent]time.Time // fireSystem dedupe (per-window broadcasts)
+	hotkeys map[uintptr]func()
 }
 
 func (r *runtime) Run() error {
@@ -721,9 +732,7 @@ func (w *win) startAttach(identifier string) error {
 		comCall(controller, ctrlPutIsVisible, 1)
 
 		if w.opts.FileDrop {
-			// The webview must stop accepting OLE drops or WM_DROPFILES never
-			// reaches the host window that DragAcceptFiles registered.
-			if c4, hr := comCallOut(controller, iunknownQueryInterface, uintptr(unsafe.Pointer(&iidController4))); hr == 0 && c4 != nil {
+			if c4, hr := comCallOut(controller, iunknownQueryInterface, uintptr(unsafe.Pointer(&iidController4))); hr == 0 && c4 != nil { // webview keeps eating OLE drops otherwise; WM_DROPFILES never arrives
 				comCall(c4, ctrl4PutAllowExternalDrop, 0)
 				comCall(c4, iunknownRelease)
 			}

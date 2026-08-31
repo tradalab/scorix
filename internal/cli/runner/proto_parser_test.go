@@ -153,3 +153,20 @@ message Thing {
 		t.Errorf("malformed line should not produce a field; fields=%+v", m.Fields)
 	}
 }
+
+func TestParseProto_UnsupportedConstructsRejected(t *testing.T) {
+	cases := map[string]string{
+		"enum":  "syntax = \"proto3\";\nenum Color { RED = 0; }\nmessage M { string a = 1; }\nservice S { rpc Do(M) returns (M); }",
+		"oneof": "syntax = \"proto3\";\nmessage M { oneof pick { string a = 1; int32 b = 2; } }\nservice S { rpc Do(M) returns (M); }",
+		"map":   "syntax = \"proto3\";\nmessage M { map<string, string> tags = 1; }\nservice S { rpc Do(M) returns (M); }",
+	}
+	for name, src := range cases {
+		if _, err := parseProto(src); err == nil {
+			t.Errorf("%s accepted silently", name)
+		}
+	}
+	ok := "syntax = \"proto3\";\n// enum-like values live in a string; map is stitched in logic\nmessage M { string a = 1; }\nservice S { rpc Do(M) returns (M); }"
+	if _, err := parseProto(ok); err != nil {
+		t.Errorf("comment mentioning constructs rejected: %v", err)
+	}
+}

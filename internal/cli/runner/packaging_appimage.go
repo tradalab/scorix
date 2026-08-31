@@ -15,8 +15,11 @@ import (
 type linuxPackager struct{}
 
 func (linuxPackager) Package(ctx context.Context, bc *BuildContext) (string, error) {
+	if bc.Format == "deb" {
+		return buildDeb(bc)
+	}
 	if bc.Format != "" && bc.Format != "appimage" {
-		return "", fmt.Errorf("linux: unsupported format %q (only \"appimage\")", bc.Format)
+		return "", fmt.Errorf("linux: unsupported format %q (appimage or deb)", bc.Format)
 	}
 	tool, err := exec.LookPath("linuxdeploy")
 	if err != nil {

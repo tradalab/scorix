@@ -23,6 +23,7 @@ type Options struct {
 	HideOnClose bool
 	DevTools    bool
 	FileDrop    bool
+	Theme       string
 
 	URL        string // initial content, e.g. "scorix://app/index.html"
 	InitScript string // injected before page scripts on every navigation

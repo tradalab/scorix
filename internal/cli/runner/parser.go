@@ -7,8 +7,14 @@ import (
 	"strings"
 )
 
+var unsupportedProtoRe = regexp.MustCompile(`\b(enum\s+[A-Za-z_]|oneof\s+[A-Za-z_]|map\s*<)`)
+
 func parseProto(src string) (protoFile, error) {
 	clean := stripProtoComments(src)
+	if m := unsupportedProtoRe.FindString(clean); m != "" {
+		word := strings.Fields(strings.ReplaceAll(m, "<", " <"))[0]
+		return protoFile{}, fmt.Errorf("proto: %q is not supported by the scorix parser - model enums as string/int32, oneof as optional fields, map<> as a repeated message and stitch in logic", word)
+	}
 	pf := protoFile{
 		Package:       "app",
 		HasMiddleware: false,

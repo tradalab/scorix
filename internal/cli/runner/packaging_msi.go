@@ -15,8 +15,11 @@ import (
 type windowsPackager struct{}
 
 func (windowsPackager) Package(ctx context.Context, bc *BuildContext) (string, error) {
+	if bc.Format == "nsis" {
+		return buildNSIS(ctx, bc)
+	}
 	if bc.Format != "" && bc.Format != "msi" {
-		return "", fmt.Errorf("windows: unsupported format %q (only \"msi\")", bc.Format)
+		return "", fmt.Errorf("windows: unsupported format %q (msi or nsis)", bc.Format)
 	}
 
 	wixPath, err := exec.LookPath("wix")

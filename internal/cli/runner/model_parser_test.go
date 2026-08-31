@@ -460,3 +460,106 @@ CREATE TABLE IF NOT EXISTS foo (
 		t.Error("first occurrence should win — column `a` missing")
 	}
 }
+
+func TestParseSQLSchema_CommentWithComma_KeepsFollowingColumn(t *testing.T) {
+	path := writeTempSchema(t, `
+CREATE TABLE account (
+    id       TEXT PRIMARY KEY,
+    username TEXT NOT NULL, -- the login, unique per org
+    email    TEXT NOT NULL
+);`)
+	tables, err := parseSQLSchema(path, dialect.MustNew("sqlite"))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(tables) != 1 || len(tables[0].Columns) != 3 {
+		t.Fatalf("tables=%d cols=%v", len(tables), colNames(tables))
+	}
+}
+
+func TestParseSQLSchema_CommentWithApostrophe_KeepsTables(t *testing.T) {
+	path := writeTempSchema(t, `
+CREATE TABLE person (
+    id   TEXT PRIMARY KEY,
+    name TEXT NOT NULL -- the user's display name
+);
+
+CREATE TABLE address (
+    id     TEXT PRIMARY KEY,
+    street TEXT NOT NULL
+);`)
+	tables, err := parseSQLSchema(path, dialect.MustNew("sqlite"))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(tables) != 2 {
+		t.Fatalf("tables=%v, want person+address", colNames(tables))
+	}
+	if len(tables[0].Columns) != 2 || len(tables[1].Columns) != 2 {
+		t.Fatalf("cols=%v", colNames(tables))
+	}
+}
+
+func TestParseSQLSchema_CommentWithParens_KeepsTable(t *testing.T) {
+	path := writeTempSchema(t, `
+CREATE TABLE doc (
+    id    TEXT PRIMARY KEY, -- uuid (v4)
+    title TEXT NOT NULL
+);`)
+	tables, err := parseSQLSchema(path, dialect.MustNew("sqlite"))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(tables) != 1 || len(tables[0].Columns) != 2 {
+		t.Fatalf("tables=%d cols=%v", len(tables), colNames(tables))
+	}
+}
+
+func TestParseSQLSchema_DashesInsideLiteralKept(t *testing.T) {
+	path := writeTempSchema(t, `
+CREATE TABLE cfg (
+    id  TEXT PRIMARY KEY,
+    sep TEXT NOT NULL DEFAULT '--'
+);`)
+	tables, err := parseSQLSchema(path, dialect.MustNew("sqlite"))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(tables) != 1 || len(tables[0].Columns) != 2 {
+		t.Fatalf("tables=%d cols=%v", len(tables), colNames(tables))
+	}
+	if tables[0].Columns[1].DefaultValue != `'--'` {
+		t.Fatalf("default = %q", tables[0].Columns[1].DefaultValue)
+	}
+}
+
+func TestParseSQLSchema_UnbalancedParensErrors(t *testing.T) {
+	path := writeTempSchema(t, `
+CREATE TABLE broken (
+    id TEXT PRIMARY KEY,
+`)
+	if _, err := parseSQLSchema(path, dialect.MustNew("sqlite")); err == nil {
+		t.Fatal("unbalanced CREATE TABLE parsed without error")
+	}
+}
+
+func TestParseSQLSchema_UnparseableColumnErrors(t *testing.T) {
+	path := writeTempSchema(t, `
+CREATE TABLE junk (
+    id TEXT PRIMARY KEY,
+    !!not a column!!
+);`)
+	if _, err := parseSQLSchema(path, dialect.MustNew("sqlite")); err == nil {
+		t.Fatal("garbage column def parsed without error")
+	}
+}
+
+func colNames(tables []sqlTable) map[string][]string {
+	out := map[string][]string{}
+	for _, tb := range tables {
+		for _, c := range tb.Columns {
+			out[tb.Name] = append(out[tb.Name], c.Name)
+		}
+	}
+	return out
+}

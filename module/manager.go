@@ -95,6 +95,8 @@ func (m *Manager) RuntimeModuleSection(name string) map[string]any {
 	return m.moduleFileCfg(name)
 }
 
+func DataDir(appName string) string { return dataDir(appName) }
+
 func dataDir(appName string) string {
 	if appName == "" {
 		appName = "scorix-app"

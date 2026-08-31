@@ -200,7 +200,7 @@ func parseSQLSchema(schemaPath string, d dialect.Dialect) ([]sqlTable, error) {
 
 	// Match on sanitized text (CREATE TABLE / parens inside string literals ignored);
 	// read body and name from raw so DEFAULT values stay verbatim.
-	raw := string(b)
+	raw := stripSQLComments(string(b)) // first: a comma/quote/paren inside a comment used to silently drop columns or tables
 	sanitized := blankStringLiterals(raw)
 	heads := tableHeadRegex.FindAllStringSubmatchIndex(sanitized, -1)
 
@@ -210,18 +210,64 @@ func parseSQLSchema(schemaPath string, d dialect.Dialect) ([]sqlTable, error) {
 		if len(m) < 4 {
 			continue
 		}
+		name := unquoteIdent(raw[m[2]:m[3]])
 		open, close, ok := tableBodySpan(sanitized, m[1])
 		if !ok {
-			continue
+			return nil, fmt.Errorf("schema: CREATE TABLE %s has unbalanced parentheses (truncated DDL?)", name)
 		}
-		name := unquoteIdent(raw[m[2]:m[3]])
 		if seen[name] {
 			continue
 		}
 		seen[name] = true
-		tables = append(tables, parseTable(name, raw[open+1:close], d))
+		table, err := parseTable(name, raw[open+1:close], d)
+		if err != nil {
+			return nil, err
+		}
+		tables = append(tables, table)
 	}
 	return tables, nil
+}
+
+func stripSQLComments(s string) string {
+	buf := []byte(s)
+	for i := 0; i < len(buf); i++ {
+		switch {
+		case buf[i] == '\'':
+			i++
+			for i < len(buf) {
+				if buf[i] == '\'' {
+					if i+1 < len(buf) && buf[i+1] == '\'' {
+						i += 2
+						continue
+					}
+					break
+				}
+				i++
+			}
+		case buf[i] == '-' && i+1 < len(buf) && buf[i+1] == '-':
+			for i < len(buf) && buf[i] != '\n' {
+				if buf[i] != '\r' {
+					buf[i] = ' '
+				}
+				i++
+			}
+		case buf[i] == '/' && i+1 < len(buf) && buf[i+1] == '*':
+			buf[i], buf[i+1] = ' ', ' '
+			i += 2
+			for i < len(buf) {
+				if buf[i] == '*' && i+1 < len(buf) && buf[i+1] == '/' {
+					buf[i], buf[i+1] = ' ', ' '
+					i++
+					break
+				}
+				if buf[i] != '\n' && buf[i] != '\r' && buf[i] != '\t' {
+					buf[i] = ' '
+				}
+				i++
+			}
+		}
+	}
+	return string(buf)
 }
 
 // tableBodySpan returns the body's opening/closing paren offsets, scanning depth over
@@ -307,7 +353,7 @@ func splitTopLevelDefs(body string) []string {
 	return defs
 }
 
-func parseTable(tableName, body string, d dialect.Dialect) sqlTable {
+func parseTable(tableName, body string, d dialect.Dialect) (sqlTable, error) {
 	table := sqlTable{
 		Name:      tableName,
 		GoName:    toCamelCase(tableName),
@@ -350,10 +396,9 @@ func parseTable(tableName, body string, d dialect.Dialect) sqlTable {
 		if strings.HasPrefix(upperLine, "CONSTRAINT") || strings.HasPrefix(upperLine, "CHECK") {
 			continue
 		}
-
 		col, ok := parseColumn(line, d)
 		if !ok {
-			continue
+			return sqlTable{}, fmt.Errorf("schema: table %s: cannot parse definition %q", tableName, strings.TrimSpace(line))
 		}
 		if col.GoType == "time.Time" || col.SQLType == "DATETIME" || col.SQLType == "TIMESTAMP" {
 			table.HasTime = true
@@ -383,7 +428,7 @@ func parseTable(tableName, body string, d dialect.Dialect) sqlTable {
 		}
 	}
 
-	return table
+	return table, nil
 }
 
 func parseColumn(line string, d dialect.Dialect) (sqlColumn, bool) {

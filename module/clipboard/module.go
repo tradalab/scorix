@@ -2,10 +2,14 @@
 package clipboard
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"image"
+	"image/png"
 
 	"github.com/atotto/clipboard"
+	"github.com/tradalab/scorix/fault"
 	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/module"
 )
@@ -36,6 +40,8 @@ func (m *ClipboardModule) OnLoad(ctx *module.Context) error {
 
 	module.Expose(m, "Read", ctx.IPC)
 	module.Expose(m, "Write", ctx.IPC)
+	module.Expose(m, "ReadImage", ctx.IPC)
+	module.Expose(m, "WriteImage", ctx.IPC)
 
 	return nil
 }
@@ -67,3 +73,42 @@ func (m *ClipboardModule) Write(_ context.Context, req WriteRequest) (string, er
 }
 
 func (m *ClipboardModule) Capability() string { return "clipboard" }
+
+type WriteImageRequest struct {
+	PNG []byte `json:"png"` // base64 over the JSON envelope
+}
+
+func (m *ClipboardModule) WriteImage(_ context.Context, req WriteImageRequest) (string, error) {
+	img, err := png.Decode(bytes.NewReader(req.PNG))
+	if err != nil {
+		return "", fault.Wrap("invalid_request", err)
+	}
+	if err := writeImage(img); err != nil {
+		return "", err
+	}
+	return "ok", nil
+}
+
+type ReadImageResponse struct {
+	PNG []byte `json:"png"`
+}
+
+func (m *ClipboardModule) ReadImage(_ context.Context, _ struct{}) (*ReadImageResponse, error) {
+	img, err := readImage()
+	if err != nil {
+		return nil, err
+	}
+	data, err := encodePNGPortable(img)
+	if err != nil {
+		return nil, err
+	}
+	return &ReadImageResponse{PNG: data}, nil
+}
+
+func encodePNGPortable(img image.Image) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}

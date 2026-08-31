@@ -5,14 +5,41 @@ on:
   pull_request:
 
 jobs:
-  test-windows:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test ./... -count=1
+
+  race:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go test ./...
+      - name: race excluding webview2 (checkptr rejects its no-CGO COM laundering; not a data race)
+        shell: bash
+        run: go test -race -count=1 $(go list ./... | grep -v internal/driver/webview2)
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - name: vet (COM drivers excluded - unsafe.Pointer false positives)
+        run: go vet $(go list ./... | grep -vE "internal/driver/(webview2|wkwebview|webkitgtk)")
 
   cross-build:
     runs-on: ubuntu-latest
