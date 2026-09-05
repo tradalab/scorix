@@ -152,8 +152,6 @@ func Appcast(ctx context.Context, opt AppcastOptions) error {
 			return err
 		}
 		out := filepath.Join(artDir, "appcast.json")
-		// Sign the exact bytes written to disk (newline included) so the updater
-		// verifies the same payload it fetches.
 		manifest := append(data, '\n')
 		if err := os.WriteFile(out, manifest, 0o644); err != nil {
 			return err
