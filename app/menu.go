@@ -110,6 +110,8 @@ func (a *App) roleAction(aw *AppWindow, r menu.Role) func() {
 	switch r {
 	case menu.RoleQuit:
 		return a.Quit
+	case menu.RoleShow:
+		return aw.Show
 	case menu.RoleMinimize:
 		return aw.Minimize
 	case menu.RoleClose:

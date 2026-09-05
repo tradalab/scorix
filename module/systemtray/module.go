@@ -9,6 +9,7 @@ import (
 
 	"github.com/energye/systray"
 	"github.com/tradalab/scorix/logger"
+	"github.com/tradalab/scorix/menu"
 	"github.com/tradalab/scorix/module"
 )
 
@@ -21,14 +22,14 @@ type SystemTrayModule struct {
 	ctx  *module.Context
 	cfg  Config
 	icon []byte
-	menu []MenuItem // nil → default Open/Quit menu
+	menu menu.Menu // nil → default Open/Quit menu
 }
 
 type Option func(*SystemTrayModule)
 
 // WithMenu replaces the default Open/Quit menu. Click handlers run on the tray's
-// goroutine — offload long work to another goroutine.
-func WithMenu(items ...MenuItem) Option {
+// goroutine - offload long work to another goroutine.
+func WithMenu(items ...menu.Item) Option {
 	return func(m *SystemTrayModule) { m.menu = items }
 }
 
@@ -105,30 +106,39 @@ func (m *SystemTrayModule) onReady() {
 		}
 	})
 
-	if len(m.menu) > 0 {
-		for _, item := range m.menu {
-			if item.Separator {
-				systray.AddSeparator()
-				continue
-			}
-			mi := systray.AddMenuItem(item.Title, item.Tooltip)
-			if item.OnClick != nil {
-				mi.Click(item.OnClick)
-			}
-		}
-		return
+	items := m.menu
+	if len(items) == 0 {
+		items = defaultMenu()
 	}
+	addNodes(resolveTray(items, m.ctx.App, 0), nil)
+}
 
-	systray.AddMenuItem("Open", "Open Application").Click(func() {
-		if m.ctx.App != nil {
-			m.ctx.App.Show()
+// A nil parent is the top level, the only level systray lets a separator into.
+func addNodes(nodes []node, parent *systray.MenuItem) {
+	for _, n := range nodes {
+		if n.separator {
+			systray.AddSeparator()
+			continue
 		}
-	})
-	systray.AddMenuItem("Quit", "Quit Application").Click(func() {
-		if m.ctx.App != nil {
-			m.ctx.App.Close()
+		var mi *systray.MenuItem
+		switch { // the checkbox constructors reserve a check column, so only a checked item gets one
+		case parent == nil && n.checked:
+			mi = systray.AddMenuItemCheckbox(n.label, n.tooltip, true)
+		case parent == nil:
+			mi = systray.AddMenuItem(n.label, n.tooltip)
+		case n.checked:
+			mi = parent.AddSubMenuItemCheckbox(n.label, n.tooltip, true)
+		default:
+			mi = parent.AddSubMenuItem(n.label, n.tooltip)
 		}
-	})
+		if n.disabled {
+			mi.Disable()
+		}
+		if n.onClick != nil {
+			mi.Click(n.onClick)
+		}
+		addNodes(n.children, mi)
+	}
 }
 
 func (m *SystemTrayModule) onExit() {

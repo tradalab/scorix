@@ -4,6 +4,7 @@ package systemtray
 
 import (
 	"github.com/tradalab/scorix/logger"
+	"github.com/tradalab/scorix/menu"
 	"github.com/tradalab/scorix/module"
 )
 
@@ -12,7 +13,7 @@ type SystemTrayModule struct{}
 
 type Option func(*SystemTrayModule)
 
-func WithMenu(items ...MenuItem) Option {
+func WithMenu(items ...menu.Item) Option {
 	return func(*SystemTrayModule) {}
 }
 

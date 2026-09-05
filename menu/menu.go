@@ -1,5 +1,3 @@
-// Package menu is the app-facing model for menu bars and context menus. Items
-// are plain data so a frontend can send them over IPC; OnClick is Go-only.
 package menu
 
 import "runtime"
@@ -8,6 +6,7 @@ type Role string
 
 const (
 	RoleQuit             Role = "quit"
+	RoleShow             Role = "show" // bring the app back up; mainly a tray role
 	RoleAbout            Role = "about"
 	RoleUndo             Role = "undo"
 	RoleRedo             Role = "redo"
@@ -25,6 +24,7 @@ const (
 type Item struct {
 	ID          string `json:"id,omitempty"` // carried by the sys:menu event when no Go handler claims the click
 	Label       string `json:"label,omitempty"`
+	Tooltip     string `json:"tooltip,omitempty"` // tray only; a menu bar has nowhere to show it
 	Role        Role   `json:"role,omitempty"`
 	Accelerator string `json:"accelerator,omitempty"` // "Ctrl+Shift+K"; a role supplies one when blank
 	AccelHint   bool   `json:"accelHint,omitempty"`   // display the accelerator but leave the keystroke to the page; the only way to show a bare key like "Del"
@@ -64,6 +64,7 @@ var redoAccel = func() string {
 
 var roleSpecs = map[Role]Spec{
 	RoleQuit:             {Label: "Quit", Accel: "Ctrl+Q"},
+	RoleShow:             {Label: "Open"},
 	RoleAbout:            {Label: "About"},
 	RoleUndo:             {Label: "Undo", Accel: "Ctrl+Z", Editing: true},
 	RoleRedo:             {Label: "Redo", Accel: redoAccel, Editing: true},
