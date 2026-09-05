@@ -931,6 +931,17 @@ func (w *win) Center() {
 
 func (w *win) Show() {
 	procShowWindow.Call(uintptr(w.hwnd), swShowNormal)
+	// A process's FIRST ShowWindow ignores nCmdShow and obeys the launcher's
+	// STARTUPINFO.wShowWindow instead (Win32 contract). Any parent that spawns
+	// us with SW_HIDE therefore eats the one call that puts the app on screen:
+	// the window is created at the right size, no API fails, no log line is
+	// written, and nothing appears. `scorix dev` hits this every time, because
+	// it supervises the app through proc, which sets HideWindow to keep the
+	// console-subsystem dev binary from opening a console. Show() is an
+	// explicit request from the app - the launcher does not get a vote.
+	if visible, _, _ := procIsWindowVisible.Call(uintptr(w.hwnd)); visible == 0 {
+		procShowWindow.Call(uintptr(w.hwnd), swShowNormal)
+	}
 	procSetForegroundWin.Call(uintptr(w.hwnd))
 }
 func (w *win) Hide()       { procShowWindow.Call(uintptr(w.hwnd), swHide) }
