@@ -38,6 +38,18 @@ export interface ScorixScreen {
   scale: number;
 }
 
+export interface ScorixMenuItem {
+  id?: string;
+  label?: string;
+  role?: string;
+  accelerator?: string;
+  accelHint?: boolean; // show the accelerator, but leave the keystroke to the page
+  disabled?: boolean;
+  checked?: boolean;
+  separator?: boolean;
+  submenu?: ScorixMenuItem[];
+}
+
 export interface ScorixWindow {
   minimize(): Promise<void>;
   screens(): Promise<ScorixScreen[]>;
@@ -50,6 +62,8 @@ export interface ScorixWindow {
   setTitle(title: string): Promise<void>;
   fullscreen(on: boolean): Promise<void>;
   startDrag(): Promise<void>;
+  setMenu(items: ScorixMenuItem[]): Promise<void>;
+  popupMenu(items: ScorixMenuItem[], x?: number, y?: number): Promise<void>; // clicks arrive as the sys:menu event {id, label}
 }
 
 // Matches the window.scorix bridge the Go app injects; apps must not ship their own.

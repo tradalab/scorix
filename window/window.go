@@ -44,3 +44,10 @@ type Window interface {
 	// On handler runs on the UI thread.
 	On(evt Event, fn func(EventData))
 }
+
+// FullscreenReporter is implemented by drivers that know their own fullscreen
+// state. Without it a caller has to remember what it last asked for, which the
+// window manager can undo behind its back.
+type FullscreenReporter interface {
+	IsFullscreen() bool
+}

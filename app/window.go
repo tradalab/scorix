@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	ipc "github.com/tradalab/scorix/internal/ipc"
@@ -14,6 +15,23 @@ import (
 type AppWindow struct {
 	window.Window
 	Client ClientID // targeted-emit id for this window's frontend
+
+	app        *App
+	fullscreen atomic.Bool // last value we asked for; only consulted when the driver cannot answer
+}
+
+func (aw *AppWindow) SetFullscreen(on bool) {
+	aw.fullscreen.Store(on)
+	aw.Window.SetFullscreen(on)
+}
+
+// IsFullscreen prefers the driver: on a driver that only records what it was
+// told, leaving fullscreen through the window manager would invert the toggle.
+func (aw *AppWindow) IsFullscreen() bool {
+	if r, ok := aw.Window.(window.FullscreenReporter); ok {
+		return r.IsFullscreen()
+	}
+	return aw.fullscreen.Load()
 }
 
 // OpenWindow opens an additional native window (bridge injected, IPC wired); zero
@@ -137,7 +155,7 @@ func (a *App) attachWindow(rt window.Runtime, opts window.Options) (*AppWindow, 
 	b := &ipc.NativeBridge{Dispatcher: d}
 	sid := a.addSender(func(raw []byte) { _ = send(raw) })
 	b.BindClient(ipc.ClientID(sid))
-	aw := &AppWindow{Window: w, Client: ipc.ClientID(sid)}
+	aw := &AppWindow{Window: w, Client: ipc.ClientID(sid), app: a}
 	a.mu.Lock()
 	a.bridges = append(a.bridges, b)
 	a.wins[aw.Client] = aw

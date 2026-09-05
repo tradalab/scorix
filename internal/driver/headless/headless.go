@@ -15,6 +15,11 @@ var (
 	_ window.Manager = (*manager)(nil)
 	_ window.Window  = (*win)(nil)
 	_ webview.View   = (*view)(nil)
+
+	_ window.MenuBarSetter      = (*win)(nil)
+	_ window.ContextMenuPopper  = (*win)(nil)
+	_ window.EditCommander      = (*win)(nil)
+	_ window.FullscreenReporter = (*win)(nil)
 )
 
 func New() window.Driver { return driver{} }
@@ -192,6 +197,9 @@ type win struct {
 	state   window.State
 	visible bool
 	drags   int
+	menu    []window.MenuItem
+	popups  [][]window.MenuItem
+	edits   []window.EditCommand
 	closed  bool
 	view    *view
 	events  map[window.Event][]func(window.EventData)
@@ -265,6 +273,8 @@ func (w *win) SetFullscreen(on bool) {
 	}
 	w.setState(window.StateNormal, window.EventResize)
 }
+
+func (w *win) IsFullscreen() bool { return w.State() == window.StateFullscreen }
 
 func (w *win) SetAlwaysOnTop(bool) {}
 
@@ -382,4 +392,74 @@ func Sent(w window.Window) [][]byte {
 		return append([][]byte{}, v.toJS...)
 	}
 	return nil
+}
+
+func (w *win) SetMenuBar(items []window.MenuItem) {
+	w.mu.Lock()
+	w.menu = items
+	w.mu.Unlock()
+}
+
+func (w *win) PopupMenu(items []window.MenuItem, _, _ int) {
+	w.mu.Lock()
+	w.popups = append(w.popups, items)
+	w.mu.Unlock()
+}
+
+func (w *win) EditCommand(cmd window.EditCommand) {
+	w.mu.Lock()
+	w.edits = append(w.edits, cmd)
+	w.mu.Unlock()
+}
+
+func MenuOf(w window.Window) []window.MenuItem {
+	if hw, ok := w.(*win); ok {
+		hw.mu.Lock()
+		defer hw.mu.Unlock()
+		return hw.menu
+	}
+	return nil
+}
+
+func Popups(w window.Window) [][]window.MenuItem {
+	if hw, ok := w.(*win); ok {
+		hw.mu.Lock()
+		defer hw.mu.Unlock()
+		return append([][]window.MenuItem{}, hw.popups...)
+	}
+	return nil
+}
+
+func EditCommands(w window.Window) []window.EditCommand {
+	if hw, ok := w.(*win); ok {
+		hw.mu.Lock()
+		defer hw.mu.Unlock()
+		return append([]window.EditCommand{}, hw.edits...)
+	}
+	return nil
+}
+
+// ClickMenu activates the first bar item with that label, searching submenus.
+func ClickMenu(w window.Window, label string) bool { return clickItem(MenuOf(w), label) }
+
+// ClickPopup activates an item of the most recent popup.
+func ClickPopup(w window.Window, label string) bool {
+	p := Popups(w)
+	if len(p) == 0 {
+		return false
+	}
+	return clickItem(p[len(p)-1], label)
+}
+
+func clickItem(items []window.MenuItem, label string) bool {
+	for _, it := range items {
+		if it.Label == label && it.OnClick != nil {
+			it.OnClick()
+			return true
+		}
+		if clickItem(it.Submenu, label) {
+			return true
+		}
+	}
+	return false
 }

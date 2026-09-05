@@ -36,6 +36,7 @@ func initWinSignals() {
 				w := v.(*win)
 				winByWidget.Delete(widget)
 				viewByUcm.Delete(w.view.ucm)
+				w.releaseMenuRefs()
 				w.mu.Lock()
 				fired := w.closeFired
 				w.mu.Unlock()
@@ -103,7 +104,9 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 	if err != nil {
 		return nil, err
 	}
-	gtkContainerAdd(gw, v.wk)
+	vbox := gtkBoxNew(gtkOrientationVertical, 0)
+	gtkContainerAdd(gw, vbox)
+	gtkBoxPackStart(vbox, v.wk, 1, 1, 0)
 
 	m.mu.Lock()
 	id := opts.ID
@@ -114,6 +117,7 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 	w := &win{
 		id:          id,
 		gw:          gw,
+		vbox:        vbox,
 		rt:          m.rt,
 		view:        v,
 		hideOnClose: opts.HideOnClose,
@@ -165,6 +169,7 @@ func (m *manager) remove(id window.ID) int {
 type win struct {
 	id          window.ID
 	gw          uintptr // GtkWindow*
+	vbox        uintptr // GtkBox: a menu bar packs above the webview
 	rt          *rt
 	view        *view
 	hideOnClose bool
@@ -172,6 +177,9 @@ type win struct {
 	mu         sync.Mutex
 	events     map[window.Event][]func(window.EventData)
 	closeFired bool // EventClose already fired (delete-event); destroy won't re-fire
+	menubar    uintptr
+	accelGroup uintptr
+	menuIDs    []uintptr
 }
 
 func (w *win) fireClose() (prevented bool) {

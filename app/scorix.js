@@ -324,6 +324,9 @@
     fullscreen: (on) => api.invoke("win:fullscreen", { on: !!on }),
     startDrag: () => api.invoke("win:startDrag"),
     screens: () => api.invoke("win:screens").then((r) => (r && r.screens) || []),
+    setMenu: (items) => api.invoke("win:setMenu", { items: items || [] }),
+    popupMenu: (items, x, y) =>
+      api.invoke("win:popupMenu", { items: items || [], x: typeof x === "number" ? x : -1, y: typeof y === "number" ? y : -1 }),
   };
 
   if (mode === "app") {

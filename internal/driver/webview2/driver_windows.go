@@ -422,6 +422,10 @@ func wndProc(hwnd, message, wParam, lParam uintptr) uintptr {
 				rt.fireSystem(window.RuntimeResume)
 			}
 			return 1 // TRUE: processed
+		case wmCommand:
+			if w := rt.manager.byHandle(h); w != nil && w.fireMenuCommand(wParam) {
+				return 0
+			}
 		case wmDropFiles:
 			if w := rt.manager.byHandle(h); w != nil {
 				w.handleDrop(wParam)
@@ -494,6 +498,9 @@ func (r *runtime) Run() error {
 		case 0:
 			return nil // WM_QUIT
 		default:
+			if r.translateAccelerator(&m) {
+				continue
+			}
 			procTranslateMessage.Call(uintptr(unsafe.Pointer(&m)))
 			procDispatchMessageW.Call(uintptr(unsafe.Pointer(&m)))
 		}
@@ -687,6 +694,7 @@ type win struct {
 	handlers    handlerSet // per-window COM callbacks, unpinned on dispose
 	envKeep     []any      // env-options objects pinned in handlerKeep, unpinned on dispose
 	closeFired  bool       // EventClose already fired (WM_CLOSE path); dispose won't re-fire
+	menu        menuState  // bar + accelerator table + command ids, replaced whole by SetMenuBar
 
 	fullscreen bool    // currently borderless-fullscreen
 	fsStyle    uintptr // windowed GWL_STYLE, restored on exit
@@ -937,6 +945,14 @@ func (w *win) StartDrag() {
 	procPostMessageW.Call(uintptr(w.hwnd), uintptr(wmNCLButtonDown), htCaption, 0)
 }
 
+// IsFullscreen is authoritative here: borderless-fullscreen is entirely our own
+// style swap, so nothing outside this driver can enter or leave it.
+func (w *win) IsFullscreen() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.fullscreen
+}
+
 func (w *win) SetFullscreen(on bool) {
 	// Approximation via maximize; true borderless-fullscreen (style swap +
 	// monitor rect).
@@ -1048,6 +1064,7 @@ func (w *win) dispose() {
 	// WebView2 has released its refs; now unpin our per-window callbacks AND the
 	// env-options graph so they (and the *win they capture) can be collected.
 	w.handlers.release()
+	w.releaseMenu()
 	for _, o := range envKeep {
 		handlerKeep.Delete(o)
 	}

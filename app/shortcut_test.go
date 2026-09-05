@@ -14,6 +14,7 @@ func TestParseAccelerator(t *testing.T) {
 		{"Win+Space", modWin | modNoRepeat, 0x20, true},
 		{"Ctrl+9", modControl | modNoRepeat, '9', true},
 		{"Ctrl+F24", modControl | modNoRepeat, 0x70 + 23, true},
+		{"CmdOrCtrl+K", modControl | modNoRepeat, 'K', true},
 		{"K", 0, 0, false},        // bare key would swallow typing
 		{"Ctrl+F25", 0, 0, false}, // out of range
 		{"Bogus+K", 0, 0, false},

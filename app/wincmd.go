@@ -6,6 +6,7 @@ import (
 
 	"github.com/tradalab/scorix/fault"
 	ipc "github.com/tradalab/scorix/internal/ipc"
+	"github.com/tradalab/scorix/menu"
 	"github.com/tradalab/scorix/window"
 )
 
@@ -74,6 +75,28 @@ func (a *App) registerWindowCommands() {
 	})
 	reg("startDrag", func(w *AppWindow, _ json.RawMessage) (any, error) {
 		w.StartDrag()
+		return nil, nil
+	})
+	reg("setMenu", func(w *AppWindow, data json.RawMessage) (any, error) {
+		var req struct {
+			Items menu.Menu `json:"items"`
+		}
+		if err := json.Unmarshal(data, &req); err != nil {
+			return nil, fault.Wrap("invalid_request", err)
+		}
+		w.SetMenu(req.Items)
+		return nil, nil
+	})
+	reg("popupMenu", func(w *AppWindow, data json.RawMessage) (any, error) {
+		req := struct {
+			Items menu.Menu `json:"items"`
+			X     int       `json:"x"`
+			Y     int       `json:"y"`
+		}{X: -1, Y: -1}
+		if err := json.Unmarshal(data, &req); err != nil {
+			return nil, fault.Wrap("invalid_request", err)
+		}
+		w.PopupMenu(req.Items, req.X, req.Y)
 		return nil, nil
 	})
 	a.reg.Command("win:screens", func(context.Context, json.RawMessage, ipc.Stream) (any, error) {

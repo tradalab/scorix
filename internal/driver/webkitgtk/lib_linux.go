@@ -26,36 +26,63 @@ var (
 	libOnce sync.Once
 	libErr  error
 
-	gtkInitCheck         func(uintptr, uintptr) int32
-	gtkMain              func()
-	gtkMainQuit          func()
-	gtkWindowNew         func(int32) uintptr
-	gtkWindowSetTitle    func(uintptr, string)
-	gtkWindowSetDefault  func(uintptr, int32, int32)
-	gtkWindowResize      func(uintptr, int32, int32)
-	gtkWindowMove        func(uintptr, int32, int32)
-	gtkWindowGetSize     func(uintptr, *int32, *int32)
-	gtkWindowGetPosition func(uintptr, *int32, *int32)
-	gtkWindowPresent     func(uintptr)
-	gtkWindowIconify     func(uintptr)
-	gtkWindowDeiconify   func(uintptr)
-	gtkWindowMaximize    func(uintptr)
-	gtkWindowUnmaximize  func(uintptr)
-	gtkWindowFullscreen  func(uintptr)
-	gtkWindowUnfullscrn  func(uintptr)
-	gtkWindowKeepAbove   func(uintptr, int32)
-	gtkWindowSetDecor    func(uintptr, int32)
-	gtkWindowSetResize   func(uintptr, int32)
-	gtkWindowSetPosition func(uintptr, int32)
-	gtkWidgetShowAll     func(uintptr)
-	gtkWidgetHide        func(uintptr)
-	gtkWidgetShow        func(uintptr)
-	gtkWidgetDestroy     func(uintptr)
-	gtkWidgetSetSizeReq  func(uintptr, int32, int32)
-	gtkWidgetGetVisible  func(uintptr) int32
-	gtkContainerAdd      func(uintptr, uintptr)
+	gtkInitCheck          func(uintptr, uintptr) int32
+	gtkMain               func()
+	gtkMainQuit           func()
+	gtkWindowNew          func(int32) uintptr
+	gtkWindowSetTitle     func(uintptr, string)
+	gtkWindowSetDefault   func(uintptr, int32, int32)
+	gtkWindowResize       func(uintptr, int32, int32)
+	gtkWindowMove         func(uintptr, int32, int32)
+	gtkWindowGetSize      func(uintptr, *int32, *int32)
+	gtkWindowGetPosition  func(uintptr, *int32, *int32)
+	gtkWindowPresent      func(uintptr)
+	gtkWindowIconify      func(uintptr)
+	gtkWindowDeiconify    func(uintptr)
+	gtkWindowMaximize     func(uintptr)
+	gtkWindowUnmaximize   func(uintptr)
+	gtkWindowFullscreen   func(uintptr)
+	gtkWindowUnfullscrn   func(uintptr)
+	gtkWindowKeepAbove    func(uintptr, int32)
+	gtkWindowSetDecor     func(uintptr, int32)
+	gtkWindowSetResize    func(uintptr, int32)
+	gtkWindowSetPosition  func(uintptr, int32)
+	gtkWidgetShowAll      func(uintptr)
+	gtkWidgetHide         func(uintptr)
+	gtkWidgetShow         func(uintptr)
+	gtkWidgetDestroy      func(uintptr)
+	gtkWidgetSetSizeReq   func(uintptr, int32, int32)
+	gtkWidgetGetVisible   func(uintptr) int32
+	gtkContainerAdd       func(uintptr, uintptr)
+	gtkBoxNew             func(int32, int32) uintptr
+	gtkBoxPackStart       func(uintptr, uintptr, int32, int32, uint32)
+	gtkBoxReorderChild    func(uintptr, uintptr, int32)
+	gtkMenuBarNew         func() uintptr
+	gtkMenuNew            func() uintptr
+	gtkMenuItemNewLabel   func(string) uintptr
+	gtkCheckMenuItemNew   func(string) uintptr
+	gtkCheckMenuItemSet   func(uintptr, int32)
+	gtkSeparatorMenuItem  func() uintptr
+	gtkMenuItemSetSubmenu func(uintptr, uintptr)
+	gtkMenuShellAppend    func(uintptr, uintptr)
+	gtkMenuPopupAtRect    func(uintptr, uintptr, unsafe.Pointer, int32, int32, uintptr)
+	gtkWidgetGetWindow    func(uintptr) uintptr
+	gtkWidgetTranslate    func(uintptr, uintptr, int32, int32, *int32, *int32) int32 // gtk_widget_translate_coordinates
+	gdkDisplayGetDefault  func() uintptr
+	gdkDisplayDefaultSeat func(uintptr) uintptr
+	gdkSeatGetPointer     func(uintptr) uintptr
+	gdkWindowDevicePos    func(uintptr, uintptr, *int32, *int32, uintptr) uintptr // gdk_window_get_device_position
+	gtkWidgetSetSensitive func(uintptr, int32)
+	gtkAccelGroupNew      func() uintptr
+	gtkWindowAddAccel     func(uintptr, uintptr)
+	gtkWindowRemoveAccel  func(uintptr, uintptr)
+	gtkWidgetAddAccel     func(uintptr, string, uintptr, uint32, uint32, int32)
+	gtkBinGetChild        func(uintptr) uintptr // a menu item's label is a GtkAccelLabel
+	gtkAccelLabelSetAccel func(uintptr, uint32, uint32)
+	gdkKeyvalFromName     func(string) uint32
 
 	gSignalConnectData func(uintptr, string, uintptr, uintptr, uintptr, int32) uint64
+	gObjectUnref       func(uintptr)
 	gIdleAdd           func(uintptr, uintptr) uint32
 	gTypeIsA           func(uintptr, uintptr) int32 // g_type_check_instance_is_a(instance, GType)
 	gFreeAddr          uintptr                      // g_free as a GDestroyNotify (passed to g_memory_input_stream_new_from_data)
@@ -78,6 +105,7 @@ var (
 	wkJSResultGetValue  func(uintptr) uintptr
 	wkViewGetSettings   func(uintptr) uintptr // webkit_web_view_get_settings (borrowed ref)
 	wkSettingsDevExtras func(uintptr, int32)  // webkit_settings_set_enable_developer_extras
+	wkViewExecEditCmd   func(uintptr, string) // webkit_web_view_execute_editing_command
 
 	wkUserMediaType    func() uintptr      // webkit_user_media_permission_request_get_type -> GType
 	wkUserMediaIsAudio func(uintptr) int32 // is_for_audio_device
@@ -119,6 +147,11 @@ func initLibs() error {
 		gtk, err := purego.Dlopen("libgtk-3.so.0", flags)
 		if err != nil {
 			libErr = fmt.Errorf("webkitgtk: load libgtk-3: %w", err)
+			return
+		}
+		gdk, err := purego.Dlopen("libgdk-3.so.0", flags)
+		if err != nil {
+			libErr = fmt.Errorf("webkitgtk: load libgdk-3: %w", err)
 			return
 		}
 		gobject, err := purego.Dlopen("libgobject-2.0.so.0", flags)
@@ -175,9 +208,36 @@ func initLibs() error {
 		purego.RegisterLibFunc(&gtkWidgetSetSizeReq, gtk, "gtk_widget_set_size_request")
 		purego.RegisterLibFunc(&gtkWidgetGetVisible, gtk, "gtk_widget_get_visible")
 		purego.RegisterLibFunc(&gtkContainerAdd, gtk, "gtk_container_add")
+		purego.RegisterLibFunc(&gtkBoxNew, gtk, "gtk_box_new")
+		purego.RegisterLibFunc(&gtkBoxPackStart, gtk, "gtk_box_pack_start")
+		purego.RegisterLibFunc(&gtkBoxReorderChild, gtk, "gtk_box_reorder_child")
+		purego.RegisterLibFunc(&gtkMenuBarNew, gtk, "gtk_menu_bar_new")
+		purego.RegisterLibFunc(&gtkMenuNew, gtk, "gtk_menu_new")
+		purego.RegisterLibFunc(&gtkMenuItemNewLabel, gtk, "gtk_menu_item_new_with_label")
+		purego.RegisterLibFunc(&gtkCheckMenuItemNew, gtk, "gtk_check_menu_item_new_with_label")
+		purego.RegisterLibFunc(&gtkCheckMenuItemSet, gtk, "gtk_check_menu_item_set_active")
+		purego.RegisterLibFunc(&gtkSeparatorMenuItem, gtk, "gtk_separator_menu_item_new")
+		purego.RegisterLibFunc(&gtkMenuItemSetSubmenu, gtk, "gtk_menu_item_set_submenu")
+		purego.RegisterLibFunc(&gtkMenuShellAppend, gtk, "gtk_menu_shell_append")
+		purego.RegisterLibFunc(&gtkMenuPopupAtRect, gtk, "gtk_menu_popup_at_rect")
+		purego.RegisterLibFunc(&gtkWidgetGetWindow, gtk, "gtk_widget_get_window")
+		purego.RegisterLibFunc(&gtkWidgetTranslate, gtk, "gtk_widget_translate_coordinates")
+		purego.RegisterLibFunc(&gdkDisplayGetDefault, gdk, "gdk_display_get_default")
+		purego.RegisterLibFunc(&gdkDisplayDefaultSeat, gdk, "gdk_display_get_default_seat")
+		purego.RegisterLibFunc(&gdkSeatGetPointer, gdk, "gdk_seat_get_pointer")
+		purego.RegisterLibFunc(&gdkWindowDevicePos, gdk, "gdk_window_get_device_position")
+		purego.RegisterLibFunc(&gtkWidgetSetSensitive, gtk, "gtk_widget_set_sensitive")
+		purego.RegisterLibFunc(&gtkAccelGroupNew, gtk, "gtk_accel_group_new")
+		purego.RegisterLibFunc(&gtkWindowAddAccel, gtk, "gtk_window_add_accel_group")
+		purego.RegisterLibFunc(&gtkWindowRemoveAccel, gtk, "gtk_window_remove_accel_group")
+		purego.RegisterLibFunc(&gtkWidgetAddAccel, gtk, "gtk_widget_add_accelerator")
+		purego.RegisterLibFunc(&gtkBinGetChild, gtk, "gtk_bin_get_child")
+		purego.RegisterLibFunc(&gtkAccelLabelSetAccel, gtk, "gtk_accel_label_set_accel")
+		purego.RegisterLibFunc(&gdkKeyvalFromName, gdk, "gdk_keyval_from_name")
 
 		purego.RegisterLibFunc(&gSignalConnectData, gobject, "g_signal_connect_data")
 		purego.RegisterLibFunc(&gTypeIsA, gobject, "g_type_check_instance_is_a")
+		purego.RegisterLibFunc(&gObjectUnref, gobject, "g_object_unref")
 		purego.RegisterLibFunc(&gIdleAdd, glib, "g_idle_add")
 		if addr, err := purego.Dlsym(glib, "g_free"); err == nil {
 			gFreeAddr = addr
@@ -205,6 +265,7 @@ func initLibs() error {
 		purego.RegisterLibFunc(&wkJSResultGetValue, webkit, "webkit_javascript_result_get_js_value")
 		purego.RegisterLibFunc(&wkViewGetSettings, webkit, "webkit_web_view_get_settings")
 		purego.RegisterLibFunc(&wkSettingsDevExtras, webkit, "webkit_settings_set_enable_developer_extras")
+		purego.RegisterLibFunc(&wkViewExecEditCmd, webkit, "webkit_web_view_execute_editing_command")
 		purego.RegisterLibFunc(&wkUserMediaType, webkit, "webkit_user_media_permission_request_get_type")
 		purego.RegisterLibFunc(&wkUserMediaIsAudio, webkit, "webkit_user_media_permission_request_is_for_audio_device")
 		purego.RegisterLibFunc(&wkUserMediaIsVideo, webkit, "webkit_user_media_permission_request_is_for_video_device")

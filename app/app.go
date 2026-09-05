@@ -27,6 +27,7 @@ import (
 	"github.com/tradalab/scorix/internal/ipc"
 	"github.com/tradalab/scorix/internal/singleinstance"
 	"github.com/tradalab/scorix/logger"
+	"github.com/tradalab/scorix/menu"
 	"github.com/tradalab/scorix/module"
 	"github.com/tradalab/scorix/webview"
 	"github.com/tradalab/scorix/window"
@@ -53,6 +54,8 @@ type Options struct {
 	RuntimeConfigPath string
 
 	WebToken string // non-empty gates web mode behind a shared secret; empty trusts the network (loopback only). No-op in app mode.
+
+	Menu menu.Menu // menu bar of the main window; roles resolve per platform
 }
 
 type App struct {
@@ -72,6 +75,8 @@ type App struct {
 
 	rt       window.Runtime          // running native runtime (app mode); for OpenWindow/Quit
 	main     *AppWindow              // window Run opened; nil before RuntimeReady / in web mode
+	menu     menu.Menu               // SetMenu before Run; applied once main exists
+	menuSet  bool                    // SetMenu was called: nil then means "no bar", not "use Options.Menu"
 	wins     map[ClientID]*AppWindow // caller-window resolution for win:* commands
 	bridges  []*ipc.NativeBridge     // per-window dispatchers, drained on shutdown
 	winClose sync.WaitGroup          // per-window async Close goroutines (app mode)
@@ -459,7 +464,14 @@ func (a *App) Run() error {
 		}
 		a.mu.Lock()
 		a.main = aw
+		m, set := a.menu, a.menuSet
 		a.mu.Unlock()
+		if !set {
+			m = a.opts.Menu
+		}
+		if len(m) > 0 {
+			a.applyMenu(aw, m)
+		}
 		for _, fn := range a.ready {
 			fn(a)
 		}
