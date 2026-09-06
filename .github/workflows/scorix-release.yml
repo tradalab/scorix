@@ -7,7 +7,7 @@ name: scorix release
 #
 #   jobs:
 #     release:
-#       uses: tradalab/scorix/.github/workflows/scorix-release.yml@v0.14.0
+#       uses: tradalab/scorix/.github/workflows/scorix-release.yml@v0.24.0
 #       with:
 #         app-prefix: s3hub          # only for updater.provider = appcast
 #       secrets: inherit
@@ -32,10 +32,10 @@ on:
         default: ""
       scorix-version:
         type: string
-        default: "v0.13.0"
+        default: "v0.24.0"
       go-version:
         type: string
-        default: "1.26"
+        default: "1.27"
       node-version:
         type: string
         default: "24"

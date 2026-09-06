@@ -17,7 +17,7 @@ import (
 
 const (
 	minGoMajor = 1
-	minGoMinor = 26
+	minGoMinor = 27
 )
 
 type DoctorOptions struct {

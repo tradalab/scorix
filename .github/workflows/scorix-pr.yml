@@ -4,7 +4,7 @@ name: scorix checks
 #
 #   jobs:
 #     check:
-#       uses: tradalab/scorix/.github/workflows/scorix-pr.yml@v0.14.0
+#       uses: tradalab/scorix/.github/workflows/scorix-pr.yml@v0.24.0
 #
 # Callers pass nothing unless they pin a different toolchain. Copying this file
 # instead is how redishub ended up installing pnpm 10 for a repo that declares
@@ -16,10 +16,10 @@ on:
     inputs:
       scorix-version:
         type: string
-        default: "v0.13.0"
+        default: "v0.24.0"
       go-version:
         type: string
-        default: "1.26"
+        default: "1.27"
       node-version:
         type: string
         default: "24"
