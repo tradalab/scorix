@@ -64,7 +64,13 @@ func (m *NotificationModule) OnLoad(ctx *module.Context) error {
 	return nil
 }
 
-func (m *NotificationModule) OnStart() error  { return nil }
+// OnStart is where a backend arranges whatever must exist before the first
+// Notify. Only macOS needs it; see prepare in toast_darwin.go.
+func (m *NotificationModule) OnStart() error {
+	prepare()
+	return nil
+}
+
 func (m *NotificationModule) OnStop() error   { return nil }
 func (m *NotificationModule) OnUnload() error { return nil }
 
@@ -104,7 +110,9 @@ func (m *NotificationModule) Notify(ctx context.Context, req NotifyRequest) (Not
 	if err := showToast(ctx, m.appInfo(), req, m.scheme); err != nil {
 		return NotifyResponse{}, err
 	}
-	return NotifyResponse{Clickable: req.ID != "" && m.scheme != ""}, nil
+	// Whether a click can come back is the backend's fact, not this file's: macOS
+	// gets the response in-process and needs no scheme at all.
+	return NotifyResponse{Clickable: clickable(req, m.scheme)}, nil
 }
 
 // appInfo carries both halves because the backends need different ones: Windows

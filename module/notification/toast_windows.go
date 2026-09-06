@@ -102,6 +102,13 @@ func encodeCommand(script string) string {
 	return base64.StdEncoding.EncodeToString(b)
 }
 
+// Nothing to arrange up front: the toast is built per call.
+func prepare() {}
+
+// The click leaves the process and comes back on the app's own scheme, so
+// without a registered scheme there is nothing to come back to.
+func clickable(req NotifyRequest, scheme string) bool { return req.ID != "" && scheme != "" }
+
 func showToast(ctx context.Context, app appInfo, req NotifyRequest, scheme string) error {
 	doc, err := toastXML(req, scheme)
 	if err != nil {

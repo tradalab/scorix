@@ -97,3 +97,18 @@ func TestAppInfoPicksTheRightHalf(t *testing.T) {
 		t.Fatalf("no name: display = %q", got)
 	}
 }
+
+func TestResponseAction(t *testing.T) {
+	if _, ok := responseAction(unDismissAction); ok {
+		t.Fatal("a swipe-away is not a click: reporting it would fire the default action")
+	}
+	if _, ok := responseAction(""); ok {
+		t.Fatal("an unreadable identifier must be dropped, not turned into a click")
+	}
+	if got, ok := responseAction(unDefaultAction); !ok || got != DefaultAction {
+		t.Fatalf("body click = %q %v, want %q true", got, ok, DefaultAction)
+	}
+	if got, ok := responseAction("archive"); !ok || got != "archive" {
+		t.Fatalf("button key = %q %v, want \"archive\" true", got, ok)
+	}
+}

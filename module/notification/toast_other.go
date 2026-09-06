@@ -1,27 +1,15 @@
-//go:build !windows && !linux
+//go:build (!windows && !linux && !darwin) || (darwin && server)
 
 package notification
 
-import (
-	"context"
+import "context"
 
-	"github.com/ncruces/zenity"
-)
-
-// No click-callback path here yet: macOS needs an NSUserNotification bridge and
-// the other targets have no notification service at all. The notification still
-// shows, and Notify's caller is told the click will not come back.
+// No notification service to talk to on these targets, so the click never comes
+// back and Notify's caller is told so.
 func showToast(_ context.Context, _ appInfo, req NotifyRequest, _ string) error {
-	return zenity.Notify(req.Text, zenity.Title(req.Title), levelIcon(req.Level))
+	return zenityNotify(req)
 }
 
-func levelIcon(level string) zenity.Option {
-	switch level {
-	case "warning":
-		return zenity.Icon(zenity.WarningIcon)
-	case "error":
-		return zenity.Icon(zenity.ErrorIcon)
-	default:
-		return zenity.Icon(zenity.InfoIcon)
-	}
-}
+func clickable(NotifyRequest, string) bool { return false }
+
+func prepare() {}

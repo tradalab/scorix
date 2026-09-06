@@ -28,6 +28,31 @@ func activationURL(scheme, id, action string) string {
 	return scheme + "://" + activationHost + "?" + q.Encode()
 }
 
+// macOS reports a click and a swipe-away through the SAME delegate method,
+// separated only by these identifiers.
+const (
+	unDefaultAction = "com.apple.UNNotificationDefaultActionIdentifier"
+	unDismissAction = "com.apple.UNNotificationDismissActionIdentifier"
+)
+
+// responseAction maps a macOS action identifier onto the key the app sees.
+// ok is false when the response is not a click: a dismissal is the user getting
+// RID of the notification, and reporting it as a press would have every swipe
+// run whatever the default action does.
+//
+// It lives here rather than in toast_darwin.go so it can be tested on any host.
+func responseAction(id string) (string, bool) {
+	switch id {
+	case unDismissAction, "":
+		// An empty identifier means the read failed; inventing a click from it
+		// would be worse than dropping it.
+		return "", false
+	case unDefaultAction:
+		return DefaultAction, true
+	}
+	return id, true
+}
+
 // parseActivation returns ok=false for anything that is not ours.
 func parseActivation(raw string) (id, action string, ok bool) {
 	u, err := url.Parse(raw)

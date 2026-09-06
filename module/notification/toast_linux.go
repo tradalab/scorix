@@ -59,3 +59,9 @@ func showToast(ctx context.Context, app appInfo, req NotifyRequest, _ string) er
 	}()
 	return nil
 }
+
+// Same round trip as Windows: notify-send's --action carries the app's own URL.
+func clickable(req NotifyRequest, scheme string) bool { return req.ID != "" && scheme != "" }
+
+// notify-send is spawned per call, so there is nothing to set up first.
+func prepare() {}
