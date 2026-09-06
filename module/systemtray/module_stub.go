@@ -1,4 +1,4 @@
-//go:build server || !(windows || linux)
+//go:build server || !(windows || linux || darwin)
 
 package systemtray
 

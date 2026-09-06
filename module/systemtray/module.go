@@ -1,4 +1,4 @@
-//go:build !server && (windows || linux)
+//go:build !server && (windows || linux || darwin)
 
 // Package systemtray is a system tray integration module.
 package systemtray
@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/energye/systray"
 	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/menu"
 	"github.com/tradalab/scorix/module"
@@ -69,81 +68,25 @@ func (m *SystemTrayModule) OnLoad(ctx *module.Context) error {
 
 func (m *SystemTrayModule) OnStart() error {
 	logger.Info("[systemtray] starting system tray")
-
-	go systray.Run(m.onReady, m.onExit)
-
-	return nil
+	return trayStart(m)
 }
 
 func (m *SystemTrayModule) OnStop() error {
 	logger.Info("[systemtray] stopping")
-	systray.Quit()
+	trayStop()
 	return nil
 }
 
-func (m *SystemTrayModule) OnUnload() error { return nil }
-
-func (m *SystemTrayModule) onReady() {
-	if len(m.icon) > 0 {
-		systray.SetIcon(m.icon)
-	}
-	systray.SetTitle(m.cfg.Title)
-	systray.SetTooltip(m.cfg.Tooltip)
-
-	systray.SetOnClick(func(menu systray.IMenu) {
-		if m.ctx.App != nil {
-			m.ctx.App.Show()
-		}
-	})
-	systray.SetOnDClick(func(menu systray.IMenu) {
-		if m.ctx.App != nil {
-			m.ctx.App.Show()
-		}
-	})
-	systray.SetOnRClick(func(menu systray.IMenu) {
-		if err := menu.ShowMenu(); err != nil {
-			logger.Error(fmt.Sprintf("[systemtray] show menu error: %v", err))
-		}
-	})
-
+// nodes resolves the menu once, so both bindings walk the same tree.
+func (m *SystemTrayModule) nodes() []node {
 	items := m.menu
 	if len(items) == 0 {
 		items = defaultMenu()
 	}
-	addNodes(resolveTray(items, m.ctx.App, 0), nil)
+	return resolveTray(items, m.ctx.App, 0)
 }
 
-// A nil parent is the top level, the only level systray lets a separator into.
-func addNodes(nodes []node, parent *systray.MenuItem) {
-	for _, n := range nodes {
-		if n.separator {
-			systray.AddSeparator()
-			continue
-		}
-		var mi *systray.MenuItem
-		switch { // the checkbox constructors reserve a check column, so only a checked item gets one
-		case parent == nil && n.checked:
-			mi = systray.AddMenuItemCheckbox(n.label, n.tooltip, true)
-		case parent == nil:
-			mi = systray.AddMenuItem(n.label, n.tooltip)
-		case n.checked:
-			mi = parent.AddSubMenuItemCheckbox(n.label, n.tooltip, true)
-		default:
-			mi = parent.AddSubMenuItem(n.label, n.tooltip)
-		}
-		if n.disabled {
-			mi.Disable()
-		}
-		if n.onClick != nil {
-			mi.Click(n.onClick)
-		}
-		addNodes(n.children, mi)
-	}
-}
-
-func (m *SystemTrayModule) onExit() {
-	logger.Info("[systemtray] tray exited")
-}
+func (m *SystemTrayModule) OnUnload() error { return nil }
 
 type SetIconRequest struct {
 	Icon []byte `json:"icon"`
@@ -154,7 +97,7 @@ func (m *SystemTrayModule) SetIcon(_ context.Context, req SetIconRequest) (inter
 	if len(req.Icon) == 0 {
 		return nil, fmt.Errorf("icon data is empty")
 	}
-	systray.SetIcon(req.Icon)
+	traySetIcon(req.Icon)
 	return "ok", nil
 }
 
@@ -164,7 +107,7 @@ type SetTooltipRequest struct {
 
 // JS: scorix.invoke("mod:systemtray:SetTooltip", { tooltip: "New tooltip" })
 func (m *SystemTrayModule) SetTooltip(_ context.Context, req SetTooltipRequest) (interface{}, error) {
-	systray.SetTooltip(req.Tooltip)
+	traySetTooltip(req.Tooltip)
 	return "ok", nil
 }
 
@@ -174,7 +117,7 @@ type SetTitleRequest struct {
 
 // JS: scorix.invoke("mod:systemtray:SetTitle", { title: "New Title" })
 func (m *SystemTrayModule) SetTitle(_ context.Context, req SetTitleRequest) (interface{}, error) {
-	systray.SetTitle(req.Title)
+	traySetTitle(req.Title)
 	return "ok", nil
 }
 
