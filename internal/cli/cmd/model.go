@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"io"
+
 	"github.com/spf13/cobra"
 	"github.com/tradalab/scorix/internal/cli/runner"
 )
@@ -8,15 +10,6 @@ import (
 var generateModelCmd = &cobra.Command{
 	Use:   "model",
 	Short: "Generate sqlx model and repository from SQL schema",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return runner.GenerateModel(cmd.Context(), runner.GenerateModelOptions{
-			Schema:  generateModelSchema,
-			Dir:     generateModelDir,
-			Force:   generateModelForce,
-			Dialect: generateModelDialect,
-			Check:   generateModelCheck,
-		})
-	},
 }
 
 var (
@@ -28,6 +21,16 @@ var (
 )
 
 func init() {
+	jsonCommand(generateModelCmd, func(cmd *cobra.Command, out io.Writer) error {
+		return runner.GenerateModel(cmd.Context(), runner.GenerateModelOptions{
+			JSONOut: out,
+			Schema:  generateModelSchema,
+			Dir:     generateModelDir,
+			Force:   generateModelForce,
+			Dialect: generateModelDialect,
+			Check:   generateModelCheck,
+		})
+	})
 	generateCmd.AddCommand(generateModelCmd)
 
 	generateModelCmd.Flags().StringVarP(&generateModelSchema, "schema", "s", "etc/schema.sql", "SQL schema file path")

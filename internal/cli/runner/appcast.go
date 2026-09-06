@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -45,10 +46,26 @@ type platformArtifact struct {
 type AppcastOptions struct {
 	Dir          string
 	ArtifactsDir string
-	BaseURLs     []string // every host serving the artifacts, so the updater can fall back per host; overrides package.update.base_url
+	BaseURLs     []string  // every host serving the artifacts, so the updater can fall back per host; overrides package.update.base_url
+	JSONOut      io.Writer // non-nil switches the result to one JSON document on this writer
+}
+
+type AppcastResult struct {
+	Manifest string `json:"manifest,omitempty"`
+	Signed   bool   `json:"signed"`
+	Entries  int    `json:"entries"`
 }
 
 func Appcast(ctx context.Context, opt AppcastOptions) error {
+	res := &AppcastResult{}
+	err := appcast(ctx, opt, res)
+	if opt.JSONOut != nil {
+		return emitJSON(opt.JSONOut, "appcast", res, err)
+	}
+	return err
+}
+
+func appcast(ctx context.Context, opt AppcastOptions, res *AppcastResult) error {
 	root, err := filepath.Abs(orDefault(opt.Dir, "."))
 	if err != nil {
 		return err
@@ -88,6 +105,7 @@ func Appcast(ctx context.Context, opt AppcastOptions) error {
 	if err != nil {
 		return err
 	}
+	res.Signed = priv != nil
 	if priv == nil {
 		fmt.Println("note: no signing key (package.update.sign_key_env unset/empty) — appcast entries will be UNSIGNED")
 	}
@@ -156,6 +174,7 @@ func Appcast(ctx context.Context, opt AppcastOptions) error {
 		if err := os.WriteFile(out, manifest, 0o644); err != nil {
 			return err
 		}
+		res.Manifest, res.Entries = out, len(platforms)
 		fmt.Printf("==> wrote %s (%d platform entries)\n", out, len(platforms))
 	}
 	return nil

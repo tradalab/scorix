@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"io"
+
 	"github.com/spf13/cobra"
 	"github.com/tradalab/scorix/internal/cli/runner"
 )
@@ -17,8 +19,12 @@ var (
 var buildCmd = &cobra.Command{
 	Use:   "build",
 	Short: "Compile the app (frontend + Go) into a single binary for a target OS/arch",
-	RunE: func(cmd *cobra.Command, args []string) error {
+}
+
+func init() {
+	jsonCommand(buildCmd, func(cmd *cobra.Command, out io.Writer) error {
 		return runner.Build(cmd.Context(), runner.BuildOptions{
+			JSONOut:      out,
 			Dir:          buildDir,
 			OS:           buildOS,
 			Arch:         buildArch,
@@ -26,10 +32,7 @@ var buildCmd = &cobra.Command{
 			Tags:         buildTags,
 			SkipFrontend: buildSkipFrontend,
 		})
-	},
-}
-
-func init() {
+	})
 	rootCmd.AddCommand(buildCmd)
 	buildCmd.Flags().StringVarP(&buildDir, "dir", "d", ".", "project root directory")
 	buildCmd.Flags().StringVar(&buildOS, "os", "", "target GOOS (default: host)")

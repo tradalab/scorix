@@ -1,6 +1,10 @@
 package runner
 
-import "github.com/tradalab/scorix/internal/cli/runner/dialect"
+import (
+	"io"
+
+	"github.com/tradalab/scorix/internal/cli/runner/dialect"
+)
 
 type GenerateModelOptions struct {
 	Schema  string
@@ -9,7 +13,8 @@ type GenerateModelOptions struct {
 	Dialect string // sqlite | mysql | postgres. Empty falls back to scorix.yaml / "sqlite".
 	// Check renders in memory and diffs against disk instead of writing, erroring
 	// on drift (CI guard, see GenerateProtoOptions).
-	Check bool
+	Check   bool
+	JSONOut io.Writer // non-nil switches the result to one JSON document on this writer
 }
 
 // sqlTable: per-table CRUD only — callers stitch relations in internal/logic/.

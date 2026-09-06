@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"io"
+
 	"github.com/spf13/cobra"
 	"github.com/tradalab/scorix/internal/cli/runner"
 )
@@ -15,14 +17,6 @@ var generateProtoCmd = &cobra.Command{
 	Use:     "proto",
 	Aliases: []string{"rpc"},
 	Short:   "Generate handler, logic and types from a proto file",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return runner.GenerateProto(cmd.Context(), runner.GenerateProtoOptions{
-			Proto: generateProtoFile,
-			Dir:   generateProtoDir,
-			Force: generateProtoForce,
-			Check: generateProtoCheck,
-		})
-	},
 }
 
 var (
@@ -33,6 +27,15 @@ var (
 )
 
 func init() {
+	jsonCommand(generateProtoCmd, func(cmd *cobra.Command, out io.Writer) error {
+		return runner.GenerateProto(cmd.Context(), runner.GenerateProtoOptions{
+			JSONOut: out,
+			Proto:   generateProtoFile,
+			Dir:     generateProtoDir,
+			Force:   generateProtoForce,
+			Check:   generateProtoCheck,
+		})
+	})
 	rootCmd.AddCommand(generateCmd)
 	generateCmd.AddCommand(generateProtoCmd)
 

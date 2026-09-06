@@ -11,6 +11,15 @@ import (
 )
 
 func GenerateProto(ctx context.Context, opt GenerateProtoOptions) error {
+	res := &GenerateResult{Check: opt.Check, Regen: "scorix generate proto"}
+	err := generateProto(ctx, opt, res)
+	if opt.JSONOut != nil {
+		return emitJSON(opt.JSONOut, "generate proto", res, err)
+	}
+	return err
+}
+
+func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateResult) error {
 	if opt.Proto == "" {
 		opt.Proto = "idl/app.proto"
 	}
@@ -254,7 +263,7 @@ func GenerateProto(ctx context.Context, opt GenerateProtoOptions) error {
 	}
 
 	if opt.Check {
-		var drifted []string
+		var drifted []DriftItem
 		for _, s := range staged {
 			reason, err := driftOf(s)
 			if err != nil {
@@ -264,6 +273,7 @@ func GenerateProto(ctx context.Context, opt GenerateProtoOptions) error {
 				drifted = append(drifted, driftLabel(root, s.Path, reason))
 			}
 		}
+		res.Files, res.Drift = len(staged), drifted
 		return reportDrift(root, "scorix generate proto", drifted)
 	}
 
@@ -285,6 +295,7 @@ func GenerateProto(ctx context.Context, opt GenerateProtoOptions) error {
 		}
 	}
 
+	res.Files, res.Created, res.Updated, res.Skipped = len(staged), created, updated, skipped
 	fmt.Printf("==> Proto generation complete! (created: %d, updated: %d, skipped: %d)\n", created, updated, skipped)
 	return nil
 }

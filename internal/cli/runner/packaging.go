@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -23,11 +24,25 @@ type PackageOptions struct {
 	SkipFrontend bool
 	SkipSign     bool
 	ForceSign    bool
+	JSONOut      io.Writer // non-nil switches the result to one JSON document on this writer
+}
+
+type PackageResult struct {
+	Artifacts []string `json:"artifacts,omitempty"`
 }
 
 // Package builds and packages for each resolved target. Native installers need
 // their own OS toolchain, so by default it packages for the host OS only.
 func Package(ctx context.Context, opt PackageOptions) error {
+	res := &PackageResult{}
+	err := packageAll(ctx, opt, res)
+	if opt.JSONOut != nil {
+		return emitJSON(opt.JSONOut, "package", res, err)
+	}
+	return err
+}
+
+func packageAll(ctx context.Context, opt PackageOptions, res *PackageResult) error {
 	root, err := filepath.Abs(orDefault(opt.Dir, "."))
 	if err != nil {
 		return err
@@ -45,6 +60,7 @@ func Package(ctx context.Context, opt PackageOptions) error {
 			return fmt.Errorf("package %s/%s: %w", t.OS, t.Arch, err)
 		}
 		artifacts = append(artifacts, art)
+		res.Artifacts = artifacts
 	}
 
 	fmt.Println("\n==> Done. Artifacts:")

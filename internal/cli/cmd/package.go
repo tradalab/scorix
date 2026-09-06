@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"io"
+
 	"github.com/spf13/cobra"
 	"github.com/tradalab/scorix/internal/cli/runner"
 )
@@ -23,8 +25,12 @@ var packageCmd = &cobra.Command{
 	Long: "Build and package the app into a native installer.\n\n" +
 		"Native installers require their target OS toolchain (WiX for MSI, etc.),\n" +
 		"so by default packaging targets the host OS only. Currently implemented: windows (MSI).",
-	RunE: func(cmd *cobra.Command, args []string) error {
+}
+
+func init() {
+	jsonCommand(packageCmd, func(cmd *cobra.Command, out io.Writer) error {
 		return runner.Package(cmd.Context(), runner.PackageOptions{
+			JSONOut:      out,
 			Dir:          packageDir,
 			OS:           packageOS,
 			Arch:         packageArch,
@@ -34,10 +40,7 @@ var packageCmd = &cobra.Command{
 			SkipSign:     packageSkipSign,
 			ForceSign:    packageSign,
 		})
-	},
-}
-
-func init() {
+	})
 	rootCmd.AddCommand(packageCmd)
 	packageCmd.Flags().StringVarP(&packageDir, "dir", "d", ".", "project root directory")
 	packageCmd.Flags().StringVar(&packageOS, "os", "", "target GOOS (default: host / scorix.yaml targets)")

@@ -1,12 +1,33 @@
 package runner
 
+import "io"
+
+// DriftItem is one generated file that --check found out of sync.
+type DriftItem struct {
+	Path   string `json:"path"`
+	Reason string `json:"reason"` // missing | out of date | model markers out of date
+}
+
+// GenerateResult is what `generate proto|model` reports. Check mode fills Drift
+// and leaves the counters at zero; a real run is the other way round.
+type GenerateResult struct {
+	Check   bool        `json:"check"`
+	Files   int         `json:"files"`
+	Created int         `json:"created"`
+	Updated int         `json:"updated"`
+	Skipped int         `json:"skipped"`
+	Drift   []DriftItem `json:"drift,omitempty"`
+	Regen   string      `json:"regen,omitempty"` // the command that fixes the drift
+}
+
 type GenerateProtoOptions struct {
 	Proto string
 	Dir   string
 	Force bool
 	// Check renders in memory and diffs against disk instead of writing, erroring
 	// on drift — CI guard against editing proto (or generated files) without regen.
-	Check bool
+	Check   bool
+	JSONOut io.Writer // non-nil switches the result to one JSON document on this writer
 }
 
 type protoFile struct {

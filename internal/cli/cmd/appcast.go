@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"io"
+
 	"github.com/spf13/cobra"
 	"github.com/tradalab/scorix/internal/cli/runner"
 )
@@ -18,16 +20,17 @@ var appcastCmd = &cobra.Command{
 		"Run after `scorix package` has collected installers (typically once, over a\n" +
 		"directory holding all per-OS artifacts). The Ed25519 private key is read from\n" +
 		"the env named in package.update.sign_key_env.",
-	RunE: func(cmd *cobra.Command, args []string) error {
+}
+
+func init() {
+	jsonCommand(appcastCmd, func(cmd *cobra.Command, out io.Writer) error {
 		return runner.Appcast(cmd.Context(), runner.AppcastOptions{
+			JSONOut:      out,
 			Dir:          appcastDir,
 			ArtifactsDir: appcastArtifacts,
 			BaseURLs:     appcastBaseURLs,
 		})
-	},
-}
-
-func init() {
+	})
 	rootCmd.AddCommand(appcastCmd)
 	appcastCmd.Flags().StringVarP(&appcastDir, "dir", "d", ".", "project root directory")
 	appcastCmd.Flags().StringVar(&appcastArtifacts, "artifacts", "", "artifacts directory (default: <dir>/artifacts)")

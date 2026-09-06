@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -90,6 +91,10 @@ type BuildContext struct {
 
 	cfg *ProjectConfig
 	pkg *PackageConfig
+
+	// diag non-nil switches the compiler to `go build -json` and collects its
+	// messages; nil keeps the plain output a human reads.
+	diag *[]BuildDiagnostic
 }
 
 type BuildOptions struct {
@@ -99,9 +104,36 @@ type BuildOptions struct {
 	Output       string
 	Tags         []string
 	SkipFrontend bool
+	JSONOut      io.Writer // non-nil switches the result to one JSON document on this writer
+}
+
+type BuildResult struct {
+	Output      string            `json:"output,omitempty"`
+	OS          string            `json:"os,omitempty"`
+	Arch        string            `json:"arch,omitempty"`
+	Diagnostics []BuildDiagnostic `json:"diagnostics,omitempty"`
+}
+
+// BuildDiagnostic is one compiler message, split so a caller can jump straight
+// to it. Message alone survives when the line carries no position.
+type BuildDiagnostic struct {
+	Package string `json:"package,omitempty"`
+	File    string `json:"file,omitempty"`
+	Line    int    `json:"line,omitempty"`
+	Col     int    `json:"col,omitempty"`
+	Message string `json:"message"`
 }
 
 func Build(ctx context.Context, opt BuildOptions) error {
+	res := &BuildResult{}
+	err := build(ctx, opt, res)
+	if opt.JSONOut != nil {
+		return emitJSON(opt.JSONOut, "build", res, err)
+	}
+	return err
+}
+
+func build(ctx context.Context, opt BuildOptions, res *BuildResult) error {
 	bc, err := resolveBuildContext(opt.Dir, opt.OS, opt.Arch)
 	if err != nil {
 		return err
@@ -109,10 +141,15 @@ func Build(ctx context.Context, opt BuildOptions) error {
 	if len(opt.Tags) > 0 {
 		bc.Tags = opt.Tags
 	}
+	res.OS, res.Arch = bc.OS, bc.Arch
+	if opt.JSONOut != nil {
+		bc.diag = &res.Diagnostics
+	}
 	out, err := buildBinary(ctx, bc, opt.SkipFrontend, opt.Output)
 	if err != nil {
 		return err
 	}
+	res.Output = out
 	fmt.Printf("==> Built %s (%s/%s)\n", out, bc.OS, bc.Arch)
 	return nil
 }
@@ -334,6 +371,9 @@ func goBuildArch(ctx context.Context, bc *BuildContext, goarch, out string) erro
 	}
 
 	args := []string{"build"}
+	if bc.diag != nil {
+		args = append(args, "-json")
+	}
 	if ld := buildLdflags(bc); ld != "" {
 		args = append(args, "-ldflags", ld)
 	}
@@ -354,10 +394,19 @@ func goBuildArch(ctx context.Context, bc *BuildContext, goarch, out string) erro
 	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = bc.Root
 	cmd.Env = env
-	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	fmt.Printf("==> GOOS=%s GOARCH=%s go %s\n", bc.OS, goarch, strings.Join(args, " "))
-	return cmd.Run()
+	if bc.diag == nil {
+		cmd.Stdout = os.Stdout
+		return cmd.Run()
+	}
+	// -json moves the compiler onto stdout: capture it, then hand the text back
+	// to the human and the parsed positions to the caller.
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	err := cmd.Run()
+	collectBuildDiagnostics(bc, &buf)
+	return err
 }
 
 func goBuildDarwinUniversal(ctx context.Context, bc *BuildContext, out string) error {

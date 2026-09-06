@@ -53,6 +53,15 @@ func loadProjectConfig(path string) (*ProjectConfig, error) {
 }
 
 func GenerateModel(ctx context.Context, opt GenerateModelOptions) error {
+	res := &GenerateResult{Check: opt.Check, Regen: "scorix generate model"}
+	err := generateModel(ctx, opt, res)
+	if opt.JSONOut != nil {
+		return emitJSON(opt.JSONOut, "generate model", res, err)
+	}
+	return err
+}
+
+func generateModel(ctx context.Context, opt GenerateModelOptions, res *GenerateResult) error {
 	if opt.Dir == "" {
 		opt.Dir = "."
 	}
@@ -121,7 +130,7 @@ func GenerateModel(ctx context.Context, opt GenerateModelOptions) error {
 		}
 	}
 
-	var drifted []string
+	var drifted []DriftItem
 
 	if len(tables) == 0 {
 		fmt.Println("No tables found in schema. Clearing generated model entries from svc.go.")
@@ -208,6 +217,7 @@ func GenerateModel(ctx context.Context, opt GenerateModelOptions) error {
 		}
 
 		if opt.Check {
+			res.Files += len(staged)
 			for _, s := range staged {
 				reason, err := driftOf(s)
 				if err != nil {
@@ -221,6 +231,15 @@ func GenerateModel(ctx context.Context, opt GenerateModelOptions) error {
 			for i, s := range staged {
 				if err := commitStagedFile(s); err != nil {
 					return err
+				}
+				res.Files++
+				switch s.Action {
+				case "created":
+					res.Created++
+				case "updated":
+					res.Updated++
+				case "skipped":
+					res.Skipped++
 				}
 				if s.Action != "skipped" {
 					fmt.Printf("      %s: %s\n", s.Action, labels[i])
@@ -246,9 +265,11 @@ func GenerateModel(ctx context.Context, opt GenerateModelOptions) error {
 		if err != nil {
 			return err
 		}
+		res.Files++ // the service-context markers are checked too, so files must cover them
 		if !bytes.Equal(normalizeNewlines(svcDisk), normalizeNewlines(svcNew)) {
 			drifted = append(drifted, driftLabel(root, svcPath, "model markers out of date"))
 		}
+		res.Drift = drifted
 		return reportDrift(root, "scorix generate model", drifted)
 	}
 

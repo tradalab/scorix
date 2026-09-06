@@ -2,21 +2,32 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/tradalab/scorix/internal/cli/runner"
 )
 
 var (
 	cfgFile string
 )
 
+// Execute maps a failure onto the documented exit statuses. The message goes to
+// STDERR: in --json mode stdout already carries the result document, and a
+// second line there would break every parser reading it.
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Println("Error:", err)
-		os.Exit(1)
+	err := rootCmd.Execute()
+	if err == nil {
+		return
 	}
+	fmt.Fprintln(os.Stderr, "Error:", err)
+	var ee *runner.ExitError
+	if errors.As(err, &ee) {
+		os.Exit(ee.Code)
+	}
+	os.Exit(runner.ExitFailed)
 }
 
 var rootCmd = &cobra.Command{
@@ -33,5 +44,8 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
+	rootCmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return runner.UsageError(err)
+	})
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config path (optional)")
 }

@@ -90,22 +90,23 @@ func driftOf(s stagedFile) (string, error) {
 	return "out of date", nil
 }
 
-func reportDrift(root, regenCmd string, drifted []string) error {
+func reportDrift(root, regenCmd string, drifted []DriftItem) error {
 	if len(drifted) == 0 {
 		fmt.Println("==> Check passed: generated code is in sync.")
 		return nil
 	}
 	for _, d := range drifted {
-		fmt.Printf("      drift: %s\n", d)
+		fmt.Printf("      drift: %s (%s)\n", d.Path, d.Reason)
 	}
-	return fmt.Errorf("generated code is out of sync with its sources (%d file(s)) — run `%s` and commit the result", len(drifted), regenCmd)
+	return exitErrorf(ExitDrift, "drift",
+		"generated code is out of sync with its sources (%d file(s)) — run `%s` and commit the result", len(drifted), regenCmd)
 }
 
-func driftLabel(root, path, reason string) string {
+func driftLabel(root, path, reason string) DriftItem {
 	if rel, err := filepath.Rel(root, path); err == nil {
 		path = filepath.ToSlash(rel)
 	}
-	return path + " (" + reason + ")"
+	return DriftItem{Path: path, Reason: reason}
 }
 
 func commitStagedFile(s stagedFile) error {
