@@ -3,6 +3,8 @@
 package singleinstance
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net"
 	"os"
 	"path/filepath"
@@ -10,12 +12,23 @@ import (
 	"time"
 )
 
+// sun_path holds 104 bytes on darwin and 108 on Linux, and a macOS $TMPDIR eats
+// ~49 of them, so an over-long identifier turns Listen into an opaque
+// "bind: invalid argument".
+const maxSockPath = 100
+
 func sockPath(name string) string {
 	dir := os.Getenv("XDG_RUNTIME_DIR") // per-user tmpfs on Linux desktops
 	if dir == "" {
 		dir = os.TempDir() // per-user $TMPDIR on macOS
 	}
-	return filepath.Join(dir, "scorix-"+name+".sock")
+	p := filepath.Join(dir, "scorix-"+name+".sock")
+	if len(p) <= maxSockPath {
+		return p // readable: `ls $TMPDIR` should say which app holds the lock
+	}
+	// Hash, never truncate - two identifiers sharing a prefix must not share a lock.
+	sum := sha256.Sum256([]byte(name))
+	return filepath.Join(dir, "scorix-"+hex.EncodeToString(sum[:8])+".sock")
 }
 
 func Acquire(id string, onActivate func(args []string)) (*Lock, error) {
