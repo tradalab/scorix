@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"runtime/debug"
 
+	"github.com/tradalab/scorix/diag"
 	"github.com/tradalab/scorix/logger"
 )
 
@@ -13,7 +14,9 @@ import (
 func safeOnLoad(mod Module, ctx *Context) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			logger.Error(fmt.Sprintf("[module] %s OnLoad panic: %v\n%s", mod.Name(), r, debug.Stack()))
+			stack := debug.Stack()
+			diag.Panic("module "+mod.Name()+" OnLoad", r, stack)
+			logger.Error(fmt.Sprintf("[module] %s OnLoad panic: %v\n%s", mod.Name(), r, stack))
 			err = fmt.Errorf("panic: %v", r)
 		}
 	}()
@@ -23,7 +26,9 @@ func safeOnLoad(mod Module, ctx *Context) (err error) {
 func safeOnStart(mod Module) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			logger.Error(fmt.Sprintf("[module] %s OnStart panic: %v\n%s", mod.Name(), r, debug.Stack()))
+			stack := debug.Stack()
+			diag.Panic("module "+mod.Name()+" OnStart", r, stack)
+			logger.Error(fmt.Sprintf("[module] %s OnStart panic: %v\n%s", mod.Name(), r, stack))
 			err = fmt.Errorf("panic: %v", r)
 		}
 	}()
@@ -33,7 +38,9 @@ func safeOnStart(mod Module) (err error) {
 func safeOnStop(mod Module) {
 	defer func() {
 		if r := recover(); r != nil {
-			logger.Error(fmt.Sprintf("[module] %s OnStop panic: %v\n%s", mod.Name(), r, debug.Stack()))
+			stack := debug.Stack()
+			diag.Panic("module "+mod.Name()+" OnStop", r, stack)
+			logger.Error(fmt.Sprintf("[module] %s OnStop panic: %v\n%s", mod.Name(), r, stack))
 		}
 	}()
 	if err := mod.OnStop(); err != nil {
@@ -44,7 +51,9 @@ func safeOnStop(mod Module) {
 func safeOnUnload(mod Module) {
 	defer func() {
 		if r := recover(); r != nil {
-			logger.Error(fmt.Sprintf("[module] %s OnUnload panic: %v\n%s", mod.Name(), r, debug.Stack()))
+			stack := debug.Stack()
+			diag.Panic("module "+mod.Name()+" OnUnload", r, stack)
+			logger.Error(fmt.Sprintf("[module] %s OnUnload panic: %v\n%s", mod.Name(), r, stack))
 		}
 	}()
 	if err := mod.OnUnload(); err != nil {

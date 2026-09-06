@@ -38,7 +38,7 @@ func New(cfg Config) {
 		writer = fileWriter(cfg)
 	}
 
-	core := zapcore.NewCore(encoder, zapcore.AddSync(writer), level)
+	core := zapcore.NewCore(encoder, ringWriter{zapcore.AddSync(writer)}, level)
 
 	l := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
 	logPtr.Store(l)

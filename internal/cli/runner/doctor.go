@@ -10,6 +10,9 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/tradalab/scorix/diag"
+	"github.com/tradalab/scorix/module"
 )
 
 const (
@@ -115,7 +118,29 @@ func doctorChecks(ctx context.Context, res *DoctorResult) error {
 	if runtime.GOOS == "windows" {
 		checkWebView2Runtime(res)
 	}
+	checkCrashReports(res)
 	return nil
+}
+
+// checkCrashReports points at the app's own crashes. Doctor is where someone
+// already goes when something is wrong, and the reports otherwise sit in a
+// per-OS data directory nobody remembers.
+func checkCrashReports(res *DoctorResult) {
+	meta, err := loadAppMetadata(".")
+	if err != nil || meta.App.Name == "" {
+		return // not inside a project, or it has no name: nothing to look up
+	}
+	dir := diag.Dir(module.DataDir(meta.App.Name))
+	reports, err := diag.List(dir)
+	if err != nil || len(reports) == 0 {
+		return
+	}
+	res.add(DoctorCheck{
+		Name:   "crash reports",
+		Status: "warn",
+		Detail: fmt.Sprintf("%d", len(reports)),
+		Hint:   fmt.Sprintf("%d crash report(s) in %s - newest: %s", len(reports), dir, filepath.Base(reports[0])),
+	})
 }
 
 func checkGoVersion(ctx context.Context, res *DoctorResult) {

@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"runtime/debug"
 	"sync"
 	"time"
 
+	"github.com/tradalab/scorix/diag"
 	"github.com/tradalab/scorix/fault"
 	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/webview"
@@ -232,6 +234,9 @@ func (d *Dispatcher) openRPC(msg webview.Message) {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
+					// The frontend only gets a code: without this the stack died with
+					// the goroutine and nobody could tell WHICH handler broke.
+					diag.Panic("ipc stream "+msg.Name, r, debug.Stack())
 					err = fault.Errorf(fault.CodeInternal, "handler panicked: %v", r)
 				}
 			}()
@@ -367,6 +372,7 @@ func (d *Dispatcher) dispatchCommand(msg webview.Message) {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
+					diag.Panic("ipc command "+msg.Name, r, debug.Stack())
 					res, err = nil, fault.Errorf(fault.CodeInternal, "handler panicked: %v", r)
 				}
 			}()

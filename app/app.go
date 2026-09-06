@@ -19,11 +19,13 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"testing"
 	"time"
 
 	"github.com/gorilla/websocket"
 
 	"github.com/tradalab/scorix/config"
+	"github.com/tradalab/scorix/diag"
 	"github.com/tradalab/scorix/internal/ipc"
 	"github.com/tradalab/scorix/internal/singleinstance"
 	"github.com/tradalab/scorix/logger"
@@ -198,8 +200,25 @@ func New(opts Options) (*App, error) {
 	}
 	a.mods = module.NewManager(a.cfg, &moduleCore{reg: a.reg, app: a}, nil)
 	a.mods.SetRuntimeModules(runtimeModules)
+	// Armed here, not in Run: a panic during module load or in web mode has to
+	// leave the same trail as one from a window. Two cases stay out: a nameless app
+	// (DataDir falls back to a shared bucket where two apps' crashes would mix) and
+	// a test binary, which has no business writing into the real user data dir.
+	if name := a.cfg.App.Name; name != "" && !testing.Testing() {
+		if err := diag.Init(diag.Options{
+			Dir:     CrashDir(name),
+			App:     name,
+			Version: a.cfg.App.Version,
+		}); err != nil {
+			logger.Warn("app: crash diagnostics disabled", "err", err)
+		}
+	}
 	return a, nil
 }
+
+// CrashDir is where crash reports land for an app, so a support request can ask
+// for one path instead of a per-OS explanation.
+func CrashDir(appName string) string { return diag.Dir(module.DataDir(appName)) }
 
 // loadRuntimeOverlay reads path, falling back to SCORIX_CONFIG; nil when neither is set.
 func loadRuntimeOverlay(path string) (map[string]any, error) {
