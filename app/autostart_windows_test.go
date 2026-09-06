@@ -39,3 +39,35 @@ func TestAutostartRoundTrip(t *testing.T) {
 		t.Fatalf("disable twice: %v", err)
 	}
 }
+
+// The GitHub Windows runner has no Run key at all, and every call used to fail
+// with ERROR_FILE_NOT_FOUND instead of reporting "not enabled".
+func TestAutostartWithoutExistingRunKey(t *testing.T) {
+	parent := fmt.Sprintf(`Software\scorix-autostart-test-%d`, os.Getpid())
+	saved := runKey
+	runKey = parent + `\Run`
+	t.Cleanup(func() {
+		runKey = saved
+		_ = registry.DeleteKey(registry.CURRENT_USER, parent+`\Run`)
+		_ = registry.DeleteKey(registry.CURRENT_USER, parent)
+	})
+
+	a := &App{}
+	a.opts.Identifier = "com.scorix.autostart-nokey"
+
+	if on, err := a.AutostartEnabled(); err != nil || on {
+		t.Fatalf("missing key should read as disabled, got %v %v", on, err)
+	}
+	if err := a.SetAutostart(false); err != nil {
+		t.Fatalf("disable with no key: %v", err)
+	}
+	if err := a.SetAutostart(true); err != nil {
+		t.Fatalf("enable must create the key: %v", err)
+	}
+	if on, err := a.AutostartEnabled(); err != nil || !on {
+		t.Fatalf("after enable = %v %v", on, err)
+	}
+	if err := a.SetAutostart(false); err != nil {
+		t.Fatalf("disable: %v", err)
+	}
+}
