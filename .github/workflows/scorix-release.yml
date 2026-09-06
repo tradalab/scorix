@@ -358,9 +358,15 @@ jobs:
       # For provider `github` this IS the distribution channel and the repo has
       # to be public - the updater sends no Authorization header. For `appcast`
       # it is an archive copy; R2 is what clients read.
+      # tag_name is set explicitly instead of being inferred from github.ref:
+      # on a workflow_dispatch run the ref is a branch, and the action refuses
+      # with "GitHub Releases requires a tag" after every platform has already
+      # built. The version comes from scorix.yaml either way, so the release can
+      # never be tagged something the manifest disagrees with.
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ needs.meta.outputs.version }}
           files: |
             artifacts/*.msi
             artifacts/*.dmg
