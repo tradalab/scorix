@@ -71,7 +71,12 @@
         Description="$(var.ProductDesc)"
         Target="[INSTALLFOLDER]$(var.ProductName).exe"
         WorkingDirectory="INSTALLFOLDER"
-        Icon="AppIcon"/>
+        Icon="AppIcon">
+        <!-- Windows attributes a toast by matching this against the AUMID the app
+             passes to CreateToastNotifier. Without it the toast shows up as
+             PowerShell, and notification clicks are the app's own name. -->
+        <ShortcutProperty Key="System.AppUserModelID" Value="$(var.Identifier)"/>
+      </Shortcut>
       <RemoveFolder Id="RemoveProgramsFolder" Directory="AppProgramsFolder" On="uninstall"/>
       <RegistryValue
         Root="HKCU"

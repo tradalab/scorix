@@ -141,7 +141,12 @@ func (m *Manager) Load(name string) error {
 	}
 
 	appName := m.cfg.App.Name
-	ctx := newContext(name, m.ipcCore, appName, m.cfg.App.Version, dataDir(appName), m.moduleSectionCfg(name), m.moduleFileCfg(name), m.appCtrl)
+	var protocol string
+	if len(m.cfg.App.Protocols) > 0 {
+		protocol = m.cfg.App.Protocols[0]
+	}
+	ctx := newContext(name, m.ipcCore, appName, m.cfg.App.Version, m.cfg.App.Identifier, protocol,
+		dataDir(appName), m.moduleSectionCfg(name), m.moduleFileCfg(name), m.appCtrl)
 
 	if err := safeOnLoad(mod, ctx); err != nil {
 		return fmt.Errorf("module %s OnLoad: %w", name, err)

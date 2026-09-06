@@ -40,6 +40,10 @@ InstallDir "$LOCALAPPDATA\Programs\%[1]s"
   SetOutPath $INSTDIR
   File "/oname=%[3]s" %[4]q
   CreateDirectory "$SMPROGRAMS\%[1]s"
+  ; No System.AppUserModelID here: NSIS cannot set a shortcut property without a
+  ; plugin (WinShell), and requiring one would break every build that lacks it.
+  ; Toasts from an NSIS-installed app are attributed to PowerShell; the MSI path
+  ; sets the AUMID and gets the app's own name.
   CreateShortcut "$SMPROGRAMS\%[1]s\%[1]s.lnk" "$INSTDIR\%[3]s"
   WriteUninstaller "$INSTDIR\uninstall.exe"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\%[6]s" "DisplayName" %[1]q

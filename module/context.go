@@ -13,30 +13,41 @@ import (
 type AppController interface {
 	Show()
 	Close()
+	// OnOpenURL subscribes to launches of a declared app.protocols scheme. It is
+	// how a module gets a click back from something the OS owns - a toast, a
+	// tray balloon - without any of them needing a COM activator.
+	OnOpenURL(fn func(url string))
 }
 
 type Context struct {
 	IPC        *ModuleIPC // handlers namespaced "<module>:<name>"
 	AppName    string
 	AppVersion string // app.version; the running version, in one place
-	DataDir    string
-	App        AppController // nil in web/server mode
+	// AppIdentifier is app.identifier: the AUMID Windows matches a toast against.
+	AppIdentifier string
+	// FirstProtocol is app.protocols[0], the scheme a module routes OS callbacks
+	// through. Empty when the app declares none.
+	FirstProtocol string
+	DataDir       string
+	App           AppController // nil in web/server mode
 
 	name        string
 	rawConfig   map[string]any // embedded modules.<name> (trusted)
 	fileOverlay map[string]any // runtime-file modules.<name> (untrusted; env-tagged fields only)
 }
 
-func newContext(name string, ipcCore Core, appName, appVersion, dataDir string, rawModuleCfg, fileOverlay map[string]any, appCtrl AppController) *Context {
+func newContext(name string, ipcCore Core, appName, appVersion, appID, protocol, dataDir string, rawModuleCfg, fileOverlay map[string]any, appCtrl AppController) *Context {
 	return &Context{
-		IPC:         NewModuleIPC(name, ipcCore),
-		AppName:     appName,
-		AppVersion:  appVersion,
-		DataDir:     dataDir,
-		App:         appCtrl,
-		name:        name,
-		rawConfig:   rawModuleCfg,
-		fileOverlay: fileOverlay,
+		IPC:           NewModuleIPC(name, ipcCore),
+		AppName:       appName,
+		AppVersion:    appVersion,
+		AppIdentifier: appID,
+		FirstProtocol: protocol,
+		DataDir:       dataDir,
+		App:           appCtrl,
+		name:          name,
+		rawConfig:     rawModuleCfg,
+		fileOverlay:   fileOverlay,
 	}
 }
 

@@ -19,6 +19,8 @@ type appController struct{ a *App }
 func (c *appController) Show()  { c.a.Show() }
 func (c *appController) Close() { c.a.Quit() }
 
+func (c *appController) OnOpenURL(fn func(string)) { c.a.OnOpenURL(fn) }
+
 func (a *App) capabilityOf(name string) string {
 	rest, ok := strings.CutPrefix(name, "mod:")
 	if !ok {

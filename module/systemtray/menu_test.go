@@ -8,8 +8,9 @@ import (
 
 type fakeApp struct{ shown, closed int }
 
-func (f *fakeApp) Show()  { f.shown++ }
-func (f *fakeApp) Close() { f.closed++ }
+func (f *fakeApp) Show()                  { f.shown++ }
+func (f *fakeApp) Close()                 { f.closed++ }
+func (f *fakeApp) OnOpenURL(func(string)) {}
 
 func TestDefaultMenuResolvesToShowAndQuit(t *testing.T) {
 	app := &fakeApp{}
