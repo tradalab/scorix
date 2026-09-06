@@ -1,0 +1,73 @@
+name: scorix checks
+
+# Reusable build/test/lint pass for every scorix desktop app.
+#
+#   jobs:
+#     check:
+#       uses: tradalab/scorix/.github/workflows/scorix-pr.yml@v0.14.0
+#
+# Callers pass nothing unless they pin a different toolchain. Copying this file
+# instead is how redishub ended up installing pnpm 10 for a repo that declares
+# pnpm 11 and uses its `allowBuilds` syntax - the mismatch skips native builds
+# rather than failing, so nothing said so.
+
+on:
+  workflow_call:
+    inputs:
+      scorix-version:
+        type: string
+        default: "v0.13.0"
+      go-version:
+        type: string
+        default: "1.26"
+      node-version:
+        type: string
+        default: "24"
+      pnpm-version:
+        type: string
+        default: "11.22.0"
+
+jobs:
+  check:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: true
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+          cache-dependency-path: shell/pnpm-lock.yaml
+
+      - name: Install scorix CLI
+        run: go install github.com/tradalab/scorix/cmd/scorix@${{ inputs.scorix-version }}
+
+      - name: Install frontend deps
+        working-directory: shell
+        run: pnpm install --frozen-lockfile
+
+      # Build first: it fills .scorix/dist, so the _ensure-embed guard in
+      # `make test` / `make lint` does not build the frontend a second time. No
+      # GTK/WebKit dev packages needed - the webview is dlopen'd at runtime
+      # (no-CGO); only the AppImage build installs them.
+      - name: Build
+        run: make build
+
+      - name: Test
+        run: make test
+
+      - name: Lint
+        run: make lint

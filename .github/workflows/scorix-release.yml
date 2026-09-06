@@ -1,0 +1,358 @@
+name: scorix release
+
+# Reusable release pipeline for every scorix desktop app. Apps call it instead of
+# copying it - four copies that agree today are not a standard, and the copies
+# have already drifted once (a missing `shopt -s nullglob` and a stale pnpm pin
+# lived in different repos for months).
+#
+#   jobs:
+#     release:
+#       uses: tradalab/scorix/.github/workflows/scorix-release.yml@v0.14.0
+#       with:
+#         app-prefix: s3hub          # only for updater.provider = appcast
+#       secrets: inherit
+#
+# Everything that varies per app is read from that app's scorix.yaml, not passed
+# in: the build matrix (package.targets), the update channel
+# (modules.updater.provider), the version, and the names of the Windows signing
+# env vars. CI and the manifest cannot disagree if only one of them is authored.
+#
+# Runs as ONE workflow on purpose. `scorix appcast` builds a single appcast.json
+# and a single SHA256SUMS from every installer it finds in one directory, so a
+# per-OS run emits three of each covering one platform apiece, and the last one
+# uploaded wins with no error anywhere.
+
+on:
+  workflow_call:
+    inputs:
+      app-prefix:
+        description: "Path segment on the release CDN. Required when updater.provider is appcast."
+        type: string
+        required: false
+        default: ""
+      scorix-version:
+        type: string
+        default: "v0.13.0"
+      go-version:
+        type: string
+        default: "1.26"
+      node-version:
+        type: string
+        default: "24"
+      pnpm-version:
+        type: string
+        default: "11.22.0"
+      wix-version:
+        type: string
+        default: "7.0.0"
+      cdn-primary:
+        type: string
+        default: "https://cdn-03.tradalab.com"
+      cdn-mirror:
+        type: string
+        default: "https://pub-df03f92693aa4fd0b9130bfaa6e1a90a.r2.dev"
+
+jobs:
+  meta:
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      matrix: ${{ steps.read.outputs.matrix }}
+      provider: ${{ steps.read.outputs.provider }}
+      cert-env: ${{ steps.read.outputs.cert_env }}
+      cert-pw-env: ${{ steps.read.outputs.cert_pw_env }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read scorix.yaml
+        id: read
+        shell: bash
+        env:
+          APP_PREFIX: ${{ inputs.app-prefix }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, re, sys
+
+          RUNNER = {"windows": "windows-2022", "darwin": "macos-14", "linux": "ubuntu-22.04"}
+          src = open("scorix.yaml", encoding="utf-8").read()
+
+          def die(msg):
+              print(f"::error::{msg}", file=sys.stderr)
+              raise SystemExit(1)
+
+          version = re.search(r"^  version:\s*[\"']?([^\"'\s]+)", src, re.M)
+          if not version:
+              die("no app.version in scorix.yaml")
+          print("version=" + version.group(1))
+
+          block = re.search(r"^  targets:\n((?:    -.*\n)+)", src, re.M)
+          if not block:
+              die("no package.targets in scorix.yaml")
+          matrix = []
+          for line in block.group(1).splitlines():
+              t = re.search(r"os:\s*([a-z]+)", line)
+              a = re.search(r"arch:\s*([a-z0-9]+)", line)
+              if not t or not a:
+                  die(f"cannot read target: {line.strip()}")
+              if t.group(1) not in RUNNER:
+                  die(f"no runner mapped for target {t.group(1)}")
+              matrix.append({"target": t.group(1), "arch": a.group(1), "runner": RUNNER[t.group(1)]})
+          print("matrix=" + json.dumps(matrix))
+
+          provider = re.search(r"^    provider:\s*(\w+)", src, re.M)
+          provider = provider.group(1) if provider else "none"
+          print("provider=" + provider)
+
+          # appcast publishes into <cdn>/<prefix>/<version>/, so an empty prefix
+          # would silently publish to the bucket root and the manifest baked into
+          # every shipped binary would point at a path nothing writes.
+          if provider == "appcast" and not os.environ.get("APP_PREFIX"):
+              die("updater.provider is appcast but no app-prefix input was given")
+
+          cert = re.search(r"^      cert_env:\s*(\w+)", src, re.M)
+          pw = re.search(r"^      password_env:\s*(\w+)", src, re.M)
+          print("cert_env=" + (cert.group(1) if cert else ""))
+          print("cert_pw_env=" + (pw.group(1) if pw else ""))
+          PY
+
+      # Checked before the builds, not after: a mismatch surfaces only as a 404
+      # for people who have not installed yet, and finding out after every
+      # platform has built wastes the whole run.
+      - name: Tag matches scorix.yaml version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          APP_VERSION: ${{ steps.read.outputs.version }}
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$APP_VERSION" != "$tag" ]; then
+            echo "::error::scorix.yaml version ($APP_VERSION) does not match tag ($tag)"
+            exit 1
+          fi
+
+  build:
+    needs: meta
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.meta.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: true
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+          cache-dependency-path: shell/pnpm-lock.yaml
+
+      # `scorix package` calls `wix build` itself, so --acceptEula cannot reach
+      # it; the acceptance and the extensions have to be in place up front. WiX 6
+      # has no `eula accept` subcommand, hence the version guard.
+      - name: Install WiX
+        if: matrix.target == 'windows'
+        shell: bash
+        env:
+          WIX_VERSION: ${{ inputs.wix-version }}
+        run: |
+          set -euo pipefail
+          major="${WIX_VERSION%%.*}"
+          dotnet tool install --global wix --version "$WIX_VERSION"
+          if [ "$major" -ge 7 ]; then wix eula accept "wix$major"; fi
+          wix extension add -g "WixToolset.UI.wixext/$WIX_VERSION"
+          wix extension add -g "WixToolset.Util.wixext/$WIX_VERSION"
+
+      - name: Put Windows SDK signtool on PATH
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          $st = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" |
+                Sort-Object FullName | Select-Object -Last 1
+          Split-Path $st.FullName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Import Developer ID certificate
+        if: matrix.target == 'darwin'
+        env:
+          MACOS_CERT_P12_B64: ${{ secrets.MACOS_CERT_P12_B64 }}
+          MACOS_CERT_PW: ${{ secrets.MACOS_CERT_PW }}
+        run: |
+          if [ -z "$MACOS_CERT_P12_B64" ]; then
+            echo "No signing cert provided - package will produce an UNSIGNED .app (warning)."
+            exit 0
+          fi
+          echo "$MACOS_CERT_P12_B64" | base64 --decode > /tmp/cert.p12
+          security create-keychain -p ci build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p ci build.keychain
+          security import /tmp/cert.p12 -k build.keychain -P "$MACOS_CERT_PW" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci build.keychain
+          rm -f /tmp/cert.p12
+
+      - name: Install AppImage tooling + WebKitGTK runtime (no-CGO; the webview is dlopen'd at runtime)
+        if: matrix.target == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential pkg-config file patchelf squashfs-tools \
+            libgtk-3-dev libwebkit2gtk-4.0-dev libfuse2
+          curl -fsSL -o /usr/local/bin/linuxdeploy \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod 755 /usr/local/bin/linuxdeploy
+
+      - name: Install scorix CLI
+        run: go install github.com/tradalab/scorix/cmd/scorix@${{ inputs.scorix-version }}
+
+      - name: Install frontend deps
+        working-directory: shell
+        run: pnpm install --frozen-lockfile
+
+      # The Windows signing env vars are named by the app (package.sign.windows),
+      # so they are exported under the names its own manifest declares. Without a
+      # cert, scorix emits an UNSIGNED installer with a warning rather than
+      # failing - no --sign means signing is not forced.
+      - name: Package
+        shell: bash
+        env:
+          CERT_ENV: ${{ needs.meta.outputs.cert-env }}
+          CERT_PW_ENV: ${{ needs.meta.outputs.cert-pw-env }}
+          WIN_CERT_PFX_B64: ${{ secrets.WIN_CERT_PFX_B64 }}
+          WIN_CERT_PW: ${{ secrets.WIN_CERT_PW }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.target }}" = "windows" ] && [ -n "$CERT_ENV" ]; then
+            export "$CERT_ENV=$WIN_CERT_PFX_B64"
+            [ -n "$CERT_PW_ENV" ] && export "$CERT_PW_ENV=$WIN_CERT_PW"
+          fi
+          scorix package -d . --os ${{ matrix.target }} --arch ${{ matrix.arch }}
+
+      # No signing or checksums here: `scorix appcast` does both once, over every
+      # platform, in the publish job.
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.target }}
+          path: |
+            artifacts/*.msi
+            artifacts/*.dmg
+            artifacts/*.AppImage
+          if-no-files-found: error
+
+  publish:
+    needs: [meta, build]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    env:
+      APP_PREFIX: ${{ inputs.app-prefix }}
+      APP_VERSION: ${{ needs.meta.outputs.version }}
+      CDN_PRIMARY: ${{ inputs.cdn-primary }}
+      CDN_MIRROR: ${{ inputs.cdn-mirror }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      # AWS CLI v2 sends x-amz-checksum-* by default; R2 rejects those on PUT.
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: true
+
+      - name: Install scorix CLI
+        run: go install github.com/tradalab/scorix/cmd/scorix@${{ inputs.scorix-version }}
+
+      # merge-multiple so every platform lands in one directory: that is what
+      # makes one appcast.json and one SHA256SUMS cover all of them.
+      - name: Collect installers
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: installers-*
+          merge-multiple: true
+
+      # Runs for both providers: it is what writes the `.sig` files, and the
+      # GitHub updater verifies those too. --base-url only means something to the
+      # appcast manifest, and it is per release rather than per app, which is why
+      # it cannot live in scorix.yaml - each release sits in its own directory.
+      - name: Sign artifacts and build the manifest
+        shell: bash
+        env:
+          SCORIX_UPDATE_PRIVATE_KEY: ${{ secrets.SCORIX_UPDATE_PRIVATE_KEY }}
+          PROVIDER: ${{ needs.meta.outputs.provider }}
+        run: |
+          set -euo pipefail
+          if [ "$PROVIDER" = "appcast" ]; then
+            scorix appcast -d . \
+              --base-url "$CDN_PRIMARY/$APP_PREFIX/$APP_VERSION" \
+              --base-url "$CDN_MIRROR/$APP_PREFIX/$APP_VERSION"
+          else
+            scorix appcast -d .
+          fi
+
+      - name: List artifacts
+        run: ls -R artifacts
+
+      # Two steps only to force the order: a manifest published before the
+      # installers advertises a version whose download is still a 404.
+      - name: Publish installers to R2
+        if: needs.meta.outputs.provider == 'appcast'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          s3="aws s3 cp --endpoint-url $R2_ENDPOINT --no-progress"
+          dest="s3://$R2_BUCKET/$APP_PREFIX/$APP_VERSION"
+
+          for f in artifacts/*.msi artifacts/*.dmg artifacts/*.AppImage artifacts/*.sig \
+                   artifacts/SHA256SUMS artifacts/appcast.json; do
+            $s3 "$f" "$dest/$(basename "$f")" \
+              --cache-control "public, max-age=31536000, immutable"
+          done
+
+      - name: Publish the manifest to R2
+        if: needs.meta.outputs.provider == 'appcast'
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws s3 cp --endpoint-url "$R2_ENDPOINT" --no-progress --cache-control no-cache \
+            artifacts/appcast.json "s3://$R2_BUCKET/$APP_PREFIX/appcast.json"
+
+      # For provider `github` this IS the distribution channel and the repo has
+      # to be public - the updater sends no Authorization header. For `appcast`
+      # it is an archive copy; R2 is what clients read.
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/*.msi
+            artifacts/*.dmg
+            artifacts/*.AppImage
+            artifacts/*.sig
+            artifacts/SHA256SUMS
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
