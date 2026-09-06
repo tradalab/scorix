@@ -7,10 +7,23 @@ name: scorix release
 #
 #   jobs:
 #     release:
+#       permissions:
+#         contents: write            # REQUIRED - see below
 #       uses: tradalab/scorix/.github/workflows/scorix-release.yml@v0.24.0
 #       with:
 #         app-prefix: s3hub          # only for updater.provider = appcast
 #       secrets: inherit
+#
+# The caller must grant `contents: write`. A called workflow can never hold more
+# than its caller, and a caller with no permissions key gets the repository
+# default, which is read-only - so publish's request for write is refused before
+# anything runs:
+#
+#   The nested job 'publish' is requesting 'contents: write', but is only
+#   allowed 'contents: read'.
+#
+# It is a validation error, not a runtime one: no job starts, and the log says
+# nothing about the release itself.
 #
 # Everything that varies per app is read from that app's scorix.yaml, not passed
 # in: the build matrix (package.targets), the update channel
