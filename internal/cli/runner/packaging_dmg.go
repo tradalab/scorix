@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -43,13 +44,20 @@ func (darwinPackager) Package(ctx context.Context, bc *BuildContext) (string, er
 	}
 	_ = os.Chmod(exe, 0o755)
 
-	if icns := firstExisting(
+	// Linux refuses to package without an icon and Windows prints a warning;
+	// macOS used to say nothing at all, which is how every .dmg in the house
+	// shipped a bundle wearing the generic application icon while the Windows
+	// build wore the real mark. A warning rather than an error: a bundle with
+	// no icon still runs, and failing here would break pipelines that never
+	// had one.
+	icns := firstExisting(
 		filepath.Join(bc.Root, "installer", "mac", bc.ProductName+".icns"),
 		filepath.Join(bc.Root, "installer", "mac", "AppIcon.icns"),
-	); icns != "" {
-		if err := copyFile(icns, filepath.Join(resDir, "AppIcon.icns")); err != nil {
-			return "", err
-		}
+	)
+	if icns == "" {
+		fmt.Printf("warning: no macOS icon - provide installer/mac/%s.icns; the bundle falls back to the generic application icon (.ico is a Windows resource and is not converted)\n", bc.ProductName)
+	} else if err := copyFile(icns, filepath.Join(resDir, "AppIcon.icns")); err != nil {
+		return "", err
 	}
 
 	// Use the app's Info.plist if present, else scaffold; patch version to track scorix.yaml.
@@ -65,6 +73,13 @@ func (darwinPackager) Package(ctx context.Context, bc *BuildContext) (string, er
 		return "", err
 	}
 	plistData = patchPlistVersion(plistData, bc.Version)
+	// An icon in Resources that no key points at is invisible: Finder reads
+	// CFBundleIconFile, not the directory. A plist that predates the scaffold
+	// carrying that key would otherwise ship the icon AND the generic look,
+	// with nothing to say why.
+	if icns != "" {
+		plistData = ensurePlistString(plistData, "CFBundleIconFile", "AppIcon")
+	}
 	if err := os.WriteFile(filepath.Join(appBundle, "Contents", "Info.plist"), plistData, 0o644); err != nil {
 		return "", err
 	}
@@ -135,13 +150,33 @@ func scaffoldDarwinInstaller(bc *BuildContext) error {
 // to version. No-op for keys that aren't present.
 func patchPlistVersion(content []byte, version string) []byte {
 	for _, key := range []string{"CFBundleShortVersionString", "CFBundleVersion"} {
-		content = setPlistString(content, key, version)
+		content = ensurePlistString(content, key, version)
 	}
 	return content
 }
 
-func setPlistString(content []byte, key, value string) []byte {
+// ensurePlistString sets key, ADDING it when the plist does not carry it.
+//
+// Replacing only what is already there looks harmless and is not: a plist
+// hand-copied before a key existed in the scaffold never gains it, so bundles
+// shipped with no CFBundleShortVersionString at all - no marketing version
+// anywhere in Finder - and nothing in the build said so.
+func ensurePlistString(content []byte, key, value string) []byte {
+	entry := "<key>" + key + "</key>\n  <string>" + value + "</string>"
+
 	re := regexp.MustCompile(`<key>` + regexp.QuoteMeta(key) + `</key>\s*<string>[^<]*</string>`)
-	repl := "<key>" + key + "</key>\n  <string>" + value + "</string>"
-	return re.ReplaceAllLiteral(content, []byte(repl))
+	if re.Match(content) {
+		return re.ReplaceAllLiteral(content, []byte(entry))
+	}
+
+	// Before the closing </dict> of the root dictionary, which is the last one.
+	closing := bytes.LastIndex(content, []byte("</dict>"))
+	if closing < 0 {
+		return content
+	}
+	insert := []byte("  " + entry + "\n")
+	out := make([]byte, 0, len(content)+len(insert))
+	out = append(out, content[:closing]...)
+	out = append(out, insert...)
+	return append(out, content[closing:]...)
 }
