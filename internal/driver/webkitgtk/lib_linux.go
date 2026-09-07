@@ -18,6 +18,14 @@ import (
 const (
 	gtkWindowToplevel int32 = 0
 
+	// GdkWindowState
+	gdkStateIconified  int32 = 1 << 1
+	gdkStateMaximized  int32 = 1 << 2
+	gdkStateFullscreen int32 = 1 << 4
+
+	// GdkWindowHints
+	gdkHintMaxSize int32 = 1 << 2
+
 	webkitInjectAllFrames     int32 = 0 // WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES
 	webkitInjectDocumentStart int32 = 0 // WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START
 )
@@ -72,6 +80,8 @@ var (
 	gdkDisplayDefaultSeat func(uintptr) uintptr
 	gdkSeatGetPointer     func(uintptr) uintptr
 	gdkWindowDevicePos    func(uintptr, uintptr, *int32, *int32, uintptr) uintptr // gdk_window_get_device_position
+	gdkWindowGetState     func(uintptr) int32                                     // gdk_window_get_state
+	gtkWindowSetGeomHints func(uintptr, uintptr, unsafe.Pointer, int32)           // gtk_window_set_geometry_hints
 	gtkWidgetSetSensitive func(uintptr, int32)
 	gtkAccelGroupNew      func() uintptr
 	gtkWindowAddAccel     func(uintptr, uintptr)
@@ -221,11 +231,13 @@ func initLibs() error {
 		purego.RegisterLibFunc(&gtkMenuShellAppend, gtk, "gtk_menu_shell_append")
 		purego.RegisterLibFunc(&gtkMenuPopupAtRect, gtk, "gtk_menu_popup_at_rect")
 		purego.RegisterLibFunc(&gtkWidgetGetWindow, gtk, "gtk_widget_get_window")
+		purego.RegisterLibFunc(&gtkWindowSetGeomHints, gtk, "gtk_window_set_geometry_hints")
 		purego.RegisterLibFunc(&gtkWidgetTranslate, gtk, "gtk_widget_translate_coordinates")
 		purego.RegisterLibFunc(&gdkDisplayGetDefault, gdk, "gdk_display_get_default")
 		purego.RegisterLibFunc(&gdkDisplayDefaultSeat, gdk, "gdk_display_get_default_seat")
 		purego.RegisterLibFunc(&gdkSeatGetPointer, gdk, "gdk_seat_get_pointer")
 		purego.RegisterLibFunc(&gdkWindowDevicePos, gdk, "gdk_window_get_device_position")
+		purego.RegisterLibFunc(&gdkWindowGetState, gdk, "gdk_window_get_state")
 		purego.RegisterLibFunc(&gtkWidgetSetSensitive, gtk, "gtk_widget_set_sensitive")
 		purego.RegisterLibFunc(&gtkAccelGroupNew, gtk, "gtk_accel_group_new")
 		purego.RegisterLibFunc(&gtkWindowAddAccel, gtk, "gtk_window_add_accel_group")

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"unsafe"
 
 	"github.com/ebitengine/purego"
 
@@ -234,7 +235,25 @@ func (w *win) SetMinSize(width, height int) {
 	dispatchMain(func() { gtkWidgetSetSizeReq(w.gw, int32(width), int32(height)) })
 }
 
-func (w *win) SetMaxSize(int, int) {} // GdkGeometry max hints — not wired (rarely used)
+// gdkGeometry mirrors GdkGeometry: 8 gint, then 2 gdouble, then GdkGravity. Go
+// lays these out identically on 64-bit, so the struct goes over as-is.
+type gdkGeometry struct {
+	minWidth, minHeight   int32
+	maxWidth, maxHeight   int32
+	baseWidth, baseHeight int32
+	widthInc, heightInc   int32
+	minAspect, maxAspect  float64
+	winGravity            int32
+	_                     int32
+}
+
+// Only the MAX bit, so the minimum stays with gtk_widget_set_size_request where
+// SetMinSize put it. g is captured, so the pointer is still valid when the loop
+// runs the task.
+func (w *win) SetMaxSize(width, height int) {
+	g := gdkGeometry{maxWidth: int32(width), maxHeight: int32(height)}
+	dispatchMain(func() { gtkWindowSetGeomHints(w.gw, 0, unsafe.Pointer(&g), gdkHintMaxSize) })
+}
 
 func (w *win) Center() { dispatchMain(func() { gtkWindowSetPosition(w.gw, 1) }) }
 
@@ -272,7 +291,34 @@ func (w *win) IsVisible() bool {
 	return onMainVal(func() bool { return gtkWidgetGetVisible(w.gw) != 0 })
 }
 
-func (w *win) State() window.State { return window.StateNormal }
+// Asked of GDK, not tracked, so a change the USER made is still reported.
+func (w *win) State() window.State {
+	return onMainVal(func() window.State {
+		gw := gtkWidgetGetWindow(w.gw) // NULL until the window is realized
+		if gw == 0 {
+			return window.StateNormal
+		}
+		return stateFromGdk(gdkWindowGetState(gw))
+	})
+}
+
+func (w *win) IsFullscreen() bool {
+	return w.State() == window.StateFullscreen
+}
+
+// Fullscreen before maximized: GTK reports BOTH bits once a maximized window
+// goes fullscreen, and fullscreen is the one the user sees.
+func stateFromGdk(flags int32) window.State {
+	switch {
+	case flags&gdkStateIconified != 0:
+		return window.StateMinimized
+	case flags&gdkStateFullscreen != 0:
+		return window.StateFullscreen
+	case flags&gdkStateMaximized != 0:
+		return window.StateMaximized
+	}
+	return window.StateNormal
+}
 
 func (w *win) Close() { dispatchMain(func() { gtkWidgetDestroy(w.gw) }) }
 
