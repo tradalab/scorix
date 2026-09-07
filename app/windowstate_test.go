@@ -2,7 +2,7 @@ package app
 
 import (
 	"encoding/json"
-	"os"
+	"runtime"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -11,6 +11,35 @@ import (
 	"github.com/tradalab/scorix/webview"
 	"github.com/tradalab/scorix/window"
 )
+
+// Otherwise these write into the REAL user profile: a directory left behind, a
+// leftover steering the next run, two `go test` runs fighting over one file.
+func isolateDataDir(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	switch runtime.GOOS {
+	case "windows":
+		t.Setenv("APPDATA", dir)
+	case "darwin":
+		t.Setenv("HOME", dir)
+	default:
+		t.Setenv("XDG_DATA_HOME", dir)
+	}
+}
+
+// The restore lands after OnReady by design (see Run); sampling it there was
+// one of the two causes of the flaky -race job.
+func waitState(t *testing.T, w *AppWindow, want window.State) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if got := w.State(); got == want {
+			return
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	t.Fatalf("window state = %v, want %v", w.State(), want)
+}
 
 func newStateApp(t *testing.T, identifier string) *App {
 	t.Helper()
@@ -28,9 +57,8 @@ func TestWindowStateRoundTrip(t *testing.T) {
 	withHeadlessDriver(t)
 	id := "scorix-state-test"
 
+	isolateDataDir(t)
 	a := newStateApp(t, id)
-	t.Cleanup(func() { _ = os.Remove(a.windowStatePath("main")) })
-	_ = os.Remove(a.windowStatePath("main"))
 
 	stop := runHeadless(t, a)
 	w := a.MainWindow()
@@ -59,9 +87,8 @@ func TestWindowStateMaximizedKeepsNormalRect(t *testing.T) {
 	withHeadlessDriver(t)
 	id := "scorix-state-max-test"
 
+	isolateDataDir(t)
 	a := newStateApp(t, id)
-	t.Cleanup(func() { _ = os.Remove(a.windowStatePath("main")) })
-	_ = os.Remove(a.windowStatePath("main"))
 
 	stop := runHeadless(t, a)
 	w := a.MainWindow()
@@ -157,9 +184,8 @@ func TestSecondaryWindowRememberState(t *testing.T) {
 		return w
 	}
 
+	isolateDataDir(t)
 	a := newStateApp(t, id)
-	t.Cleanup(func() { _ = os.Remove(a.windowStatePath("tools")) })
-	_ = os.Remove(a.windowStatePath("tools"))
 	stop := runHeadless(t, a)
 	w2 := open(a)
 	w2.SetPosition(300, 200)
