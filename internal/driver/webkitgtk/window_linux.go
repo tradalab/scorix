@@ -209,15 +209,12 @@ func (w *win) SetSize(width, height int) {
 }
 
 func (w *win) Size() (int, int) {
-	type sz struct{ w, h int32 }
-	ch := make(chan sz, 1)
-	dispatchMain(func() {
+	s := onMainVal(func() [2]int32 {
 		var a, b int32
 		gtkWindowGetSize(w.gw, &a, &b)
-		ch <- sz{a, b}
+		return [2]int32{a, b}
 	})
-	s := <-ch
-	return int(s.w), int(s.h)
+	return int(s[0]), int(s[1])
 }
 
 func (w *win) SetPosition(x, y int) {
@@ -225,15 +222,12 @@ func (w *win) SetPosition(x, y int) {
 }
 
 func (w *win) Position() (int, int) {
-	type pt struct{ x, y int32 }
-	ch := make(chan pt, 1)
-	dispatchMain(func() {
+	p := onMainVal(func() [2]int32 {
 		var a, b int32
 		gtkWindowGetPosition(w.gw, &a, &b)
-		ch <- pt{a, b}
+		return [2]int32{a, b}
 	})
-	p := <-ch
-	return int(p.x), int(p.y)
+	return int(p[0]), int(p[1])
 }
 
 func (w *win) SetMinSize(width, height int) {
@@ -275,9 +269,7 @@ func (w *win) SetAlwaysOnTop(on bool) {
 }
 
 func (w *win) IsVisible() bool {
-	ch := make(chan bool, 1)
-	dispatchMain(func() { ch <- gtkWidgetGetVisible(w.gw) != 0 })
-	return <-ch
+	return onMainVal(func() bool { return gtkWidgetGetVisible(w.gw) != 0 })
 }
 
 func (w *win) State() window.State { return window.StateNormal }

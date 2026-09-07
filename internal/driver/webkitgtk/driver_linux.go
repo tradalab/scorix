@@ -6,8 +6,13 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/ebitengine/purego"
+	"golang.org/x/sys/unix"
+
+	"github.com/tradalab/scorix/logger"
 
 	"github.com/tradalab/scorix/webview"
 	"github.com/tradalab/scorix/window"
@@ -65,6 +70,7 @@ type rt struct {
 // legal pre-gtk_main, matching how the headless driver sequences it.
 func (r *rt) Run() error {
 	runtime.LockOSThread()
+	mainTID.Store(int64(unix.Gettid()))
 
 	if gtkInitCheck(0, 0) == 0 {
 		return fmt.Errorf("webkitgtk: gtk_init failed (no display?) — use web mode on headless hosts")
@@ -129,6 +135,33 @@ func initDispatch() {
 			return 0 // G_SOURCE_REMOVE — run once
 		})
 	})
+}
+
+// Nothing runs a queued task before gtk_main starts or after it returns, and a
+// getter that never comes back is worse than one that returns a zero.
+const mainLoopWait = 2 * time.Second
+
+// Run pins the loop to one OS thread, and a locked thread runs no other
+// goroutine - so a matching tid means we ARE the loop.
+var mainTID atomic.Int64
+
+// Queueing from the loop's own thread and then waiting is a deadlock - the loop
+// is blocked here and can never run the task. A close handler does exactly that,
+// through saveWindowState.
+func onMainVal[T any](fn func() T) T {
+	if int64(unix.Gettid()) == mainTID.Load() {
+		return fn()
+	}
+	ch := make(chan T, 1)
+	dispatchMain(func() { ch <- fn() })
+	select {
+	case v := <-ch:
+		return v
+	case <-time.After(mainLoopWait):
+		logger.Warn("webkitgtk: main loop did not run the task, is gtk_main running?")
+		var zero T
+		return zero
+	}
 }
 
 func dispatchMain(fn func()) {
