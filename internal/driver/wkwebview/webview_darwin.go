@@ -265,9 +265,17 @@ func serveSchemeTask(task objc.ID) {
 	}
 	_ = status // NSURLResponse carries no status; error pages still render their body
 
+	// MIMEType is matched by exact string, so the charset has to travel in
+	// textEncodingName; "text/html; charset=utf-8" misses "text/html" and
+	// WebKit paints the page as source text.
+	mediaType, charset := webview.SplitContentType(mime)
+	encoding := objc.ID(0)
+	if charset != "" {
+		encoding = nsString(charset)
+	}
 	urlResp := msgSendURLResp(objc.ID(cls("NSURLResponse")).Send(sel("alloc")),
 		sel("initWithURL:MIMEType:expectedContentLength:textEncodingName:"),
-		urlObj, nsString(mime), int64(len(body)), objc.ID(0))
+		urlObj, nsString(mediaType), int64(len(body)), encoding)
 	task.Send(sel("didReceiveResponse:"), urlResp)
 
 	var ptr unsafe.Pointer
