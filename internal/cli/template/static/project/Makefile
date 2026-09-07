@@ -9,7 +9,7 @@ gen:
 	$(SCORIX_CLI) generate model -d .
 
 # Force-regenerate everything. Destroys custom edits in *_model.go and logic
-# files — only use after committing local changes.
+# files - only use after committing local changes.
 gen-force:
 	$(SCORIX_CLI) generate proto -d . --force
 	$(SCORIX_CLI) generate model -d . --force

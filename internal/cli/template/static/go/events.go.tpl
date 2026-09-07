@@ -2,7 +2,7 @@
 
 // Package events is the typed event layer generated from @event annotations in
 // the proto: topic constants, Go->JS emit helpers and JS->Go subscribers.
-// Topics are part of the IPC contract — never emit or subscribe raw strings.
+// Topics are part of the IPC contract - never emit or subscribe raw strings.
 package events
 
 import (
@@ -21,16 +21,16 @@ type Emitter interface {
 	EmitTo(client app.ClientID, name string, data any) bool
 }
 
-// Registrar registers a JS->Go event handler — pass app.Event or svcCtx.On.
+// Registrar registers a JS->Go event handler - pass app.Event or svcCtx.On.
 type Registrar func(name string, fn func(context.Context, json.RawMessage))
 
 const (
 {{- range .OutEvents }}
-	// Event{{ .EventGoName }} — server push (Go -> JS).
+	// Event{{ .EventGoName }} - server push (Go -> JS).
 	Event{{ .EventGoName }} = "{{ .EventName }}"
 {{- end }}
 {{- range .InEvents }}
-	// Event{{ .EventGoName }} — frontend event (JS -> Go).
+	// Event{{ .EventGoName }} - frontend event (JS -> Go).
 	Event{{ .EventGoName }} = "{{ .EventName }}"
 {{- end }}
 )
@@ -45,7 +45,7 @@ func Emit{{ .EventGoName }}To(e Emitter, client app.ClientID, p *{{ .RequestGoTy
 	return e.EmitTo(client, Event{{ .EventGoName }}, p)
 }
 
-// Emit{{ .EventGoName }}Ctx targets the frontend bound to ctx — the client that
+// Emit{{ .EventGoName }}Ctx targets the frontend bound to ctx - the client that
 // invoked the current command/event. With no bound client (Go->Go invoke,
 // tests) it broadcasts. Returns false when the bound client has disconnected,
 // so long-running pumps can stop producing for a dead consumer.

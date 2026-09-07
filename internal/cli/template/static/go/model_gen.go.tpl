@@ -30,7 +30,7 @@ const (
 )
 
 type (
-	// {{ lowerFirst .Table.GoName }}Model — per-table CRUD only. Relations stitched in internal/logic/.
+	// {{ lowerFirst .Table.GoName }}Model - per-table CRUD only. Relations stitched in internal/logic/.
 	{{ lowerFirst .Table.GoName }}Model interface {
 		Insert(ctx context.Context, data *{{ .Table.GoName }}) (sql.Result, error)
 		FindOne(ctx context.Context, id {{ .Table.PKGoType }}) (*{{ .Table.GoName }}, error)

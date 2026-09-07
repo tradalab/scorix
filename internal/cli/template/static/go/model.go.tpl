@@ -16,7 +16,7 @@ type (
 	}
 )
 
-// New{{ .Table.GoName }}Model takes `sqlxMod.Conn` (no parens) — bound method
+// New{{ .Table.GoName }}Model takes `sqlxMod.Conn` (no parens) - bound method
 // value for lazy resolution and WithTx propagation.
 func New{{ .Table.GoName }}Model(conn func() scorixsqlx.Conn) {{ .Table.GoName }}Model {
 	return &custom{{ .Table.GoName }}Model{

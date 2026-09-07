@@ -4,7 +4,7 @@
   Default Scorix WiX (MSI) installer.
   `scorix package` supplies these preprocessor variables via `-d`:
     ProductName, Manufacturer, ProductVersion, ProductDesc, UpgradeCode, BinPath
-  Customize freely — this file is yours once scaffolded.
+  Customize freely - this file is yours once scaffolded.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">

@@ -50,7 +50,7 @@ func (s *ServiceContext) Emit(name string, data any) {
 	}
 }
 
-// EmitTo sends a one-way event to a single connected frontend — the client a
+// EmitTo sends a one-way event to a single connected frontend - the client a
 // handler identified via app.ClientFrom(ctx). Reports whether it was delivered.
 func (s *ServiceContext) EmitTo(client app.ClientID, name string, data any) bool {
 	if s.emitTo != nil {

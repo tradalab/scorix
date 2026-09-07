@@ -125,7 +125,7 @@ async function getScorix(): Promise<ScorixAPI> {
           resolve(window.scorix);
         } else if (Date.now() - start > 5000) {
           clearInterval(interval);
-          reject(new Error("Scorix bridge initialization timed out. window.scorix is injected by the Go app — run the shell through the app (scorix dev), not standalone."));
+          reject(new Error("Scorix bridge initialization timed out. window.scorix is injected by the Go app - run the shell through the app (scorix dev), not standalone."));
         }
       }, 50); // Faster check
     });
@@ -205,7 +205,7 @@ const scorix: ScorixClient = {
   on(topic: string, callback: (data: any, error?: string) => void): () => void {
     if (typeof window === "undefined") return () => {};
 
-    // window.scorix.on returns Promise<unsubscribe> (orchestrator _call is async) — normalize to sync cleanup.
+    // window.scorix.on returns Promise<unsubscribe> (orchestrator _call is async) - normalize to sync cleanup.
     let cancelled = false;
     let cleanup: (() => void) | null = null;
 
