@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"runtime"
 	"time"
 	"unsafe"
 
@@ -50,6 +51,19 @@ func openClipboard() error {
 	return fault.New(fault.CodeUnavailable, "clipboard is held by another process")
 }
 
+// Win32 ties clipboard ownership to the calling THREAD; a goroutine rescheduled
+// between calls closes on the wrong one, and that close FAILS - so the content
+// is never committed and writeImage reports success with an empty clipboard.
+func withClipboard(fn func() error) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	if err := openClipboard(); err != nil {
+		return err
+	}
+	defer procCloseClipboard.Call()
+	return fn()
+}
+
 func writeImage(img image.Image) error {
 	b := img.Bounds()
 	w, h := b.Dx(), b.Dy()
@@ -74,53 +88,53 @@ func writeImage(img image.Image) error {
 	}
 	data := buf.Bytes()
 
-	if err := openClipboard(); err != nil {
-		return err
-	}
-	defer procCloseClipboard.Call()
-	procEmptyClipboard.Call()
+	return withClipboard(func() error {
+		procEmptyClipboard.Call()
 
-	hMem, _, _ := procGlobalAlloc.Call(gmemMoveable, uintptr(len(data)))
-	if hMem == 0 {
-		return fmt.Errorf("GlobalAlloc failed")
-	}
-	p, _, _ := procGlobalLock.Call(hMem)
-	if p == 0 {
-		procGlobalFree.Call(hMem)
-		return fmt.Errorf("GlobalLock failed")
-	}
-	dst := unsafe.Slice((*byte)(unsafe.Pointer(p)), len(data))
-	copy(dst, data)
-	procGlobalUnlock.Call(hMem)
+		hMem, _, _ := procGlobalAlloc.Call(gmemMoveable, uintptr(len(data)))
+		if hMem == 0 {
+			return fmt.Errorf("GlobalAlloc failed")
+		}
+		p, _, _ := procGlobalLock.Call(hMem)
+		if p == 0 {
+			procGlobalFree.Call(hMem)
+			return fmt.Errorf("GlobalLock failed")
+		}
+		dst := unsafe.Slice((*byte)(unsafe.Pointer(p)), len(data))
+		copy(dst, data)
+		procGlobalUnlock.Call(hMem)
 
-	if r, _, _ := procSetClipboardData.Call(cfDIB, hMem); r == 0 {
-		procGlobalFree.Call(hMem) // ownership only transfers on success
-		return fmt.Errorf("SetClipboardData failed")
-	}
-	return nil
+		if r, _, _ := procSetClipboardData.Call(cfDIB, hMem); r == 0 {
+			procGlobalFree.Call(hMem) // ownership only transfers on success
+			return fmt.Errorf("SetClipboardData failed")
+		}
+		return nil
+	})
 }
 
 func readImage() (image.Image, error) {
 	if r, _, _ := procIsFormatAvailable.Call(cfDIB); r == 0 {
 		return nil, fault.New(fault.CodeNotFound, "no image on the clipboard")
 	}
-	if err := openClipboard(); err != nil {
+	// Release it before decoding: nothing below needs a machine-wide resource.
+	var data []byte
+	if err := withClipboard(func() error {
+		hMem, _, _ := procGetClipboardData.Call(cfDIB)
+		if hMem == 0 {
+			return fault.New(fault.CodeNotFound, "no image on the clipboard")
+		}
+		size, _, _ := procGlobalSize.Call(hMem)
+		p, _, _ := procGlobalLock.Call(hMem)
+		if p == 0 || size < dibHeaderSize {
+			return fmt.Errorf("clipboard DIB unreadable")
+		}
+		defer procGlobalUnlock.Call(hMem)
+		data = make([]byte, size)
+		copy(data, unsafe.Slice((*byte)(unsafe.Pointer(p)), size))
+		return nil
+	}); err != nil {
 		return nil, err
 	}
-	defer procCloseClipboard.Call()
-
-	hMem, _, _ := procGetClipboardData.Call(cfDIB)
-	if hMem == 0 {
-		return nil, fault.New(fault.CodeNotFound, "no image on the clipboard")
-	}
-	size, _, _ := procGlobalSize.Call(hMem)
-	p, _, _ := procGlobalLock.Call(hMem)
-	if p == 0 || size < dibHeaderSize {
-		return nil, fmt.Errorf("clipboard DIB unreadable")
-	}
-	defer procGlobalUnlock.Call(hMem)
-	data := make([]byte, size)
-	copy(data, unsafe.Slice((*byte)(unsafe.Pointer(p)), size))
 
 	hdrSize := binary.LittleEndian.Uint32(data[0:])
 	w := int(int32(binary.LittleEndian.Uint32(data[4:])))
