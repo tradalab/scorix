@@ -112,9 +112,7 @@ func TestWindowStateMaximizedKeepsNormalRect(t *testing.T) {
 	b := newStateApp(t, id)
 	stopB := runHeadless(t, b)
 	defer stopB()
-	if b.MainWindow().State() != window.StateMaximized {
-		t.Fatal("window not re-maximized on restore")
-	}
+	waitState(t, b.MainWindow(), window.StateMaximized)
 }
 
 func TestWinScreensCommand(t *testing.T) {
@@ -198,5 +196,38 @@ func TestSecondaryWindowRememberState(t *testing.T) {
 	o := headless.OptionsOf(open(b).Window)
 	if o.Width != 640 || o.Height != 480 || o.X == nil || *o.X != 300 || o.Center {
 		t.Fatalf("restored secondary options = %+v", o)
+	}
+}
+
+// Quitting inside OnReady pins down the ordering that made the -race job fail
+// one run in five.
+func TestWindowStateSavedWhenQuitRacesReady(t *testing.T) {
+	withHeadlessDriver(t)
+	isolateDataDir(t)
+	a := newStateApp(t, "scorix-state-ready-test")
+
+	a.OnReady(func(app *App) {
+		w := app.MainWindow()
+		w.SetPosition(11, 22)
+		w.SetSize(640, 480)
+		app.Quit()
+	})
+	done := make(chan error, 1)
+	go func() { done <- a.Run() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run never returned after quitting from OnReady")
+	}
+
+	st, ok := a.loadWindowState("main")
+	if !ok {
+		t.Fatal("state lost: the save hook was not registered before ready was announced")
+	}
+	if st.X != 11 || st.Y != 22 || st.W != 640 || st.H != 480 {
+		t.Fatalf("saved state = %+v", st)
 	}
 }

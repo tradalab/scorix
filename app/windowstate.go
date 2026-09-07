@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sync"
 
 	"github.com/tradalab/scorix/module"
 	"github.com/tradalab/scorix/window"
@@ -75,17 +76,14 @@ func (a *App) saveWindowState(key string, aw *AppWindow) {
 	_ = os.WriteFile(path, b, 0o644)
 }
 
+// The two fire on different goroutines, so this is a Once, not a bool: only the
+// first save counts, a later one reads the rect of a gone window. A PREVENTED
+// close still consumes it.
 func (a *App) hookWindowState(rt window.Runtime, aw *AppWindow, key string) {
-	var closed bool
-	aw.On(window.EventClose, func(window.EventData) {
-		a.saveWindowState(key, aw)
-		closed = true
-	})
-	rt.On(window.RuntimeBeforeQuit, func() {
-		if !closed {
-			a.saveWindowState(key, aw)
-		}
-	})
+	var once sync.Once
+	save := func() { once.Do(func() { a.saveWindowState(key, aw) }) }
+	aw.On(window.EventClose, func(window.EventData) { save() })
+	rt.On(window.RuntimeBeforeQuit, save)
 }
 
 func screensOf(rt window.Runtime) []window.Screen {

@@ -491,16 +491,20 @@ func (a *App) Run() error {
 		if len(m) > 0 {
 			a.applyMenu(aw, m)
 		}
+		// Before ready, not after: Quit fires before-quit on the CALLER's goroutine,
+		// so a consumer quitting on ready would beat this and lose its state.
+		if a.cfg.Window.RememberState {
+			a.hookWindowState(rt, aw, "main")
+		}
 		for _, fn := range a.ready {
 			fn(a)
 		}
+		// Last, so the handlers above configure the window before it is seen. The
+		// restored state is therefore not in place at ready; what must be, goes above.
 		aw.Show()
 		go a.registerShortcuts(rt) // NOT inline: RegisterHotkey blocks in a message loop that has not started yet
 		if hadState && restored.Maximized {
 			aw.Maximize()
-		}
-		if a.cfg.Window.RememberState {
-			a.hookWindowState(rt, aw, "main")
 		}
 		// Launch args (a protocol/file-type start) go out only now: earlier and
 		// neither the Go handlers nor a loaded frontend could have seen them.
