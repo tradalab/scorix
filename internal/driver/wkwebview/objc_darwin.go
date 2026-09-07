@@ -9,10 +9,12 @@ package wkwebview
 
 import (
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
 	"github.com/ebitengine/purego/objc"
+	"github.com/tradalab/scorix/logger"
 )
 
 // 64-bit CoreGraphics geometry (NSRect == CGRect on 64-bit).
@@ -62,7 +64,8 @@ var (
 	msgSendScript    func(objc.ID, objc.SEL, objc.ID, int64, bool) objc.ID         // initWithSource:injectionTime:forMainFrameOnly:
 	msgSendURLResp   func(objc.ID, objc.SEL, objc.ID, objc.ID, int64, objc.ID) objc.ID
 	msgSendEvent     func(objc.ID, objc.SEL, uint64, nsPoint, uint64, float64, int64, objc.ID, int16, int64, int64) objc.ID
-	msgSendSetFrame  func(objc.ID, objc.SEL, nsRect, bool) // setFrame:display:
+	msgSendSetFrame  func(objc.ID, objc.SEL, nsRect, bool)           // setFrame:display:
+	msgSendGetValue  func(objc.ID, objc.SEL, unsafe.Pointer, uint64) // getValue:size:
 )
 
 func initObjC() error {
@@ -89,6 +92,7 @@ func initObjC() error {
 		purego.RegisterLibFunc(&msgSendURLResp, libobjc, "objc_msgSend")
 		purego.RegisterLibFunc(&msgSendEvent, libobjc, "objc_msgSend")
 		purego.RegisterLibFunc(&msgSendSetFrame, libobjc, "objc_msgSend")
+		purego.RegisterLibFunc(&msgSendGetValue, libobjc, "objc_msgSend")
 
 		libSystem, err := purego.Dlopen("/usr/lib/libSystem.B.dylib", flags)
 		if err != nil {
@@ -137,6 +141,69 @@ func runDispatchTask(id uintptr) {
 	if fn != nil {
 		fn()
 	}
+}
+
+// Nothing drains the main queue before NSApplication runs or after it stops, and
+// a getter that never returns is worse than one that returns a zero.
+const mainQueueWait = 2 * time.Second
+
+// Calling this FROM the main thread must not go through the queue, which cannot
+// drain while we block on it - and AppKit callbacks do land here.
+func onMain(fn func()) {
+	onMainVal(func() bool { fn(); return true })
+}
+
+// The result crosses on a channel, not a captured variable: after a give-up the
+// queued work may still run, and writing to the caller's variable then is a data
+// race. Buffered, so that late send cannot block the main thread either.
+func onMainVal[T any](fn func() T) T {
+	if isYes(objc.ID(cls("NSThread")), "isMainThread") {
+		return fn()
+	}
+	ch := make(chan T, 1)
+	dispatchMain(func() { ch <- fn() })
+	select {
+	case v := <-ch:
+		return v
+	case <-time.After(mainQueueWait):
+		logger.Warn("wkwebview: main queue did not drain, is NSApplication running?")
+		var zero T
+		return zero
+	}
+}
+
+// An Objective-C BOOL is a signed char and leaves the rest of the return
+// register undefined, so it is read as a word and masked.
+func isYes(obj objc.ID, name string) bool {
+	return objc.Send[uint64](obj, sel(name))&1 == 1
+}
+
+// KVC + getValue:size: makes the value cross as a POINTER. objc.Send could return
+// the struct, but it picks msgSend_stret on amd64 and plain msgSend on arm64 -
+// two paths, and CI has only arm64 runners to prove either.
+func rectOf(obj objc.ID, key string) (nsRect, bool) {
+	if obj == 0 {
+		return nsRect{}, false
+	}
+	v := obj.Send(sel("valueForKey:"), nsString(key))
+	if v == 0 {
+		return nsRect{}, false
+	}
+	var r nsRect
+	msgSendGetValue(v, sel("getValue:size:"), unsafe.Pointer(&r), uint64(unsafe.Sizeof(r)))
+	return r, true
+}
+
+// screens[0] is where AppKit's global origin sits, so its height is the one that
+// flipY needs.
+func primaryScreenHeight() (float64, bool) {
+	screens := objc.ID(cls("NSScreen")).Send(sel("screens"))
+	if screens == 0 || objc.Send[uint64](screens, sel("count")) == 0 {
+		return 0, false
+	}
+	s := objc.Send[objc.ID](screens, sel("objectAtIndex:"), uint64(0))
+	r, ok := rectOf(s, "frame")
+	return r.Size.H, ok
 }
 
 func sel(name string) objc.SEL { return objc.RegisterName(name) }
