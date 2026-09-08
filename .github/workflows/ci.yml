@@ -51,3 +51,35 @@ jobs:
       - run: GOOS=windows GOARCH=amd64 go build ./...
       - run: GOOS=darwin GOARCH=arm64 go build ./...
       - run: GOOS=linux GOARCH=amd64 go build ./...
+
+  e2e:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    # macOS is a probe, not a gate: no scorix window has ever opened on Apple
+    # hardware. A red run here is news; promote it the first time it goes green.
+    continue-on-error: ${{ matrix.os == 'macos-latest' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: webkitgtk runtime + a virtual display
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          # xauth is a Recommends of xvfb, so --no-install-recommends drops it and
+          # xvfb-run then quits with "xauth command not found" before any test runs.
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-0 xvfb xauth openbox
+      - name: e2e under Xvfb, with a window manager for the Maximize round trip
+        if: runner.os == 'Linux'
+        env:
+          SCORIX_E2E: "1"
+        run: xvfb-run -a -s "-screen 0 1280x1024x24" bash -c "openbox & sleep 2; go test ./internal/e2e/ -count=1 -v"
+      - name: e2e
+        if: runner.os != 'Linux'
+        env:
+          SCORIX_E2E: "1"
+        run: go test ./internal/e2e/ -count=1 -v
