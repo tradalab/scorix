@@ -72,6 +72,13 @@ func (darwinPackager) Package(ctx context.Context, bc *BuildContext) (string, er
 	if err != nil {
 		return "", err
 	}
+	// Before anything is written into it: a plist macOS cannot parse produces a
+	// bundle that will not launch, and every step after this one - codesign,
+	// hdiutil, notarize - succeeds on it regardless.
+	if err := checkPlist(plistData, plistSrc); err != nil {
+		return "", err
+	}
+
 	plistData = patchPlistVersion(plistData, bc.Version)
 	// An icon in Resources that no key points at is invisible: Finder reads
 	// CFBundleIconFile, not the directory. A plist that predates the scaffold
@@ -79,6 +86,13 @@ func (darwinPackager) Package(ctx context.Context, bc *BuildContext) (string, er
 	// with nothing to say why.
 	if icns != "" {
 		plistData = ensurePlistString(plistData, "CFBundleIconFile", "AppIcon")
+	}
+	// The identity the manifest owns, enforced rather than trusted - the same
+	// class of bug as an MSI carrying a sibling's UpgradeCode, on the platform
+	// where nothing else would notice.
+	plistData, notes := applyPlistIdentity(plistData, bc.Identifier)
+	for _, n := range notes {
+		fmt.Println(n)
 	}
 	if err := os.WriteFile(filepath.Join(appBundle, "Contents", "Info.plist"), plistData, 0o644); err != nil {
 		return "", err
