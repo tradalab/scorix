@@ -4,7 +4,16 @@
   Default Scorix WiX (MSI) installer.
   `scorix package` supplies these preprocessor variables via `-d`:
     ProductName, Manufacturer, ProductVersion, ProductDesc, UpgradeCode, BinPath
-  Customize freely - this file is yours once scaffolded.
+
+  Customize freely - this file is yours once scaffolded - EXCEPT the four
+  identity attributes on <Package>: Name, Manufacturer, Version and above all
+  UpgradeCode must stay `$(var....)`. Writing a literal there throws away what
+  scorix.yaml declares and still builds a perfectly valid MSI, just of a
+  different product: two apps sharing an UpgradeCode are ONE product to Windows
+  Installer, so the second refuses to install next to the first, or uninstalls
+  it and takes its place. That is not hypothetical - it shipped twice, because
+  this file was copied from a sibling app instead of scaffolded. `scorix
+  package` now refuses to build when it sees a literal there.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">

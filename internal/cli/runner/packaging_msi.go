@@ -50,6 +50,13 @@ func (windowsPackager) Package(ctx context.Context, bc *BuildContext) (string, e
 		}
 	}
 
+	// Before the build, not after: a .wxs that hardcodes identity produces a
+	// perfectly valid MSI carrying the wrong product, and nothing downstream
+	// notices.
+	if err := checkWxsIdentity(wxs); err != nil {
+		return "", err
+	}
+
 	ensureWixExtensions(ctx, wixPath)
 
 	if err := os.MkdirAll(bc.ArtifactDir, 0o755); err != nil {
