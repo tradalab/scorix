@@ -279,8 +279,8 @@ func initLibs() error {
 		purego.RegisterLibFunc(&wkSettingsDevExtras, webkit, "webkit_settings_set_enable_developer_extras")
 		purego.RegisterLibFunc(&wkViewExecEditCmd, webkit, "webkit_web_view_execute_editing_command")
 		purego.RegisterLibFunc(&wkUserMediaType, webkit, "webkit_user_media_permission_request_get_type")
-		purego.RegisterLibFunc(&wkUserMediaIsAudio, webkit, "webkit_user_media_permission_request_is_for_audio_device")
-		purego.RegisterLibFunc(&wkUserMediaIsVideo, webkit, "webkit_user_media_permission_request_is_for_video_device")
+		purego.RegisterLibFunc(&wkUserMediaIsAudio, webkit, "webkit_user_media_permission_is_for_audio_device")
+		purego.RegisterLibFunc(&wkUserMediaIsVideo, webkit, "webkit_user_media_permission_is_for_video_device")
 		purego.RegisterLibFunc(&wkPermReqAllow, webkit, "webkit_permission_request_allow")
 
 		purego.RegisterLibFunc(&jscValueToString, jsc, "jsc_value_to_string")
