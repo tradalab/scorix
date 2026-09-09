@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/tradalab/scorix/internal/cli/runner/dialect"
 )
@@ -40,6 +41,7 @@ type ValidateOptions struct {
 func Validate(ctx context.Context, opt ValidateOptions) error {
 	res := &ValidateResult{}
 	err := validateProject(opt, res)
+	printFindings(res)
 	if opt.JSONOut != nil {
 		return EmitJSON(opt.JSONOut, "validate", res, err)
 	}
@@ -103,17 +105,82 @@ func validateProject(opt ValidateOptions, res *ValidateResult) error {
 		add("error", "manifest", "scorix.yaml", err.Error(), "model.dialect must be sqlite, mysql or postgres")
 		return finish(res)
 	}
+	if cfg.Model != nil && cfg.Model.Migrations != "" {
+		if _, _, err := resolveMigrationsPkg(root, cfg.Model.Migrations); err != nil {
+			add("error", "manifest", "scorix.yaml", err.Error(),
+				"model.migrations names a package exporting an embed.FS called FS and a Dir const")
+		}
+	}
+	// The driver import lands in generated wiring, so a dialect the module does
+	// not require turns a green generate into a build that cannot resolve it.
+	if !moduleRequires(root, d.DriverImport()) {
+		add("warn", "manifest", "go.mod",
+			fmt.Sprintf("dialect %s generates an import of %s, which go.mod does not require", d.Name(), d.DriverImport()),
+			"run go mod tidy after generate")
+	}
+
 	tables, err := parseSQLSchema(schemaAbs, d)
 	if err != nil {
 		add("error", "schema", schemaRel, err.Error(), "")
 		return finish(res)
 	}
 	res.Tables = len(tables)
+	// Silent before: the column keeps its name, loses the Insert hook that stamps
+	// it, and the app writes rows with an empty timestamp nobody asked for.
+	for _, t := range tables {
+		for _, c := range t.Columns {
+			if (c.Name == "created_at" || c.Name == "updated_at") && c.GoType != "time.Time" {
+				add("warn", "schema", schemaRel,
+					fmt.Sprintf("%s.%s is %s, which dialect %s maps to %s, so it is not stamped on insert",
+						t.Name, c.Name, c.SQLType, d.Name(), c.GoType),
+					"declare it as a timestamp type this dialect knows, or rename the column")
+			}
+		}
+	}
 	if res.Tables == 0 {
 		add("warn", "schema", schemaRel, "no table declared, so generate model CLEARS the model wiring already in svc.go",
 			"check the path and that the CREATE TABLE statements are not commented out")
 	}
 	return finish(res)
+}
+
+// The findings are the whole command, and they used to exist only inside the
+// --json document: a human got "1 problem(s)" and never learned which. Printing
+// on stdout puts them on stderr under --json, like every other runner.
+func printFindings(res *ValidateResult) {
+	for _, f := range res.Findings {
+		where := f.Source
+		if f.Path != "" {
+			where += " " + f.Path
+		}
+		fmt.Printf("  %-5s %s: %s\n", f.Severity, where, f.Message)
+		if f.Hint != "" {
+			fmt.Printf("        %s\n", f.Hint)
+		}
+	}
+	if countErrors(res) == 0 {
+		fmt.Printf("==> Validate passed: %d table(s), %d service(s), %d warning(s)\n",
+			res.Tables, res.Services, len(res.Findings))
+	}
+}
+
+// moduleRequires answers from go.mod alone so validate stays offline. A missing
+// go.mod is not a finding here: the compiler says it better.
+func moduleRequires(root, importPath string) bool {
+	b, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil {
+		return true
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		f := strings.Fields(strings.TrimPrefix(strings.TrimSpace(line), "require "))
+		if len(f) < 2 || !strings.HasPrefix(f[1], "v") {
+			continue
+		}
+		if importPath == f[0] || strings.HasPrefix(importPath, f[0]+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 func finish(res *ValidateResult) error {
