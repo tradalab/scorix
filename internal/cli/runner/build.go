@@ -128,7 +128,7 @@ func Build(ctx context.Context, opt BuildOptions) error {
 	res := &BuildResult{}
 	err := build(ctx, opt, res)
 	if opt.JSONOut != nil {
-		return emitJSON(opt.JSONOut, "build", res, err)
+		return EmitJSON(opt.JSONOut, "build", res, err)
 	}
 	return err
 }
@@ -309,9 +309,12 @@ func buildFrontend(ctx context.Context, bc *BuildContext) error {
 	cmd := exec.CommandContext(ctx, "pnpm", "build")
 	cmd.Dir = bc.ShellDir
 	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	// stderr is copied as well as shown, so the failure carries what the bundler
+	// said instead of an exit code.
+	var stderr strings.Builder
+	cmd.Stderr = io.MultiWriter(os.Stderr, &stderr)
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("frontend build failed: %w", err)
+		return fmt.Errorf("frontend build failed: %w", toolchainError(err, stderr.String()))
 	}
 	if _, err := os.Stat(bc.ShellDistSrc); err != nil {
 		return fmt.Errorf("frontend output not found at %s (check shell build outDir)", bc.ShellDistSrc)
@@ -394,11 +397,15 @@ func goBuildArch(ctx context.Context, bc *BuildContext, goarch, out string) erro
 	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = bc.Root
 	cmd.Env = env
-	cmd.Stderr = os.Stderr
+	// Compile errors arrive on the JSON stream, but a toolchain that fails
+	// outright - a broken go.mod, a module it cannot resolve - reports only
+	// here, and "exit status 1" is not an answer for anyone.
+	var stderr strings.Builder
+	cmd.Stderr = io.MultiWriter(os.Stderr, &stderr)
 	fmt.Printf("==> GOOS=%s GOARCH=%s go %s\n", bc.OS, goarch, strings.Join(args, " "))
 	if bc.diag == nil {
 		cmd.Stdout = os.Stdout
-		return cmd.Run()
+		return toolchainError(cmd.Run(), stderr.String())
 	}
 	// -json moves the compiler onto stdout: capture it, then hand the text back
 	// to the human and the parsed positions to the caller.
@@ -406,7 +413,10 @@ func goBuildArch(ctx context.Context, bc *BuildContext, goarch, out string) erro
 	cmd.Stdout = &buf
 	err := cmd.Run()
 	collectBuildDiagnostics(bc, &buf)
-	return err
+	if len(*bc.diag) > 0 {
+		return err // the positions are the answer; stderr would only repeat it
+	}
+	return toolchainError(err, stderr.String())
 }
 
 func goBuildDarwinUniversal(ctx context.Context, bc *BuildContext, out string) error {
