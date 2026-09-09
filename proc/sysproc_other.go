@@ -7,6 +7,10 @@ import (
 	"syscall"
 )
 
+// Empty on purpose: darwin and the BSDs have no equivalent of a job object or
+// Pdeathsig, so a supervised child DOES outlive a parent that dies abruptly.
+const orphanNet = ""
+
 func configureSysProc(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 }

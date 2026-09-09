@@ -7,6 +7,8 @@ import (
 	"syscall"
 )
 
+const orphanNet = "pdeathsig"
+
 func configureSysProc(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
 }

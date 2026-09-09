@@ -10,6 +10,10 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+// orphanNet names what keeps a child from outliving its parent here; empty
+// means nothing does, and callers that care have to say so.
+const orphanNet = "job object"
+
 func configureSysProc(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 }
