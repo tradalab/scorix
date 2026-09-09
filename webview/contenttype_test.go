@@ -38,6 +38,7 @@ func TestContentTypeOfServedAssets(t *testing.T) {
 	// files: all of them must be pinned, or the machine decides again.
 	want := map[string]string{
 		"index.html":    "text/html",
+		"legacy.htm":    "text/html",
 		"assets/app.js": "text/javascript",
 		"app.css":       "text/css",
 		"index.txt":     "text/plain",

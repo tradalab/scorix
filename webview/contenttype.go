@@ -12,11 +12,12 @@ import (
 // so the served type of an app's OWN embedded assets varied by end-user machine:
 // .js came back application/javascript on the CI image and text/javascript here,
 // and a table saying text/plain would stop the shell running at all.
-// The first eight are every extension the five shipped shells contain, counted
-// rather than guessed; .txt is not a stray readme but the RSC payload the router
-// fetches on navigation. The rest are what a public/ folder routinely adds.
+// It covers every extension the five shipped shells contain, counted rather than
+// guessed - .txt among them is not a stray readme but the RSC payload the router
+// fetches on navigation - plus what a public/ folder routinely adds.
 var shellTypes = map[string]string{
 	".html":  "text/html; charset=utf-8",
+	".htm":   "text/html; charset=utf-8",
 	".js":    "text/javascript; charset=utf-8",
 	".css":   "text/css; charset=utf-8",
 	".txt":   "text/plain; charset=utf-8",
