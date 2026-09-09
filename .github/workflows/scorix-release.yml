@@ -10,7 +10,7 @@ name: scorix release
 #       permissions:
 #         contents: write            # REQUIRED - see below
 #         packages: write            # only when web-image: true
-#       uses: tradalab/scorix/.github/workflows/scorix-release.yml@v0.27.0
+#       uses: tradalab/scorix/.github/workflows/scorix-release.yml@v0.27.1
 #       with:
 #         app-prefix: s3hub          # only for updater.provider = appcast
 #         web-image: true            # only for apps that ship a web mode
@@ -49,7 +49,7 @@ on:
         type: string
         # Must match the tag this workflow ships in: a caller pins the workflow by
         # tag but gets the CLI named here. Bump it BEFORE cutting the tag.
-        default: "v0.27.0"
+        default: "v0.27.1"
       go-version:
         type: string
         default: "1.27"
