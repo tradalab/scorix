@@ -58,7 +58,10 @@ func parseProto(src string) (protoFile, error) {
 		openBrace := loc[1] - 1
 		body, ok := braceBalancedBody(clean, openBrace)
 		if !ok {
-			continue
+			// Skipping instead reads downstream as drift: the file parses to fewer
+			// types, generate rewrites everything around them, and the agent is told
+			// to commit the result.
+			return protoFile{}, fmt.Errorf("proto: message %s is never closed - check the braces", name)
 		}
 		if name == "Empty" {
 			pf.HasEmpty = true
@@ -79,7 +82,7 @@ func parseProto(src string) (protoFile, error) {
 		openBrace := loc[1] - 1
 		body, ok := braceBalancedBody(src, openBrace)
 		if !ok {
-			continue
+			return protoFile{}, fmt.Errorf("proto: service %s is never closed - check the braces", svc.Name)
 		}
 		for _, mm := range middlewareRe.FindAllStringSubmatch(commentPrefix, -1) {
 			svc.Middlewares = append(svc.Middlewares, mm[1])
@@ -140,7 +143,30 @@ func parseProto(src string) (protoFile, error) {
 	sort.Slice(pf.Messages, func(i, j int) bool {
 		return pf.Messages[i].Name < pf.Messages[j].Name
 	})
+	if err := checkRPCTypes(pf); err != nil {
+		return protoFile{}, err
+	}
 	return pf, nil
+}
+
+// An rpc naming a message that was never declared generates code around a type
+// that does not exist, so the first sign of it is a compiler error in a file
+// nobody wrote. There are no imports here: every type is declared in this file.
+func checkRPCTypes(pf protoFile) error {
+	known := make(map[string]bool, len(pf.Messages))
+	for _, m := range pf.Messages {
+		known[m.Name] = true
+	}
+	for _, svc := range pf.Services {
+		for _, rpc := range svc.RPCs {
+			for _, t := range []string{rpc.RequestType, rpc.ResponseType} {
+				if !known[t] {
+					return fmt.Errorf("proto: %s.%s uses message %q, which this file never declares", svc.Name, rpc.Name, t)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // braceBalancedBody returns the text between the '{' at openBrace and its matching
