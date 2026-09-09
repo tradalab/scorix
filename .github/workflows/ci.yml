@@ -38,8 +38,15 @@ jobs:
           go-version-file: go.mod
       - name: gofmt
         run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
-      - name: vet (COM drivers excluded - unsafe.Pointer false positives)
-        run: go vet $(go list ./... | grep -vE "internal/driver/(webview2|wkwebview|webkitgtk)")
+      # unsafeptr off, packages all on: it reads every uintptr in a pointer
+      # conversion as a Go pointer, and all six it finds here are foreign. Dropping
+      # whole packages instead is how the three drivers went unvetted entirely.
+      - name: vet, every package on every platform
+        run: |
+          for os in linux windows darwin; do
+            echo "== GOOS=$os"
+            GOOS=$os go vet -unsafeptr=false ./... || exit 1
+          done
 
   cross-build:
     runs-on: ubuntu-latest
