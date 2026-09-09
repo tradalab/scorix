@@ -48,9 +48,11 @@ type jsonResult struct {
 	Data    any    `json:"data,omitempty"`
 }
 
-// emitJSON writes the document and RETURNS THE ORIGINAL ERROR: the envelope
+// EmitJSON writes the document and RETURNS THE ORIGINAL ERROR: the envelope
 // reports a failure, it must not swallow the exit status that goes with it.
-func emitJSON(w io.Writer, command string, data any, err error) error {
+// EmitJSON is exported so a second front end (scorix mcp) writes the identical
+// envelope instead of growing a second shape of the same fact.
+func EmitJSON(w io.Writer, command string, data any, err error) error {
 	res := jsonResult{Command: command, OK: err == nil, Data: data}
 	if err != nil {
 		res.Error = err.Error()

@@ -14,7 +14,7 @@ func GenerateProto(ctx context.Context, opt GenerateProtoOptions) error {
 	res := &GenerateResult{Check: opt.Check, Regen: "scorix generate proto"}
 	err := generateProto(ctx, opt, res)
 	if opt.JSONOut != nil {
-		return emitJSON(opt.JSONOut, "generate proto", res, err)
+		return EmitJSON(opt.JSONOut, "generate proto", res, err)
 	}
 	return err
 }

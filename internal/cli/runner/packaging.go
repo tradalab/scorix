@@ -37,7 +37,7 @@ func Package(ctx context.Context, opt PackageOptions) error {
 	res := &PackageResult{}
 	err := packageAll(ctx, opt, res)
 	if opt.JSONOut != nil {
-		return emitJSON(opt.JSONOut, "package", res, err)
+		return EmitJSON(opt.JSONOut, "package", res, err)
 	}
 	return err
 }

@@ -60,7 +60,7 @@ func Appcast(ctx context.Context, opt AppcastOptions) error {
 	res := &AppcastResult{}
 	err := appcast(ctx, opt, res)
 	if opt.JSONOut != nil {
-		return emitJSON(opt.JSONOut, "appcast", res, err)
+		return EmitJSON(opt.JSONOut, "appcast", res, err)
 	}
 	return err
 }

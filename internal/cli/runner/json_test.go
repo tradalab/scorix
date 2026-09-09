@@ -140,7 +140,7 @@ func TestGenerateModelJSON_Drift(t *testing.T) {
 // writer before it.
 func TestEmitJSONWritesExactlyOneDocument(t *testing.T) {
 	var buf bytes.Buffer
-	err := emitJSON(&buf, "probe", map[string]string{"k": "v"}, nil)
+	err := EmitJSON(&buf, "probe", map[string]string{"k": "v"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

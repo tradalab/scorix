@@ -57,7 +57,7 @@ func Doctor(ctx context.Context, opt DoctorOptions) error {
 	res := &DoctorResult{OS: runtime.GOOS, Arch: runtime.GOARCH}
 	err := doctorChecks(ctx, res)
 	if opt.JSONOut != nil {
-		return emitJSON(opt.JSONOut, "doctor", res, err)
+		return EmitJSON(opt.JSONOut, "doctor", res, err)
 	}
 	return err
 }

@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,11 +13,26 @@ import (
 )
 
 type InitOptions struct {
-	Name string
-	Dir  string
+	Name    string
+	Dir     string
+	JSONOut io.Writer // non-nil switches the result to one JSON document on this writer
+}
+
+type InitResult struct {
+	Name string `json:"name,omitempty"`
+	Dir  string `json:"dir,omitempty"`
 }
 
 func Init(ctx context.Context, opt InitOptions) error {
+	res := &InitResult{}
+	err := initProject(ctx, opt, res)
+	if opt.JSONOut != nil {
+		return EmitJSON(opt.JSONOut, "init", res, err)
+	}
+	return err
+}
+
+func initProject(ctx context.Context, opt InitOptions, res *InitResult) error {
 	if opt.Name == "" {
 		cwd, _ := os.Getwd()
 		opt.Name = filepath.Base(cwd)
@@ -29,6 +45,7 @@ func Init(ctx context.Context, opt InitOptions) error {
 	if err != nil {
 		return err
 	}
+	res.Name, res.Dir = opt.Name, root
 
 	fmt.Printf("==> Initializing Scorix project in %s\n", root)
 

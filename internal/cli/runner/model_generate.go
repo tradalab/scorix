@@ -56,12 +56,18 @@ func GenerateModel(ctx context.Context, opt GenerateModelOptions) error {
 	res := &GenerateResult{Check: opt.Check, Regen: "scorix generate model"}
 	err := generateModel(ctx, opt, res)
 	if opt.JSONOut != nil {
-		return emitJSON(opt.JSONOut, "generate model", res, err)
+		return EmitJSON(opt.JSONOut, "generate model", res, err)
 	}
 	return err
 }
 
 func generateModel(ctx context.Context, opt GenerateModelOptions, res *GenerateResult) error {
+	// Same defaulting as generateProto: a caller that is not cobra (scorix mcp)
+	// passes the zero value, and an empty path read as a real one only fails
+	// once it tries to open the project root as a file.
+	if opt.Schema == "" {
+		opt.Schema = "etc/schema.sql"
+	}
 	if opt.Dir == "" {
 		opt.Dir = "."
 	}
