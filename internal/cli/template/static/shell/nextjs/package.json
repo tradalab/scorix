@@ -2,11 +2,13 @@
   "name": "{{ .Name }}-shell",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.22.0",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "typecheck": "tsc --noEmit",
+    "lint": "pnpm typecheck"
   },
   "dependencies": {
     "react": "^19.0.0",

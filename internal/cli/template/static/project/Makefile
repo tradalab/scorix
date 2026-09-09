@@ -33,4 +33,14 @@ build:
 	cd shell && pnpm build
 	go build -o dist/{{ .Name }} .
 
-.PHONY: gen gen-force dev shell-build shell-dev run run-web build
+# Both halves, and neither may write. `pnpm lint` is `tsc --noEmit` by default;
+# widen it in shell/package.json if you add eslint. A gate that edits files
+# (eslint --fix) reports green on code that was never committed.
+lint:
+	$(SCORIX_CLI) lint
+	cd shell && pnpm lint
+
+test:
+	$(SCORIX_CLI) test
+
+.PHONY: gen gen-force dev shell-build shell-dev run run-web build lint test
