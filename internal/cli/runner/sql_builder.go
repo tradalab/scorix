@@ -62,7 +62,7 @@ func buildSQL(t sqlTable, d dialect.Dialect) tableSQL {
 
 	sql.FindAllSQL = "SELECT " + colList + " FROM " + tableQ + softDeleteWhereStandalone
 
-	// sqlx.In requires literal `?` regardless of dialect — Rebind converts to
+	// sqlx.In requires literal `?` regardless of dialect - Rebind converts to
 	// $N at runtime for Postgres.
 	whereIn := " WHERE " + pkCol + " IN (?)"
 	if t.HasDeletedAt {
@@ -95,12 +95,18 @@ func buildSQL(t sqlTable, d dialect.Dialect) tableSQL {
 		if c.IsPrimary {
 			continue
 		}
+		// The Insert hook calls .IsZero() and assigns time.Now(), so it may only
+		// be emitted once the column really mapped to time.Time. The parser forces
+		// these two non-null for that hook but cannot force the type: a created_at
+		// declared TEXT, or DATETIME under a dialect that does not know the word,
+		// mapped to string and generated code that would not compile.
+		isTime := c.GoType == "time.Time"
 		if c.Name == "created_at" {
-			sql.HasCreatedAt = true
+			sql.HasCreatedAt = isTime
 			continue
 		}
 		if c.Name == "updated_at" {
-			sql.HasUpdatedAt = true
+			sql.HasUpdatedAt = isTime
 		}
 		pos++
 		setExpr = append(setExpr, q(c.Name)+" = "+d.Placeholder(pos))
@@ -128,7 +134,9 @@ func buildSQL(t sqlTable, d dialect.Dialect) tableSQL {
 		})
 	}
 
-	sql.NeedsTimeImport = t.HasTime || sql.HasCreatedAt || sql.HasUpdatedAt
+	// DeleteIsSoft stamps time.Now() too. It was missing here and went unnoticed
+	// only because a deleted_at spelled DATETIME used to set HasTime by itself.
+	sql.NeedsTimeImport = t.HasTime || sql.HasCreatedAt || sql.HasUpdatedAt || sql.DeleteIsSoft
 	sql.NeedsUUIDHook = looksLikeUUIDDefault(t)
 
 	return sql

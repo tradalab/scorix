@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -104,7 +105,7 @@ func TestBuildSQL_Postgres(t *testing.T) {
 	if !strings.Contains(sql.FindOneSQL, `"id"`) {
 		t.Errorf("FindOneSQL should double-quote identifiers: %s", sql.FindOneSQL)
 	}
-	// Update positional check — Postgres SET pos 1..N, WHERE pos N+1.
+	// Update positional check - Postgres SET pos 1..N, WHERE pos N+1.
 	if !strings.Contains(sql.UpdateSQL, "WHERE \"id\" = $") {
 		t.Errorf("UpdateSQL postgres WHERE positional missing: %s", sql.UpdateSQL)
 	}
@@ -130,5 +131,84 @@ CREATE TABLE IF NOT EXISTS account (
 	// FindOneByEmail emitted from UNIQUE column.
 	if len(sql.FindOneByCols) != 1 || sql.FindOneByCols[0].GoName != "Email" {
 		t.Errorf("expected FindOneByEmail, got %+v", sql.FindOneByCols)
+	}
+}
+
+// The parser forces created_at/updated_at non-null so the Insert hook can call
+// .IsZero(), but it cannot force the mapped type. A column whose SQL type the
+// dialect does not read as a timestamp used to get the hook anyway, and the
+// generated package would not compile.
+func TestTimestampHooksNeedARealTimeColumn(t *testing.T) {
+	cases := []struct {
+		name    string
+		sqlType string
+		d       dialect.Dialect
+		want    bool
+	}{
+		{"mapped to time.Time", "DATETIME", dialect.SQLite{}, true},
+		{"declared TEXT", "TEXT", dialect.SQLite{}, false},
+		{"DATETIME is not a postgres word", "DATETIME", dialect.Postgres{}, false},
+		{"postgres spelling", "TIMESTAMPTZ", dialect.Postgres{}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			schema := fmt.Sprintf(`CREATE TABLE thing (
+  id TEXT PRIMARY KEY,
+  created_at %[1]s,
+  updated_at %[1]s
+);`, c.sqlType)
+			tables := parseInline(t, schema, c.d)
+			got := buildSQL(tables[0], c.d)
+			if got.HasCreatedAt != c.want || got.HasUpdatedAt != c.want {
+				t.Errorf("created=%v updated=%v, want both %v (column mapped to %s)",
+					got.HasCreatedAt, got.HasUpdatedAt, c.want, tables[0].Columns[1].GoType)
+			}
+		})
+	}
+}
+
+// NeedsTimeImport drives the time import, so it has to mean "a field is
+// time.Time". Keying it on the words DATETIME/TIMESTAMP made it true for a
+// nullable column (sql.NullTime) and for a spelling the dialect does not know
+// (string), and the generated package failed on an unused import.
+func TestTimeImportFollowsTheMappedType(t *testing.T) {
+	cases := []struct {
+		name string
+		col  string
+		d    dialect.Dialect
+		want bool
+	}{
+		{"nullable DATETIME becomes sql.NullTime", "seen_at DATETIME", dialect.SQLite{}, false},
+		{"not-null DATETIME becomes time.Time", "seen_at DATETIME NOT NULL", dialect.SQLite{}, true},
+		{"postgres does not know DATETIME", "seen_at DATETIME NOT NULL", dialect.Postgres{}, false},
+		{"postgres spelling", "seen_at TIMESTAMPTZ NOT NULL", dialect.Postgres{}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tables := parseInline(t, fmt.Sprintf(`CREATE TABLE t (
+  id TEXT PRIMARY KEY,
+  %s
+);`, c.col), c.d)
+			if got := buildSQL(tables[0], c.d).NeedsTimeImport; got != c.want {
+				t.Errorf("NeedsTimeImport = %v, want %v (column mapped to %s)", got, c.want, tables[0].Columns[1].GoType)
+			}
+		})
+	}
+}
+
+// The soft-delete branch stamps time.Now() as well, so a table whose only
+// timestamp is deleted_at still needs the import. Nothing said so: it was
+// covered by accident, by a HasTime that keyed on the word DATETIME.
+func TestTimeImportCoversSoftDelete(t *testing.T) {
+	tables := parseInline(t, `CREATE TABLE t (
+  id TEXT PRIMARY KEY,
+  deleted_at DATETIME
+);`, dialect.SQLite{})
+	s := buildSQL(tables[0], dialect.SQLite{})
+	if !s.DeleteIsSoft {
+		t.Fatal("deleted_at did not produce a soft delete, so this test proves nothing")
+	}
+	if !s.NeedsTimeImport {
+		t.Error("Delete emits time.Now() but the import was not requested")
 	}
 }

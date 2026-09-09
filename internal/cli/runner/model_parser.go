@@ -63,7 +63,7 @@ func goFieldFromColumn(colName string) string {
 	return toCamelCase(colName)
 }
 
-// Identifier captures accept "x" / `x` / [x] / x — unquoteIdent strips wrappers post-match.
+// Identifier captures accept "x" / `x` / [x] / x - unquoteIdent strips wrappers post-match.
 var (
 	tableHeadRegex = regexp.MustCompile(`(?i)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?` +
 		"(\"[a-zA-Z0-9_]+\"|`[a-zA-Z0-9_]+`|\\[[a-zA-Z0-9_]+\\]|[a-zA-Z0-9_]+)" +
@@ -106,7 +106,7 @@ func indexKeyword(upper, keyword string) int {
 	}
 }
 
-// extractDefaultValue returns the raw token after DEFAULT — a single-quoted literal,
+// extractDefaultValue returns the raw token after DEFAULT - a single-quoted literal,
 // a paren-balanced expression, or a bareword. Whole-word match on string-blanked text
 // so substrings like `is_default` don't trigger.
 func extractDefaultValue(line string) string {
@@ -191,7 +191,7 @@ func splitColList(s string) []string {
 }
 
 // parseSQLSchema produces []sqlTable from a CREATE TABLE script. FOREIGN KEY
-// clauses are ignored — relations live in internal/logic/.
+// clauses are ignored - relations live in internal/logic/.
 func parseSQLSchema(schemaPath string, d dialect.Dialect) ([]sqlTable, error) {
 	b, err := os.ReadFile(schemaPath)
 	if err != nil {
@@ -272,7 +272,7 @@ func stripSQLComments(s string) string {
 
 // tableBodySpan returns the body's opening/closing paren offsets, scanning depth over
 // string-blanked text (parens in literals don't shift depth). ok is false on unbalanced
-// parens — skip rather than mis-parse truncated DDL.
+// parens - skip rather than mis-parse truncated DDL.
 func tableBodySpan(blanked string, from int) (open, close int, ok bool) {
 	open = strings.IndexByte(blanked[from:], '(')
 	if open < 0 {
@@ -400,7 +400,10 @@ func parseTable(tableName, body string, d dialect.Dialect) (sqlTable, error) {
 		if !ok {
 			return sqlTable{}, fmt.Errorf("schema: table %s: cannot parse definition %q", tableName, strings.TrimSpace(line))
 		}
-		if col.GoType == "time.Time" || col.SQLType == "DATETIME" || col.SQLType == "TIMESTAMP" {
+		// The mapped type decides, not the spelling: a nullable DATETIME maps to
+		// sql.NullTime and a DATETIME under postgres maps to string, and both used
+		// to import time without a single field to use it.
+		if col.GoType == "time.Time" {
 			table.HasTime = true
 		}
 		if strings.HasPrefix(col.GoType, "sql.") {
@@ -475,8 +478,10 @@ func parseColumn(line string, d dialect.Dialect) (sqlColumn, bool) {
 
 	nullable := !col.IsNotNull && !col.IsPrimary
 
-	// created_at/updated_at forced non-null time.Time so the Insert hook can call
-	// .IsZero(). deleted_at stays nullable — soft-delete uses NULL = "not deleted".
+	// created_at/updated_at forced non-null so the Insert hook can call .IsZero()
+	// on a bare time.Time. It cannot force the TYPE, so buildSQL still checks that
+	// the column mapped to time.Time before emitting the hook. deleted_at stays
+	// nullable - soft-delete reads NULL as "not deleted".
 	switch strings.ToLower(colName) {
 	case "created_at", "updated_at":
 		nullable = false
@@ -494,7 +499,7 @@ func applyTableLevelPK(t *sqlTable, names []string) {
 	}
 }
 
-// finalisePK falls back to (ID, int64) when no PK is declared —
+// finalisePK falls back to (ID, int64) when no PK is declared -
 // validateTableForCodegen catches the genuinely missing case.
 func finalisePK(t *sqlTable) {
 	for _, c := range t.Columns {
