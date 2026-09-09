@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/tradalab/scorix/internal/cli/runner/dialect"
 )
 
 // A hand-arranged svc file importing model/etc OUTSIDE the marker zone used to
@@ -43,7 +45,7 @@ func New() {
 	}
 
 	tables := []sqlTable{{Name: "docs", GoName: "Docs", TableName: "docs", PKGoName: "ID", PKGoType: "string", PKSqlNames: []string{"id"}}}
-	_, content, err := renderServiceContext(root, "loom", tables, "loom/etc", "etc")
+	_, content, err := renderServiceContext(root, "loom", tables, "loom/etc", "etc", "", "", dialect.SQLite{})
 	if err != nil {
 		t.Fatal(err)
 	}

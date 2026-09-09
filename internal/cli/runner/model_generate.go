@@ -7,6 +7,7 @@ import (
 	"go/format"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -34,6 +35,10 @@ type DevConfig struct {
 type ModelConfig struct {
 	Schema  string `yaml:"schema"`
 	Dialect string `yaml:"dialect"` // sqlite | mysql | postgres
+	// Migrations names a package holding goose files (an embed.FS called FS and a
+	// Dir const). Declaring it swaps the generated wiring to WithMigrations:
+	// replaying schema.sql cannot add a column to a table that already exists.
+	Migrations string `yaml:"migrations"`
 }
 
 type BuildConfig struct {
@@ -114,7 +119,7 @@ func generateModel(ctx context.Context, opt GenerateModelOptions, res *GenerateR
 		return fmt.Errorf("parse schema: %w", err)
 	}
 
-	// schema_gen.go must live next to schema.sql — //go:embed only resolves
+	// schema_gen.go must live next to schema.sql - //go:embed only resolves
 	// siblings/descendants.
 	schemaDir := filepath.Dir(schemaAbs)
 	if schemaDir == root {
@@ -129,6 +134,16 @@ func generateModel(ctx context.Context, opt GenerateModelOptions, res *GenerateR
 		return fmt.Errorf("resolve schema dir relative to project root: %w", err)
 	}
 	schemaPkgImport := cfg.Name + "/" + filepath.ToSlash(relSchemaDir)
+
+	// An app with installs in the field declares model.migrations and gets goose
+	// wiring instead of a schema replay, which cannot add a column to a table
+	// that already exists.
+	var migrationsPkgName, migrationsPkgImport string
+	if cfg.Model != nil && cfg.Model.Migrations != "" {
+		rel := filepath.ToSlash(strings.Trim(cfg.Model.Migrations, "/"))
+		migrationsPkgName = sanitisePackageName(path.Base(rel))
+		migrationsPkgImport = cfg.Name + "/" + rel
+	}
 
 	for _, t := range tables {
 		if err := validateTableForCodegen(t); err != nil {
@@ -168,7 +183,7 @@ func generateModel(ctx context.Context, opt GenerateModelOptions, res *GenerateR
 				SQL:     buildSQL(table, d),
 			}
 
-			// model.go — interface + hand-edited methods; created once, opt.Force overwrites.
+			// model.go - interface + hand-edited methods; created once, opt.Force overwrites.
 			modelFile := filepath.Join(modelDir, fmt.Sprintf("%s_model.go", table.TableName))
 			pending = append(pending, labelled{
 				file: generatedFile{
@@ -181,7 +196,7 @@ func generateModel(ctx context.Context, opt GenerateModelOptions, res *GenerateR
 				label: fmt.Sprintf("%s_model.go", table.TableName),
 			})
 
-			// model_gen.go — CRUD + struct, always regenerated.
+			// model_gen.go - CRUD + struct, always regenerated.
 			modelGenFile := filepath.Join(modelDir, fmt.Sprintf("%s_model_gen.go", table.TableName))
 			pending = append(pending, labelled{
 				file: generatedFile{
@@ -263,7 +278,7 @@ func generateModel(ctx context.Context, opt GenerateModelOptions, res *GenerateR
 	}
 
 	if opt.Check {
-		svcPath, svcNew, err := renderServiceContext(root, cfg.Name, tables, schemaPkgImport, schemaPkgName)
+		svcPath, svcNew, err := renderServiceContext(root, cfg.Name, tables, schemaPkgImport, schemaPkgName, migrationsPkgImport, migrationsPkgName, d)
 		if err != nil {
 			return fmt.Errorf("render service context: %w", err)
 		}
@@ -279,13 +294,13 @@ func generateModel(ctx context.Context, opt GenerateModelOptions, res *GenerateR
 		return reportDrift(root, "scorix generate model", drifted)
 	}
 
-	if err := patchServiceContext(root, cfg.Name, tables, schemaPkgImport, schemaPkgName); err != nil {
+	if err := patchServiceContext(root, cfg.Name, tables, schemaPkgImport, schemaPkgName, migrationsPkgImport, migrationsPkgName, d); err != nil {
 		return fmt.Errorf("patch service context: %w", err)
 	}
 	fmt.Println("==> Patched internal/svc/service_context.go")
 
 	// dsn is NOT written here: the module reads modules.sqlx / SCORIX_MODULE_SQLX_DSN
-	// at runtime — one source, no drift.
+	// at runtime - one source, no drift.
 
 	cmd := exec.CommandContext(ctx, "go", "fmt", "./...")
 	cmd.Dir = root
@@ -304,8 +319,8 @@ const (
 	markerAssigns = "scorix:model:assigns"
 )
 
-func patchServiceContext(root, moduleName string, tables []sqlTable, schemaPkgImport, schemaPkgName string) error {
-	svcPath, content, err := renderServiceContext(root, moduleName, tables, schemaPkgImport, schemaPkgName)
+func patchServiceContext(root, moduleName string, tables []sqlTable, schemaPkgImport, schemaPkgName, migrationsPkgImport, migrationsPkgName string, d dialect.Dialect) error {
+	svcPath, content, err := renderServiceContext(root, moduleName, tables, schemaPkgImport, schemaPkgName, migrationsPkgImport, migrationsPkgName, d)
 	if err != nil {
 		return err
 	}
@@ -313,7 +328,7 @@ func patchServiceContext(root, moduleName string, tables []sqlTable, schemaPkgIm
 }
 
 // renderServiceContext does not write, so --check can diff the result against disk.
-func renderServiceContext(root, moduleName string, tables []sqlTable, schemaPkgImport, schemaPkgName string) (string, []byte, error) {
+func renderServiceContext(root, moduleName string, tables []sqlTable, schemaPkgImport, schemaPkgName, migrationsPkgImport, migrationsPkgName string, d dialect.Dialect) (string, []byte, error) {
 	svcPath := filepath.Join(root, "internal", "svc", "service_context.go")
 	b, err := os.ReadFile(svcPath)
 	if err != nil {
@@ -325,10 +340,10 @@ func renderServiceContext(root, moduleName string, tables []sqlTable, schemaPkgI
 	if len(tables) > 0 {
 		importLines := []string{
 			"	\"github.com/jmoiron/sqlx\"",
-			"	_ \"modernc.org/sqlite\"",
+			"	_ " + strconv.Quote(d.DriverImport()) + "",
 			"	scorixsqlx \"github.com/tradalab/scorix/module/sqlx\"",
 			"	" + strconv.Quote(moduleName+"/internal/model"),
-			"	" + strconv.Quote(schemaPkgImport),
+			"	" + strconv.Quote(dbPkgImport(schemaPkgImport, migrationsPkgImport)),
 		}
 		outside := replaceBetweenMarkers(content, markerImports, "")
 		var kept []string
@@ -350,12 +365,16 @@ func renderServiceContext(root, moduleName string, tables []sqlTable, schemaPkgI
 		assigns = strings.Join(assignLines, "\n")
 
 		// No SetModuleConfig: the module self-defaults to sqlite/app.dat; override the
-		// DSN via modules.sqlx or SCORIX_MODULE_SQLX_DSN at runtime — no rebuild.
+		// DSN via modules.sqlx or SCORIX_MODULE_SQLX_DSN at runtime - no rebuild.
+		source := fmt.Sprintf("scorixsqlx.WithSchema(%s.SchemaSQL)", schemaPkgName)
+		if migrationsPkgName != "" {
+			source = fmt.Sprintf("scorixsqlx.WithMigrations(%s.FS, %s.Dir)", migrationsPkgName, migrationsPkgName)
+		}
 		init = fmt.Sprintf(
-			"\tsqlxMod := scorixsqlx.New(scorixsqlx.WithSchema(%s.SchemaSQL))\n"+
-				"\tsqlxMod.RegisterDriver(\"sqlite\", func(dsn string) (*sqlx.DB, error) { return sqlx.Connect(\"sqlite\", dsn) })\n"+
+			"\tsqlxMod := scorixsqlx.New(%[1]s)\n"+
+				"\tsqlxMod.RegisterDriver(%[2]q, func(dsn string) (*sqlx.DB, error) { return sqlx.Connect(%[2]q, dsn) })\n"+
 				"\ta.Module(sqlxMod)",
-			schemaPkgName,
+			source, d.DriverName(),
 		)
 	}
 
@@ -465,4 +484,14 @@ func replaceBetweenMarkers(content, marker, replacement string) string {
 		return re.ReplaceAllString(content, "${1}${2}")
 	}
 	return re.ReplaceAllString(content, "${1}"+replacement+"\n${2}")
+}
+
+// dbPkgImport picks the package the generated wiring actually references.
+// WithSchema and WithMigrations are mutually exclusive, so importing both would
+// leave one unused and the file would not compile.
+func dbPkgImport(schemaPkgImport, migrationsPkgImport string) string {
+	if migrationsPkgImport != "" {
+		return migrationsPkgImport
+	}
+	return schemaPkgImport
 }

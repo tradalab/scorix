@@ -1,5 +1,5 @@
 // Package dialect provides SQL generation primitives for the model generator.
-// Codegen-only — no database drivers imported here.
+// Codegen-only - no database drivers imported here.
 package dialect
 
 import (
@@ -10,6 +10,10 @@ import (
 type Dialect interface {
 	Name() string
 	DriverName() string
+	// DriverImport is the package that registers DriverName with database/sql.
+	// It lives beside the name so generated wiring cannot pair one dialect's
+	// driver with another's import.
+	DriverImport() string
 	// Quote is emitted unconditionally so reserved words (group, order, user) never collide with keywords.
 	Quote(ident string) string
 	// Placeholder is 1-indexed: SQLite/MySQL ignore pos ("?"); Postgres returns "$N".

@@ -5,8 +5,9 @@ import "strings"
 // MySQL targets MySQL 5.7+ / MariaDB. Backticks + positional "?".
 type MySQL struct{}
 
-func (MySQL) Name() string       { return "mysql" }
-func (MySQL) DriverName() string { return "mysql" }
+func (MySQL) Name() string         { return "mysql" }
+func (MySQL) DriverName() string   { return "mysql" }
+func (MySQL) DriverImport() string { return "github.com/go-sql-driver/mysql" }
 
 func (MySQL) Quote(ident string) string { return "`" + ident + "`" }
 func (MySQL) Placeholder(_ int) string  { return "?" }

@@ -146,9 +146,12 @@ func TestMapTypeCommon(t *testing.T) {
 	}
 }
 
+// The name generated wiring passes to sql.Open, so it must be the one the
+// driver package actually registers - this went unnoticed while nothing
+// called DriverName and the generator hardcoded "sqlite" instead.
 func TestDriverName(t *testing.T) {
 	cases := map[string]string{
-		"sqlite":   "sqlite3",
+		"sqlite":   "sqlite",
 		"mysql":    "mysql",
 		"postgres": "pgx",
 	}

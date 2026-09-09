@@ -5,12 +5,13 @@ import (
 	"strings"
 )
 
-// Postgres uses "$N" placeholders and always-quoted identifiers — Postgres folds
+// Postgres uses "$N" placeholders and always-quoted identifiers - Postgres folds
 // unquoted idents to lower-case, so quoting preserves mixed-case schema names.
 type Postgres struct{}
 
-func (Postgres) Name() string       { return "postgres" }
-func (Postgres) DriverName() string { return "pgx" }
+func (Postgres) Name() string         { return "postgres" }
+func (Postgres) DriverName() string   { return "pgx" }
+func (Postgres) DriverImport() string { return "github.com/jackc/pgx/v5/stdlib" }
 
 func (Postgres) Quote(ident string) string { return `"` + ident + `"` }
 
