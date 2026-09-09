@@ -5,18 +5,21 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/tradalab/scorix/webview"
 	"gopkg.in/yaml.v3"
 )
 
 // PackageConfig is the optional `package:` block in scorix.yaml, driving
-// `scorix build`/`package`. Secrets are never stored here — only the names of
+// `scorix build`/`package`. Secrets are never stored here - only the names of
 // the env vars that carry them.
 type PackageConfig struct {
 	Manufacturer string          `yaml:"manufacturer"`
@@ -166,6 +169,7 @@ func buildBinary(ctx context.Context, bc *BuildContext, skipFrontend bool, outpu
 	if err := ensureDist(bc); err != nil {
 		return "", err
 	}
+	warnUnpinnedAssets(bc.DistDir)
 
 	out := output
 	if out == "" {
@@ -271,7 +275,7 @@ func loadAppMetadata(root string) (*appMetadata, error) {
 	if legacy := filepath.Join(root, "etc", "app.yaml"); fileExists(legacy) {
 		return readAppMetadata(legacy)
 	}
-	// No legacy file — report against scorix.yaml, the expected source.
+	// No legacy file - report against scorix.yaml, the expected source.
 	return readAppMetadata(scx)
 }
 
@@ -326,6 +330,46 @@ func buildFrontend(ctx context.Context, bc *BuildContext) error {
 	return copyDir(bc.ShellDistSrc, bc.DistDir)
 }
 
+// warnUnpinnedAssets names shell extensions no pin covers. Those fall through to
+// byte sniffing, which is deterministic but reads the file rather than a
+// declaration - and for a type sniffing cannot tell apart, the browser gets
+// octet-stream. Saying so here beats discovering it in a blank panel.
+func unpinnedAssets(distDir string) []string {
+	unknown := map[string]int{}
+	_ = filepath.WalkDir(distDir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || strings.HasPrefix(d.Name(), ".") {
+			return nil
+		}
+		// An extensionless file can never be pinned by an extension table, so
+		// reporting it would be noise the author cannot act on.
+		if ext := strings.ToLower(filepath.Ext(p)); ext != "" {
+			if _, ok := webview.PinnedContentType(p); !ok {
+				unknown[ext]++
+			}
+		}
+		return nil
+	})
+	if len(unknown) == 0 {
+		return nil
+	}
+	exts := make([]string, 0, len(unknown))
+	for e := range unknown {
+		exts = append(exts, e)
+	}
+	sort.Strings(exts)
+	parts := make([]string, len(exts))
+	for i, e := range exts {
+		parts[i] = fmt.Sprintf("%s (%d)", e, unknown[e])
+	}
+	return parts
+}
+
+func warnUnpinnedAssets(distDir string) {
+	if parts := unpinnedAssets(distDir); len(parts) > 0 {
+		fmt.Printf("warning: no pinned content type for %s - served by sniffing the bytes\n", strings.Join(parts, ", "))
+	}
+}
+
 // ensureDist guarantees .scorix/dist exists and is non-empty so the binary's
 // //go:embed all:.scorix/dist directive resolves even when frontend is skipped.
 func ensureDist(bc *BuildContext) error {
@@ -334,7 +378,7 @@ func ensureDist(bc *BuildContext) error {
 
 // ensureEmbedDir guarantees distDir exists and is non-empty so a binary's
 // //go:embed all:.scorix/dist directive compiles. Needed wherever Go is invoked
-// before a frontend exists — `scorix build --skip-frontend` and `scorix dev`
+// before a frontend exists - `scorix build --skip-frontend` and `scorix dev`
 // (which serves the HMR window but still has to compile the embed).
 func ensureEmbedDir(distDir string) error {
 	if err := os.MkdirAll(distDir, 0o755); err != nil {
