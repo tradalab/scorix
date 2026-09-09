@@ -4,7 +4,7 @@ name: scorix checks
 #
 #   jobs:
 #     check:
-#       uses: tradalab/scorix/.github/workflows/scorix-pr.yml@v0.26.1
+#       uses: tradalab/scorix/.github/workflows/scorix-pr.yml@v0.27.0
 #
 # Callers pass nothing unless they pin a different toolchain. Copying this file
 # instead is how redishub ended up installing pnpm 10 for a repo that declares
@@ -18,7 +18,7 @@ on:
         type: string
         # Must match the tag this workflow ships in: a caller pins the workflow by
         # tag but gets the CLI named here. Bump it BEFORE cutting the tag.
-        default: "v0.26.1"
+        default: "v0.27.0"
       go-version:
         type: string
         default: "1.27"
