@@ -34,11 +34,18 @@ func TestSplitContentType(t *testing.T) {
 func TestContentTypeOfServedAssets(t *testing.T) {
 	mime.AddExtensionType(".js", "text/plain")
 
+	// Every extension the five shipped shells contain, counted across 12,324
+	// files: all of them must be pinned, or the machine decides again.
 	want := map[string]string{
 		"index.html":    "text/html",
 		"assets/app.js": "text/javascript",
-		"chunk.mjs":     "text/javascript",
 		"app.css":       "text/css",
+		"index.txt":     "text/plain",
+		"app.js.map":    "application/json",
+		"inter.woff2":   "font/woff2",
+		"icon.ttf":      "font/ttf",
+		"favicon.ico":   "image/x-icon",
+		"chunk.mjs":     "text/javascript",
 		"data.json":     "application/json",
 		"logo.SVG":      "image/svg+xml",
 		"core.wasm":     "application/wasm",
