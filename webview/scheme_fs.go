@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"io"
 	"io/fs"
-	"mime"
 	"net/http"
 	"net/url"
 	"path"
@@ -37,7 +36,7 @@ func fileResponse(name string, f fs.File) *Response {
 		return notFound()
 	}
 	h := http.Header{}
-	if ct := mime.TypeByExtension(path.Ext(name)); ct != "" {
+	if ct := ContentTypeOf(name); ct != "" {
 		h.Set("Content-Type", ct)
 	}
 	return &Response{Status: http.StatusOK, Header: h, Body: bytes.NewReader(data)}

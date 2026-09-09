@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -157,7 +156,7 @@ func New(opts Options) (*App, error) {
 	}
 
 	// Seed Options from resolved config; explicit Options win. Security seeds only
-	// from a manifest — nil otherwise keeps the back-compat "no gating" default.
+	// from a manifest - nil otherwise keeps the back-compat "no gating" default.
 	if opts.Title == "" {
 		opts.Title = cfg.Window.Title
 	}
@@ -534,7 +533,7 @@ func (a *App) Run() error {
 var upgrader = websocket.Upgrader{CheckOrigin: sameOrigin}
 
 // sameOrigin permits the /ipc upgrade only when Origin host matches Host (or is
-// absent — a non-browser client). Blocks cross-site WS hijacking.
+// absent - a non-browser client). Blocks cross-site WS hijacking.
 func sameOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
@@ -563,7 +562,7 @@ func (a *App) WebAddr() string {
 
 // warnWebExposure warns on the two ways web mode is left open: no Security config
 // (every capability allowed), and a non-loopback bind with no WebToken (all
-// network clients trusted) — otherwise an operator gets no signal.
+// network clients trusted) - otherwise an operator gets no signal.
 func (a *App) warnWebExposure(addr string) {
 	if a.opts.Security == nil {
 		logger.Warn("scorix web: no security config — all module capabilities are allowed; ship a manifest with security.allowlist to gate them")
@@ -605,7 +604,7 @@ func (a *App) RunWeb(addr string) error {
 	for _, fn := range a.ready {
 		fn(a)
 	}
-	// ReadHeaderTimeout for slowloris defense; Read/Write unset — /ipc and streaming
+	// ReadHeaderTimeout for slowloris defense; Read/Write unset - /ipc and streaming
 	// replies are long-lived.
 	srv := &http.Server{
 		Addr:              addr,
@@ -789,7 +788,7 @@ func readAsset(fsys fs.FS, name string) ([]byte, string, bool) {
 	if err != nil {
 		return nil, "", false
 	}
-	return data, mime.TypeByExtension(path.Ext(name)), true
+	return data, webview.ContentTypeOf(name), true
 }
 
 func injectBridge(html []byte) []byte {
