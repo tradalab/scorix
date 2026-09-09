@@ -111,6 +111,13 @@ func WithSchema(script string) Option {
 	}
 }
 
+// WithDriver names the driver to open when neither the manifest nor the
+// environment says. Generated wiring passes model.dialect here so the dialect
+// the SQL was built for cannot disagree with the connection that opens.
+func WithDriver(name string) Option {
+	return func(m *Module) { m.defaultDriver = name }
+}
+
 func WithInitScript(fn InitScript) Option {
 	return func(m *Module) {
 		if fn == nil {
@@ -171,11 +178,12 @@ func (m *Module) WithTx(ctx context.Context, fn func(context.Context) error) (er
 }
 
 type Module struct {
-	cfg         Config
-	db          *sqlx.DB
-	drivers     map[string]DriverInitializer
-	initScripts []InitScript
-	mu          sync.RWMutex
+	cfg           Config
+	defaultDriver string
+	db            *sqlx.DB
+	drivers       map[string]DriverInitializer
+	initScripts   []InitScript
+	mu            sync.RWMutex
 }
 
 // New pre-registers the "sqlite" (modernc) driver; add others via RegisterDriver.
@@ -188,6 +196,17 @@ func New(opts ...Option) *Module {
 		opt(m)
 	}
 	return m
+}
+
+// resolveDriver slots the compiled-in dialect between the manifest and the
+// built-in default: modules.sqlx still wins, and the env overrides OnLoad
+// applies afterwards still win over both. It runs before defaults() because the
+// DSN and pool sizes branch on whether the driver is SQLite.
+func (m *Module) resolveDriver() {
+	if m.cfg.Driver == "" {
+		m.cfg.Driver = m.defaultDriver
+	}
+	m.cfg.defaults()
 }
 
 func defaultSqliteInit(dsn string) (*sqlx.DB, error) {
@@ -211,7 +230,7 @@ func (m *Module) DB() *sqlx.DB {
 	return m.db
 }
 
-// Returns an untyped nil when DB is nil — a *sqlx.DB(nil) boxed in Conn compares non-nil.
+// Returns an untyped nil when DB is nil - a *sqlx.DB(nil) boxed in Conn compares non-nil.
 func (m *Module) Conn() Conn {
 	db := m.DB()
 	if db == nil {
@@ -226,7 +245,7 @@ func (m *Module) OnLoad(ctx *module.Context) error {
 	if err := ctx.Decode(&m.cfg); err != nil {
 		return fmt.Errorf("[sqlx] decode config: %w", err)
 	}
-	m.cfg.defaults()
+	m.resolveDriver()
 
 	if err := ctx.ApplyOverrides(&m.cfg); err != nil {
 		return fmt.Errorf("[sqlx] apply overrides: %w", err)
@@ -363,7 +382,7 @@ func (m *Module) Exec(ctx context.Context, req SQLRequest) (*ExecResult, error) 
 	if n, e := res.RowsAffected(); e == nil {
 		out.RowsAffected = n
 	}
-	// Postgres errors on LastInsertId — best-effort, leave 0.
+	// Postgres errors on LastInsertId - best-effort, leave 0.
 	if id, e := res.LastInsertId(); e == nil {
 		out.LastInsertID = id
 	}
@@ -453,7 +472,7 @@ func scanRows(rows *sqlx.Rows) ([]map[string]any, error) {
 		}
 		row := make(map[string]any, len(cols))
 		for i, col := range cols {
-			// SQLite scans TEXT as []byte into any — coerce to string for the JS payload.
+			// SQLite scans TEXT as []byte into any - coerce to string for the JS payload.
 			if b, ok := vals[i].([]byte); ok {
 				row[col] = string(b)
 			} else {

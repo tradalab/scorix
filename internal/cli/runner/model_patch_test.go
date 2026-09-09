@@ -65,7 +65,7 @@ func TestPatchServiceContext_FreshProject(t *testing.T) {
 		`"example.com/app/etc"`,
 		`UserModel model.UserModel`,
 		`PostModel model.PostModel`,
-		`sqlxMod := scorixsqlx.New(scorixsqlx.WithSchema(etc.SchemaSQL))`,
+		`sqlxMod := scorixsqlx.New(scorixsqlx.WithSchema(etc.SchemaSQL), scorixsqlx.WithDriver("sqlite"))`,
 		`sqlxMod.RegisterDriver("sqlite",`,
 		`a.Module(sqlxMod)`,
 		`UserModel: model.NewUserModel(sqlxMod.Conn),`,
@@ -119,7 +119,7 @@ func TestPatchServiceContext_MigrationsInsteadOfSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	mustContain(t, string(out),
-		`sqlxMod := scorixsqlx.New(scorixsqlx.WithMigrations(migration.FS, migration.Dir))`,
+		`sqlxMod := scorixsqlx.New(scorixsqlx.WithMigrations(migration.FS, migration.Dir), scorixsqlx.WithDriver("sqlite"))`,
 		`"loom/internal/migration"`,
 		`UserModel: model.NewUserModel(sqlxMod.Conn),`,
 	)

@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"go/format"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path"
@@ -140,9 +142,11 @@ func generateModel(ctx context.Context, opt GenerateModelOptions, res *GenerateR
 	// that already exists.
 	var migrationsPkgName, migrationsPkgImport string
 	if cfg.Model != nil && cfg.Model.Migrations != "" {
-		rel := filepath.ToSlash(strings.Trim(cfg.Model.Migrations, "/"))
-		migrationsPkgName = sanitisePackageName(path.Base(rel))
-		migrationsPkgImport = cfg.Name + "/" + rel
+		rel, name, err := resolveMigrationsPkg(root, cfg.Model.Migrations)
+		if err != nil {
+			return err
+		}
+		migrationsPkgName, migrationsPkgImport = name, cfg.Name+"/"+rel
 	}
 
 	for _, t := range tables {
@@ -340,7 +344,7 @@ func renderServiceContext(root, moduleName string, tables []sqlTable, schemaPkgI
 	if len(tables) > 0 {
 		importLines := []string{
 			"	\"github.com/jmoiron/sqlx\"",
-			"	_ " + strconv.Quote(d.DriverImport()) + "",
+			"	_ " + strconv.Quote(d.DriverImport()),
 			"	scorixsqlx \"github.com/tradalab/scorix/module/sqlx\"",
 			"	" + strconv.Quote(moduleName+"/internal/model"),
 			"	" + strconv.Quote(dbPkgImport(schemaPkgImport, migrationsPkgImport)),
@@ -371,7 +375,7 @@ func renderServiceContext(root, moduleName string, tables []sqlTable, schemaPkgI
 			source = fmt.Sprintf("scorixsqlx.WithMigrations(%s.FS, %s.Dir)", migrationsPkgName, migrationsPkgName)
 		}
 		init = fmt.Sprintf(
-			"\tsqlxMod := scorixsqlx.New(%[1]s)\n"+
+			"\tsqlxMod := scorixsqlx.New(%[1]s, scorixsqlx.WithDriver(%[2]q))\n"+
 				"\tsqlxMod.RegisterDriver(%[2]q, func(dsn string) (*sqlx.DB, error) { return sqlx.Connect(%[2]q, dsn) })\n"+
 				"\ta.Module(sqlxMod)",
 			source, d.DriverName(),
@@ -484,6 +488,33 @@ func replaceBetweenMarkers(content, marker, replacement string) string {
 		return re.ReplaceAllString(content, "${1}${2}")
 	}
 	return re.ReplaceAllString(content, "${1}"+replacement+"\n${2}")
+}
+
+// resolveMigrationsPkg reads the package clause rather than guessing it from the
+// folder name, and cleans the path before it becomes an import: "./internal/x"
+// used to render as "app/./internal/x", which generate reported as a success and
+// the compiler rejected.
+func resolveMigrationsPkg(root, declared string) (rel, name string, err error) {
+	rel = path.Clean(filepath.ToSlash(strings.TrimSpace(declared)))
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, "../") || strings.HasPrefix(rel, "/") || filepath.IsAbs(declared) {
+		return "", "", fmt.Errorf("model.migrations %q must name a directory inside the module", declared)
+	}
+	dir := filepath.Join(root, filepath.FromSlash(rel))
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", "", fmt.Errorf("model.migrations %q: %w", declared, err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		f, perr := parser.ParseFile(token.NewFileSet(), filepath.Join(dir, e.Name()), nil, parser.PackageClauseOnly)
+		if perr != nil {
+			continue
+		}
+		return rel, f.Name.Name, nil
+	}
+	return "", "", fmt.Errorf("model.migrations %q holds no Go package; it must export an embed.FS named FS and a Dir const", declared)
 }
 
 // dbPkgImport picks the package the generated wiring actually references.

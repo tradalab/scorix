@@ -52,10 +52,10 @@ func TestMaskDSN(t *testing.T) {
 		"postgres://user:secret@host:5432/db":                "postgres://user:***@host:5432/db",
 		"postgres://user:secret@host:5432/db?ssl=on":         "postgres://user:***@host:5432/db?ssl=on",
 		"user:secret@tcp(127.0.0.1:3306)/app?parseTime=true": "user:***@tcp(127.0.0.1:3306)/app?parseTime=true",
-		// No password — left alone
+		// No password - left alone
 		"postgres://user@host/db": "postgres://user@host/db",
 		"user@tcp(host)/db":       "user@tcp(host)/db",
-		// SQLite filename — no embedded secret
+		// SQLite filename - no embedded secret
 		"app.dat":                 "app.dat",
 		"/var/lib/scorix/app.dat": "/var/lib/scorix/app.dat",
 		":memory:":                ":memory:",
@@ -68,11 +68,11 @@ func TestMaskDSN(t *testing.T) {
 }
 
 func TestLogSlowThresholdGuard(t *testing.T) {
-	// Threshold 0 disables logging — function returns without panicking.
+	// Threshold 0 disables logging - function returns without panicking.
 	m := New()
 	m.cfg.SlowQueryThresholdMs = 0
 	m.logSlow("Query", "SELECT 1", time.Now().Add(-5*time.Second)) // 5s old, but threshold disabled
-	// No assertion — just confirm no panic / no error path. Behaviour is
+	// No assertion - just confirm no panic / no error path. Behaviour is
 	// observable only via log output; this test guards the early-return.
 }
 
@@ -355,4 +355,44 @@ func TestQueryNormalisesBytesToString(t *testing.T) {
 			t.Errorf("expected string, got %T (%v)", rows[0]["s"], rows[0]["s"])
 		}
 	})
+}
+
+// Before WithDriver existed, generated wiring registered the dialect's driver
+// but nothing selected it: a project declaring postgres got $N placeholders and
+// then opened SQLite, because Driver defaulted to sqlite whatever the manifest
+// said. Pool sizes are asserted too - they branch on the same field.
+func TestWithDriverFillsTheGapBetweenDialectAndConnection(t *testing.T) {
+	cases := []struct {
+		name       string
+		option     string
+		fromConfig string
+		want       string
+		wantDSN    string
+		wantOpen   int
+	}{
+		{"dialect reaches the connection", "pgx", "", "pgx", "default", 10},
+		{"manifest still wins", "pgx", "mysql", "mysql", "default", 10},
+		{"no option keeps the old default", "", "", "sqlite", "app.dat", 1},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var opts []Option
+			if c.option != "" {
+				opts = append(opts, WithDriver(c.option))
+			}
+			m := New(opts...)
+			m.cfg.Driver = c.fromConfig
+			m.resolveDriver()
+
+			if m.cfg.Driver != c.want {
+				t.Errorf("driver = %q, want %q", m.cfg.Driver, c.want)
+			}
+			if m.cfg.DSN != c.wantDSN {
+				t.Errorf("dsn = %q, want %q", m.cfg.DSN, c.wantDSN)
+			}
+			if m.cfg.MaxOpenConns != c.wantOpen {
+				t.Errorf("max open conns = %d, want %d", m.cfg.MaxOpenConns, c.wantOpen)
+			}
+		})
+	}
 }
