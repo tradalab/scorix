@@ -129,4 +129,15 @@ func TestMaximizeReachesTheWindowManager(t *testing.T) {
 	})
 }
 
+// StartDrag is deliberately not here: on Windows it hands the window to the OS
+// modal move loop, which parks the message pump until a button release nobody
+// will send. That one needs a human with a mouse.
+func TestOpenDevToolsDoesNotTakeTheAppDown(t *testing.T) {
+	a := harness(t)
+	a.MainWindow().View().OpenDevTools()
+	if got := askInt(t, "1+1"); got != 2 {
+		t.Fatalf("page answered %d after OpenDevTools", got)
+	}
+}
+
 func near(got, want int) bool { return got-want < 100 && want-got < 100 }

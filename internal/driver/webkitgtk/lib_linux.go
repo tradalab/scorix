@@ -81,6 +81,8 @@ var (
 	gdkSeatGetPointer     func(uintptr) uintptr
 	gdkWindowDevicePos    func(uintptr, uintptr, *int32, *int32, uintptr) uintptr // gdk_window_get_device_position
 	gdkWindowGetState     func(uintptr) int32                                     // gdk_window_get_state
+	gdkDeviceGetPosition  func(uintptr, *uintptr, *int32, *int32)                 // gdk_device_get_position (root coords)
+	gtkWindowBeginMove    func(uintptr, int32, int32, int32, uint32)              // gtk_window_begin_move_drag
 	gtkWindowSetGeomHints func(uintptr, uintptr, unsafe.Pointer, int32)           // gtk_window_set_geometry_hints
 	gtkWidgetSetSensitive func(uintptr, int32)
 	gtkAccelGroupNew      func() uintptr
@@ -116,6 +118,8 @@ var (
 	wkViewGetSettings   func(uintptr) uintptr // webkit_web_view_get_settings (borrowed ref)
 	wkSettingsDevExtras func(uintptr, int32)  // webkit_settings_set_enable_developer_extras
 	wkViewExecEditCmd   func(uintptr, string) // webkit_web_view_execute_editing_command
+	wkViewGetInspector  func(uintptr) uintptr // webkit_web_view_get_inspector (borrowed ref)
+	wkInspectorShow     func(uintptr)         // webkit_web_inspector_show
 
 	wkUserMediaType    func() uintptr      // webkit_user_media_permission_request_get_type -> GType
 	wkUserMediaIsAudio func(uintptr) int32 // is_for_audio_device
@@ -238,6 +242,8 @@ func initLibs() error {
 		purego.RegisterLibFunc(&gdkSeatGetPointer, gdk, "gdk_seat_get_pointer")
 		purego.RegisterLibFunc(&gdkWindowDevicePos, gdk, "gdk_window_get_device_position")
 		purego.RegisterLibFunc(&gdkWindowGetState, gdk, "gdk_window_get_state")
+		purego.RegisterLibFunc(&gdkDeviceGetPosition, gdk, "gdk_device_get_position")
+		purego.RegisterLibFunc(&gtkWindowBeginMove, gtk, "gtk_window_begin_move_drag")
 		purego.RegisterLibFunc(&gtkWidgetSetSensitive, gtk, "gtk_widget_set_sensitive")
 		purego.RegisterLibFunc(&gtkAccelGroupNew, gtk, "gtk_accel_group_new")
 		purego.RegisterLibFunc(&gtkWindowAddAccel, gtk, "gtk_window_add_accel_group")
@@ -278,6 +284,8 @@ func initLibs() error {
 		purego.RegisterLibFunc(&wkViewGetSettings, webkit, "webkit_web_view_get_settings")
 		purego.RegisterLibFunc(&wkSettingsDevExtras, webkit, "webkit_settings_set_enable_developer_extras")
 		purego.RegisterLibFunc(&wkViewExecEditCmd, webkit, "webkit_web_view_execute_editing_command")
+		purego.RegisterLibFunc(&wkViewGetInspector, webkit, "webkit_web_view_get_inspector")
+		purego.RegisterLibFunc(&wkInspectorShow, webkit, "webkit_web_inspector_show")
 		purego.RegisterLibFunc(&wkUserMediaType, webkit, "webkit_user_media_permission_request_get_type")
 		purego.RegisterLibFunc(&wkUserMediaIsAudio, webkit, "webkit_user_media_permission_is_for_audio_device")
 		purego.RegisterLibFunc(&wkUserMediaIsVideo, webkit, "webkit_user_media_permission_is_for_video_device")

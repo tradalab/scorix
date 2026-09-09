@@ -176,9 +176,15 @@ func (v *view) Eval(js string) {
 	dispatchMain(func() { wkViewRunJS(v.wk, js, 0, 0, 0) })
 }
 
+// Opens nothing unless the window was created with DevTools: enabling developer
+// extras from here would hand every app an inspector it never asked for, and
+// webview2 gates it the same way.
 func (v *view) OpenDevTools() {
-	// Needs the "enable-developer-extras" setting + webkit_web_inspector_show —
-	// wired during hardware validation.
+	dispatchMain(func() {
+		if insp := wkViewGetInspector(v.wk); insp != 0 {
+			wkInspectorShow(insp)
+		}
+	})
 }
 
 func (v *view) OnMessage(fn func(raw []byte)) {

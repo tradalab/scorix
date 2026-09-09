@@ -267,7 +267,21 @@ func (w *win) Maximize()   { dispatchMain(func() { gtkWindowMaximize(w.gw) }) }
 func (w *win) Unmaximize() { dispatchMain(func() { gtkWindowUnmaximize(w.gw) }) }
 func (w *win) Restore()    { dispatchMain(func() { gtkWindowDeiconify(w.gw) }) }
 
-func (w *win) StartDrag() {}
+// Asks the pointer where it is rather than the event: startDrag arrives over
+// IPC, so GTK's current event is long gone by the time this reaches the loop and
+// its timestamp would be 0 anyway.
+func (w *win) StartDrag() {
+	dispatchMain(func() {
+		pointer := gdkSeatGetPointer(gdkDisplayDefaultSeat(gdkDisplayGetDefault()))
+		if pointer == 0 {
+			return
+		}
+		var screen uintptr
+		var x, y int32
+		gdkDeviceGetPosition(pointer, &screen, &x, &y)
+		gtkWindowBeginMove(w.gw, 1, x, y, 0) // button 1, GDK_CURRENT_TIME
+	})
+}
 
 func (w *win) SetFullscreen(on bool) {
 	dispatchMain(func() {
