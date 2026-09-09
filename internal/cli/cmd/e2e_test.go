@@ -32,7 +32,8 @@ func runCLI(t *testing.T, args ...string) (stdout string, err error) {
 
 	// The tree is built once in init() and cobra keeps parsed flags on it, so a
 	// --json from an earlier run leaks into this one. Anything driving the tree
-	// in-process (scorix mcp) has to reset like this or rebuild per call.
+	// in-process has to reset like this; `scorix mcp` sidesteps it by calling the
+	// runner directly.
 	resetJSONFlag(rootCmd)
 	rootCmd.SetArgs(args)
 	err = rootCmd.ExecuteContext(context.Background())
