@@ -51,20 +51,33 @@ func TestContentTypeOfServedAssets(t *testing.T) {
 		"core.wasm":     "application/wasm",
 	}
 	for name, media := range want {
-		got, _ := webview.SplitContentType(webview.ContentTypeOf(name))
+		got, _ := webview.SplitContentType(webview.ContentTypeOf(name, nil))
 		if got != media {
 			t.Errorf("%s -> %q; want %q", name, got, media)
 		}
 	}
 }
 
-// Anything an app embeds beyond the shell still comes from the machine: pinning
-// every extension would never end, and sniffing covers the rest.
-func TestContentTypeOfDefersForTheRest(t *testing.T) {
+// The tail must not read the machine either. An extension the table does not
+// know is answered from the file's own bytes, so the same asset gets the same
+// type wherever it is served; registering a system type for .zzz proves the OS
+// table is no longer consulted at all.
+func TestContentTypeOfSniffsTheTail(t *testing.T) {
 	if err := mime.AddExtensionType(".zzz", "application/x-zzz"); err != nil {
 		t.Fatal(err)
 	}
-	if got := webview.ContentTypeOf("blob.zzz"); got != "application/x-zzz" {
-		t.Errorf("blob.zzz -> %q, want the machine's answer", got)
+	cases := []struct {
+		name string
+		data []byte
+		want string
+	}{
+		{"a.zzz", []byte("%PDF-1.7"), "application/pdf"},
+		{"b.zzz", []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, "image/png"},
+		{"c.zzz", []byte{0x01, 0x02, 0x03, 0xFF}, "application/octet-stream"},
+	}
+	for _, c := range cases {
+		if got, _ := webview.SplitContentType(webview.ContentTypeOf(c.name, c.data)); got != c.want {
+			t.Errorf("%s -> %q, want %q", c.name, got, c.want)
+		}
 	}
 }

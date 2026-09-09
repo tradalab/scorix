@@ -771,9 +771,7 @@ func (a *App) assetHandler(fsys fs.FS) http.Handler {
 				w.Header().Set("Content-Security-Policy", csp)
 			}
 		}
-		if ctype != "" {
-			w.Header().Set("Content-Type", ctype)
-		}
+		w.Header().Set("Content-Type", ctype)
 		_, _ = w.Write(data)
 	})
 }
@@ -788,7 +786,7 @@ func readAsset(fsys fs.FS, name string) ([]byte, string, bool) {
 	if err != nil {
 		return nil, "", false
 	}
-	return data, webview.ContentTypeOf(name), true
+	return data, webview.ContentTypeOf(name, data), true
 }
 
 func injectBridge(html []byte) []byte {

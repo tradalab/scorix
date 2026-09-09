@@ -36,9 +36,7 @@ func fileResponse(name string, f fs.File) *Response {
 		return notFound()
 	}
 	h := http.Header{}
-	if ct := ContentTypeOf(name); ct != "" {
-		h.Set("Content-Type", ct)
-	}
+	h.Set("Content-Type", ContentTypeOf(name, data))
 	return &Response{Status: http.StatusOK, Header: h, Body: bytes.NewReader(data)}
 }
 

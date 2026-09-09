@@ -2,6 +2,7 @@ package webview
 
 import (
 	"mime"
+	"net/http"
 	"path"
 	"strings"
 )
@@ -32,14 +33,24 @@ var shellTypes = map[string]string{
 	".png":   "image/png",
 }
 
-// ContentTypeOf answers for what a shell is made of and defers to the machine
-// for the rest, where sniffing is harmless and the list would never end.
-func ContentTypeOf(name string) string {
-	ext := strings.ToLower(path.Ext(name))
-	if ct, ok := shellTypes[ext]; ok {
+// PinnedContentType reports what this build serves for name, and whether the
+// table knows the extension at all. scorix build reads the second return to name
+// what a shell ships that nothing pins.
+func PinnedContentType(name string) (string, bool) {
+	ct, ok := shellTypes[strings.ToLower(path.Ext(name))]
+	return ct, ok
+}
+
+// ContentTypeOf falls back to sniffing the BYTES, never mime.TypeByExtension:
+// that reads the machine, so the tail would keep the very inconsistency the pin
+// exists to remove. DetectContentType reads magic numbers, so pdf/png/wasm come
+// out right and anything unrecognisable comes out octet-stream - the same answer
+// on every machine either way.
+func ContentTypeOf(name string, data []byte) string {
+	if ct, ok := PinnedContentType(name); ok {
 		return ct
 	}
-	return mime.TypeByExtension(ext)
+	return http.DetectContentType(data)
 }
 
 // SplitContentType separates "text/html; charset=utf-8" into the bare media
