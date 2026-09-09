@@ -58,6 +58,10 @@ func initProject(ctx context.Context, opt InitOptions, res *InitResult) error {
 		return err
 	}
 
+	// pinnedAs stays empty when go.mod already existed: this run did not choose the
+	// version, so it must not claim one in any message.
+	pinnedAs := ""
+
 	fmt.Println("==> Initializing Next.js shell...")
 	if err := writeTemplateFS(template.ShellNextJS, filepath.Join(root, "shell"), data); err != nil {
 		return err
@@ -75,11 +79,17 @@ func initProject(ctx context.Context, opt InitOptions, res *InitResult) error {
 
 		fmt.Println("==> Adding scorix dependency...")
 
-		e1 := exec.CommandContext(ctx, "go", "mod", "edit", "-require", "github.com/tradalab/scorix@v0.0.0")
+		// Pin the library to the CLI that wrote the scaffold. The old placeholder
+		// v0.0.0 was meant for `go mod tidy` to resolve, but tidy cannot resolve a
+		// revision that does not exist - so every app scaffolded OUTSIDE this
+		// monorepo failed at its first go command, and the sibling `replace` below
+		// hid that from everyone who scaffolded inside it.
+		pinnedAs = scorixPinVersion(Version().Version)
+		e1 := exec.CommandContext(ctx, "go", scorixRequireArgs(pinnedAs)...)
 		e1.Dir = root
 		e1.Stderr = os.Stderr
 		if err := e1.Run(); err != nil {
-			return fmt.Errorf("go mod edit -require scorix: %w", err)
+			return fmt.Errorf("pin scorix: %w", err)
 		}
 
 		// Only add a replace directive if a sibling scorix checkout exists (monorepo layout).
@@ -100,6 +110,12 @@ func initProject(ctx context.Context, opt InitOptions, res *InitResult) error {
 		}
 	}
 
+	// Each of these three leaves a scaffold that cannot build: no handlers and
+	// types, no resolved modules, no node_modules. Reporting them as warnings and
+	// then printing "Success!" sent the author looking in the wrong place, and
+	// sent an agent reading ok/exit somewhere worse.
+	var incomplete []string
+
 	fmt.Println("==> Running initial scorix generate proto...")
 	if err := GenerateProto(ctx, GenerateProtoOptions{
 		Dir:   root,
@@ -107,6 +123,7 @@ func initProject(ctx context.Context, opt InitOptions, res *InitResult) error {
 		Force: true,
 	}); err != nil {
 		fmt.Printf("warning: initial generate proto failed: %v\n", err)
+		incomplete = append(incomplete, "handlers and types are missing: run `scorix generate proto`")
 	}
 
 	fmt.Println("==> Running go mod tidy...")
@@ -116,7 +133,13 @@ func initProject(ctx context.Context, opt InitOptions, res *InitResult) error {
 	t.Stderr = os.Stderr
 	if err := t.Run(); err != nil {
 		fmt.Printf("warning: go mod tidy failed: %v\n", err)
-		fmt.Println("Please run 'go mod tidy' manually in the project directory.")
+		// Name the pin: when it is the pin that cannot be resolved, "run go mod
+		// tidy" is advice that loops forever.
+		reason := "modules did not resolve: run `go mod tidy`"
+		if pinnedAs != "" {
+			reason = fmt.Sprintf("go.mod requires github.com/tradalab/scorix@%s and it did not resolve: run `go mod tidy`", pinnedAs)
+		}
+		incomplete = append(incomplete, reason)
 	}
 
 	shellDir := filepath.Join(root, "shell")
@@ -128,11 +151,37 @@ func initProject(ctx context.Context, opt InitOptions, res *InitResult) error {
 		pnpm.Stderr = os.Stderr
 		if err := pnpm.Run(); err != nil {
 			fmt.Printf("warning: pnpm install failed: %v\n", err)
-			fmt.Println("Please run 'pnpm install' manually in the shell directory.")
+			incomplete = append(incomplete, "shell has no node_modules: run `pnpm install` in shell/")
 		}
+	}
+
+	if len(incomplete) > 0 {
+		return &ExitError{Code: ExitFailed, Kind: "incomplete",
+			Err: fmt.Errorf("scaffold written to %s but not usable yet - %s", root, strings.Join(incomplete, "; "))}
 	}
 
 	fmt.Println("\nSuccess!")
 
 	return nil
+}
+
+// scorixRequireArgs picks how the scaffold names its library. A CLI installed at
+// a tag knows its own version and can pin without the network; one built from
+// source has none, so it asks the proxy. The old code wrote a literal v0.0.0 and
+// left `go mod tidy` to resolve it - tidy cannot resolve a revision that does not
+// exist, and the sibling replace hid that from everyone inside the monorepo.
+func scorixPinVersion(cliVersion string) string {
+	if strings.HasPrefix(cliVersion, "v") {
+		return cliVersion
+	}
+	return "latest"
+}
+
+func scorixRequireArgs(pin string) []string {
+	// `go mod edit` writes without the network but needs a concrete version;
+	// "latest" is a query, so it has to go through `go get`.
+	if pin != "latest" {
+		return []string{"mod", "edit", "-require", "github.com/tradalab/scorix@" + pin}
+	}
+	return []string{"get", "github.com/tradalab/scorix@latest"}
 }
