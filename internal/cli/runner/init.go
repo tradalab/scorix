@@ -15,12 +15,14 @@ import (
 type InitOptions struct {
 	Name    string
 	Dir     string
+	Shell   string
 	JSONOut io.Writer // non-nil switches the result to one JSON document on this writer
 }
 
 type InitResult struct {
-	Name string `json:"name,omitempty"`
-	Dir  string `json:"dir,omitempty"`
+	Name  string `json:"name,omitempty"`
+	Dir   string `json:"dir,omitempty"`
+	Shell string `json:"shell,omitempty"`
 }
 
 func Init(ctx context.Context, opt InitOptions) error {
@@ -49,9 +51,16 @@ func initProject(ctx context.Context, opt InitOptions, res *InitResult) error {
 
 	fmt.Printf("==> Initializing Scorix project in %s\n", root)
 
+	shell, err := resolveShellKind(opt.Shell)
+	if err != nil {
+		return err
+	}
+	res.Shell = shell.Name
+
 	data := map[string]string{
 		"Name":    opt.Name,
 		"Package": strings.ToLower(opt.Name),
+		"Shell":   shell.Name,
 	}
 
 	if err := writeTemplateFS("static/project", root, data); err != nil {
@@ -60,8 +69,13 @@ func initProject(ctx context.Context, opt InitOptions, res *InitResult) error {
 
 	pinnedAs := ""
 
-	fmt.Println("==> Initializing Next.js shell...")
-	if err := writeTemplateFS(template.ShellNextJS, filepath.Join(root, "shell"), data); err != nil {
+	fmt.Printf("==> Initializing %s shell...\n", shell.Name)
+	shellDir := filepath.Join(root, "shell")
+	// One shared runtime shim: a copy per scaffold is how generated api/ and the bridge drift apart.
+	if err := writeTemplateFS(template.ScaffoldCommon, shellDir, data); err != nil {
+		return err
+	}
+	if err := writeTemplateFS(template.ScaffoldDir+"/"+shell.Name, shellDir, data); err != nil {
 		return err
 	}
 
@@ -129,7 +143,7 @@ func initProject(ctx context.Context, opt InitOptions, res *InitResult) error {
 		incomplete = append(incomplete, reason)
 	}
 
-	shellDir := filepath.Join(root, "shell")
+	shellDir = filepath.Join(root, "shell")
 	if _, err := os.Stat(filepath.Join(shellDir, "package.json")); err == nil {
 		fmt.Println("==> Installing shell dependencies (pnpm install)...")
 		pnpm := exec.CommandContext(ctx, "pnpm", "install")

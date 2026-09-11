@@ -23,10 +23,16 @@ import (
 type ProjectConfig struct {
 	Name    string         `yaml:"name"`
 	Proto   string         `yaml:"proto"`
+	Shell   *ShellConfig   `yaml:"shell"`
 	Model   *ModelConfig   `yaml:"model"`
 	Build   *BuildConfig   `yaml:"build"`
 	Package *PackageConfig `yaml:"package"`
 	Dev     *DevConfig     `yaml:"dev"`
+}
+
+type ShellConfig struct {
+	// `dir` and `dist` sit in the block too, but nothing reads them: do not declare them.
+	Type string `yaml:"type"`
 }
 
 type DevConfig struct {

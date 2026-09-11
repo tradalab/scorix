@@ -1,0 +1,3 @@
+# pnpm 11 fails install on an unanswered build script; esbuild ships prebuilt binaries, so skip it.
+allowBuilds:
+  esbuild: false

@@ -1,16 +1,14 @@
-"use client";
-
 import { useEffect, useState } from "react";
-import { {{ (index .Services 0).Package }} } from "@/api";
+import scorix from "@/lib/scorix";
 
-export default function Home() {
+export default function App() {
   const [status, setStatus] = useState<string>("Initializing...");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const checkHealth = async () => {
       try {
-        const reply = await {{ (index .Services 0).Package }}.{{ (index (index .Services 0).RPCs 0).MethodName | lowerFirst }}({});
+        const reply = await scorix.invoke("healthz:ping");
         setStatus((reply as any).status || "Running Smoothly");
       } catch (err: any) {
         console.error("Scorix Connection Error:", err);
@@ -24,7 +22,6 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50 flex flex-col items-center justify-center p-6 selection:bg-blue-500/30">
-      {/* Background Glow */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-[25%] -left-[10%] w-[70%] h-[70%] bg-blue-600/10 blur-[120px] rounded-full" />
         <div className="absolute -bottom-[25%] -right-[10%] w-[70%] h-[70%] bg-purple-600/10 blur-[120px] rounded-full" />
@@ -33,10 +30,10 @@ export default function Home() {
       <div className="relative z-10 w-full max-w-2xl text-center space-y-8">
         <div className="space-y-4">
           <h1 className="text-6xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-b from-white to-slate-400">
-            {{ .Proto.Package }}
+            {{ .Name }}
           </h1>
           <p className="text-slate-400 text-lg max-w-md mx-auto">
-            Your Scorix-powered application is ready for takeoff. Built with Go, Next.js, and high-performance IPC.
+            Your Scorix-powered application is ready for takeoff. Built with Go, React, and high-performance IPC.
           </p>
         </div>
 

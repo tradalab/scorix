@@ -4,8 +4,9 @@
 #   //go:embed scorix.yaml and read by app.New (one tauri.conf.json equivalent).
 name: {{ .Name }}
 proto: idl/app.proto
+# type: nextjs | vite-react | vanilla-ts, picked by `scorix init`; editing it does not re-scaffold shell/.
 shell:
-  type: nextjs
+  type: {{ .Shell }}
   dir: shell
   dist: shell/dist
 model:

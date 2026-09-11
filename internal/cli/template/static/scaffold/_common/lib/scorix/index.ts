@@ -1,5 +1,4 @@
-"use client";
-
+// No "use client": importers carry it, and Rollup warns on a directive it cannot place.
 export type ScorixStatus = "connected" | "connecting" | "disconnected";
 
 // Branch/translate on `code`, never on `message`. Framework codes: internal ·

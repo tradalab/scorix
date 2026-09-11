@@ -31,13 +31,21 @@ func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateR
 	if err != nil {
 		return err
 	}
+	cfg, _ := loadProjectConfig(filepath.Join(root, "scorix.yaml"))
+	shellName := ""
+	if cfg != nil && cfg.Shell != nil {
+		shellName = cfg.Shell.Type
+	}
+	shell, err := resolveShellKind(shellName)
+	if err != nil {
+		return fmt.Errorf("scorix.yaml shell: %w", err)
+	}
+
 	protoPath := opt.Proto
 	// Flag default (untouched by the caller) yields to scorix.yaml's proto: key;
 	// an explicit --proto still wins. Missing/unreadable manifest → keep default.
-	if protoPath == "idl/app.proto" {
-		if cfg, cfgErr := loadProjectConfig(filepath.Join(root, "scorix.yaml")); cfgErr == nil && cfg.Proto != "" {
-			protoPath = cfg.Proto
-		}
+	if protoPath == "idl/app.proto" && cfg != nil && cfg.Proto != "" {
+		protoPath = cfg.Proto
 	}
 	if !filepath.IsAbs(protoPath) {
 		protoPath = filepath.Join(root, protoPath)
@@ -123,6 +131,7 @@ func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateR
 		OutEvents: outEvents,
 		InEvents:  inEvents,
 		HasEvents: len(outEvents)+len(inEvents) > 0,
+		Shell:     shell,
 	}
 
 	pageGen := gen
@@ -175,9 +184,9 @@ func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateR
 		},
 	}
 
-	if len(pageGen.Services) > 0 {
+	if len(pageGen.Services) > 0 && shell.Page != "" {
 		writes = append(writes, generatedFile{
-			Path:     filepath.Join(root, "shell", "app", "page.tsx"),
+			Path:     filepath.Join(root, "shell", filepath.FromSlash(shell.Page)),
 			Template: mustRead(template.ShellPage),
 			Data:     pageGen,
 			Force:    opt.Force,
@@ -193,7 +202,7 @@ func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateR
 			Force:    true,
 		})
 	}
-	if len(gen.OutEvents) > 0 {
+	if len(gen.OutEvents) > 0 && shell.React {
 		writes = append(writes, generatedFile{
 			Path:     filepath.Join(root, "shell", "hooks", "events.ts"),
 			Template: mustRead(template.ShellHooksEvents),

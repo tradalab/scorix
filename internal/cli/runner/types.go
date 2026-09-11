@@ -25,7 +25,7 @@ type GenerateProtoOptions struct {
 	Dir   string
 	Force bool
 	// Check renders in memory and diffs against disk instead of writing, erroring
-	// on drift — CI guard against editing proto (or generated files) without regen.
+	// on drift - CI guard against editing proto (or generated files) without regen.
 	Check   bool
 	JSONOut io.Writer // non-nil switches the result to one JSON document on this writer
 }
@@ -84,7 +84,7 @@ type protoRPC struct {
 	Arity          string
 	IsServerStream bool
 
-	// Event fields — set when the rpc carries an @event / @broadcast annotation.
+	// Event fields - set when the rpc carries an @event / @broadcast annotation.
 	// The request message is the event payload; the response type is ignored.
 	IsEvent     bool
 	EventDir    string // "out" (Go -> JS push, default) | "in" (JS -> Go one-way)
@@ -99,6 +99,7 @@ type protoTemplateData struct {
 	OutEvents []protoRPC
 	InEvents  []protoRPC
 	HasEvents bool
+	Shell     ShellKind
 }
 
 type logicTemplateData struct {

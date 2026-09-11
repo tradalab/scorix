@@ -12,11 +12,15 @@ var initCmd = &cobra.Command{
 	Short: "Initialize a new Scorix project",
 }
 
-var initDir string
+var (
+	initDir   string
+	initShell string
+)
 
 func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().StringVarP(&initDir, "dir", "d", ".", "project root directory")
+	initCmd.Flags().StringVar(&initShell, "shell", "", "frontend scaffold: nextjs | vite-react (default nextjs)")
 	jsonCommand(initCmd, func(cmd *cobra.Command, out io.Writer) error {
 		var name string
 		if args := cmd.Flags().Args(); len(args) > 0 {
@@ -26,6 +30,7 @@ func init() {
 			JSONOut: out,
 			Name:    name,
 			Dir:     initDir,
+			Shell:   initShell,
 		})
 	})
 }

@@ -20,10 +20,10 @@ const (
 	GoModelGen   = "static/go/model_gen.go.tpl"
 	GoSchemaGen  = "static/go/schema_gen.go.tpl"
 
-	ShellTypes       = "static/shell/types.ts"
-	ShellAPI         = "static/shell/api.ts"
-	ShellPage        = "static/shell/page.tsx"
-	ShellHooksEvents = "static/shell/hooks_events.ts"
+	ShellTypes       = "static/codegen/shell/types.ts"
+	ShellAPI         = "static/codegen/shell/api.ts"
+	ShellPage        = "static/codegen/shell/page.tsx"
+	ShellHooksEvents = "static/codegen/shell/hooks_events.ts"
 
 	ProjectScorixYaml = "static/project/scorix.yaml"
 	ProjectProto      = "static/project/idl/app.proto"
@@ -32,7 +32,9 @@ const (
 	InstallerLinux   = "static/project/installer/linux"
 	InstallerMac     = "static/project/installer/mac"
 
-	ShellNextJS = "static/shell/nextjs"
+	// Copied once by `scorix init`, unlike codegen/ which every `generate proto` rewrites.
+	ScaffoldCommon = "static/scaffold/_common"
+	ScaffoldDir    = "static/scaffold"
 )
 
 func ReadFile(path string) (string, error) {
