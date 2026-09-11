@@ -23,7 +23,7 @@ func (linuxPackager) Package(ctx context.Context, bc *BuildContext) (string, err
 	}
 	tool, err := exec.LookPath("linuxdeploy")
 	if err != nil {
-		return "", fmt.Errorf("linuxdeploy not found in PATH — install it from https://github.com/linuxdeploy/linuxdeploy, then verify with `scorix doctor`")
+		return "", fmt.Errorf("linuxdeploy not found in PATH - install it from https://github.com/linuxdeploy/linuxdeploy, then verify with `scorix doctor`")
 	}
 
 	binary := filepath.Join(bc.TempDir, bc.BinaryName) // built by the caller
@@ -33,11 +33,14 @@ func (linuxPackager) Package(ctx context.Context, bc *BuildContext) (string, err
 		filepath.Join(bc.Root, "installer", "linux", "app.desktop"),
 	)
 	if desktop == "" {
-		fmt.Println("==> Desktop entry not found — scaffolding installer/linux/")
+		fmt.Println("==> Desktop entry not found - scaffolding installer/linux/")
 		if err := scaffoldLinuxInstaller(bc); err != nil {
 			return "", fmt.Errorf("scaffold installer: %w", err)
 		}
 		desktop = filepath.Join(bc.Root, "installer", "linux", "app.desktop")
+	}
+	if err := checkDesktopIdentity(desktop, bc.ProductName); err != nil {
+		return "", err
 	}
 
 	icon := firstExisting(
@@ -48,7 +51,7 @@ func (linuxPackager) Package(ctx context.Context, bc *BuildContext) (string, err
 		icon = bc.IconPath
 	}
 	if icon == "" {
-		return "", fmt.Errorf("linux icon not found — provide installer/linux/%s.png (PNG; .ico is not accepted by AppImage)", bc.ProductName)
+		return "", fmt.Errorf("linux icon not found - provide installer/linux/%s.png (PNG; .ico is not accepted by AppImage)", bc.ProductName)
 	}
 
 	appDir := filepath.Join(bc.Root, ".scorix", "AppDir")
