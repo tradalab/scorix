@@ -82,6 +82,9 @@ func toastXML(req NotifyRequest, scheme string) (string, error) {
 func powershellToast(aumid, doc string) string {
 	var b strings.Builder
 	b.WriteString("[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType=WindowsRuntime] > $null;")
+	// Load XmlDocument's projection too: on Windows 11 26100 / PowerShell 5.1 the
+	// Notifications one does not bring it along, New-Object fails and no toast shows.
+	b.WriteString("[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType=WindowsRuntime] > $null;")
 	b.WriteString("$x = New-Object Windows.Data.Xml.Dom.XmlDocument;")
 	fmt.Fprintf(&b, "$x.LoadXml(%s);", psQuote(doc))
 	fmt.Fprintf(&b, "$n = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier(%s);", psQuote(aumid))
