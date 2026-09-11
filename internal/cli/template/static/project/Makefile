@@ -33,9 +33,7 @@ build:
 	cd shell && pnpm build
 	go build -o dist/{{ .Name }} .
 
-# Both halves, and neither may write. `pnpm lint` is `tsc --noEmit` by default;
-# widen it in shell/package.json if you add eslint. A gate that edits files
-# (eslint --fix) reports green on code that was never committed.
+# Neither half may write: a lint that runs `eslint --fix` passes on code nobody committed.
 lint:
 	$(SCORIX_CLI) lint
 	cd shell && pnpm lint

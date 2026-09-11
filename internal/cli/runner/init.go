@@ -58,8 +58,6 @@ func initProject(ctx context.Context, opt InitOptions, res *InitResult) error {
 		return err
 	}
 
-	// pinnedAs stays empty when go.mod already existed: this run did not choose the
-	// version, so it must not claim one in any message.
 	pinnedAs := ""
 
 	fmt.Println("==> Initializing Next.js shell...")
@@ -79,11 +77,6 @@ func initProject(ctx context.Context, opt InitOptions, res *InitResult) error {
 
 		fmt.Println("==> Adding scorix dependency...")
 
-		// Pin the library to the CLI that wrote the scaffold. The old placeholder
-		// v0.0.0 was meant for `go mod tidy` to resolve, but tidy cannot resolve a
-		// revision that does not exist - so every app scaffolded OUTSIDE this
-		// monorepo failed at its first go command, and the sibling `replace` below
-		// hid that from everyone who scaffolded inside it.
 		pinnedAs = scorixPinVersion(Version().Version)
 		e1 := exec.CommandContext(ctx, "go", scorixRequireArgs(pinnedAs)...)
 		e1.Dir = root
@@ -110,10 +103,6 @@ func initProject(ctx context.Context, opt InitOptions, res *InitResult) error {
 		}
 	}
 
-	// Each of these three leaves a scaffold that cannot build: no handlers and
-	// types, no resolved modules, no node_modules. Reporting them as warnings and
-	// then printing "Success!" sent the author looking in the wrong place, and
-	// sent an agent reading ok/exit somewhere worse.
 	var incomplete []string
 
 	fmt.Println("==> Running initial scorix generate proto...")
@@ -133,8 +122,6 @@ func initProject(ctx context.Context, opt InitOptions, res *InitResult) error {
 	t.Stderr = os.Stderr
 	if err := t.Run(); err != nil {
 		fmt.Printf("warning: go mod tidy failed: %v\n", err)
-		// Name the pin: when it is the pin that cannot be resolved, "run go mod
-		// tidy" is advice that loops forever.
 		reason := "modules did not resolve: run `go mod tidy`"
 		if pinnedAs != "" {
 			reason = fmt.Sprintf("go.mod requires github.com/tradalab/scorix@%s and it did not resolve: run `go mod tidy`", pinnedAs)
@@ -165,11 +152,6 @@ func initProject(ctx context.Context, opt InitOptions, res *InitResult) error {
 	return nil
 }
 
-// scorixRequireArgs picks how the scaffold names its library. A CLI installed at
-// a tag knows its own version and can pin without the network; one built from
-// source has none, so it asks the proxy. The old code wrote a literal v0.0.0 and
-// left `go mod tidy` to resolve it - tidy cannot resolve a revision that does not
-// exist, and the sibling replace hid that from everyone inside the monorepo.
 func scorixPinVersion(cliVersion string) string {
 	if strings.HasPrefix(cliVersion, "v") {
 		return cliVersion

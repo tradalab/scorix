@@ -5,10 +5,6 @@ import (
 	"testing"
 )
 
-// The scaffold used to name github.com/tradalab/scorix@v0.0.0 and leave it to
-// `go mod tidy`, which cannot resolve a revision that does not exist. Every app
-// scaffolded outside this monorepo failed at its first go command; inside it,
-// the sibling replace resolved the module locally and hid the whole thing.
 func TestScorixRequireNeverNamesAVersionThatDoesNotExist(t *testing.T) {
 	cases := map[string]struct {
 		cliVersion string
