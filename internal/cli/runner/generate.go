@@ -250,6 +250,20 @@ func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateR
 		}
 	}
 
+	res.Surface = ipcSurfaceOf(pf)
+
+	// `driftOf` counts a missing file as drift, so appending this in check mode
+	// would turn six consumers' CI red over a doc they have never generated yet.
+	docsPath := filepath.Join(root, "docs", "ipc-surface.md")
+	if _, statErr := os.Stat(docsPath); statErr == nil || !opt.Check {
+		writes = append(writes, generatedFile{
+			Path:     docsPath,
+			Template: mustRead(template.DocsIPCSurface),
+			Data:     gen,
+			Force:    true,
+		})
+	}
+
 	if opt.Check {
 		fmt.Printf("==> Checking generated code against %s\n", protoPath)
 	} else {

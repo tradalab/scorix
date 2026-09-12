@@ -18,6 +18,37 @@ type GenerateResult struct {
 	Skipped int         `json:"skipped"`
 	Drift   []DriftItem `json:"drift,omitempty"`
 	Regen   string      `json:"regen,omitempty"` // the command that fixes the drift
+	// Nil from `generate model`: it has no IPC to describe.
+	Surface *IPCSurface `json:"surface,omitempty"`
+}
+
+type IPCSurface struct {
+	Package  string       `json:"package"`
+	Services []IPCService `json:"services"`
+}
+
+type IPCService struct {
+	Name string `json:"name"`
+	// lowerCamel: service ConnGroup answers on connGroup:<method>.
+	Wire     string       `json:"wire"`
+	Commands []IPCCommand `json:"commands,omitempty"`
+	Events   []IPCEvent   `json:"events,omitempty"`
+}
+
+type IPCCommand struct {
+	Command    string   `json:"command"`
+	Request    string   `json:"request"`
+	Reply      string   `json:"reply"`
+	Arity      string   `json:"arity"` // unary | server-stream
+	Middleware []string `json:"middleware,omitempty"`
+}
+
+type IPCEvent struct {
+	Topic     string `json:"topic"`
+	Direction string `json:"direction"` // out = Go pushes to JS, in = JS pushes to Go
+	Payload   string `json:"payload"`
+	Go        string `json:"go"`
+	Frontend  string `json:"frontend"`
 }
 
 type GenerateProtoOptions struct {

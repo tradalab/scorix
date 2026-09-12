@@ -24,6 +24,7 @@ const (
 	ShellAPI         = "static/codegen/shell/api.ts"
 	ShellPage        = "static/codegen/shell/page.tsx"
 	ShellHooksEvents = "static/codegen/shell/hooks_events.ts"
+	DocsIPCSurface   = "static/codegen/docs/ipc-surface.md"
 
 	ProjectScorixYaml = "static/project/scorix.yaml"
 	ProjectProto      = "static/project/idl/app.proto"
