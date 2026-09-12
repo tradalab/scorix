@@ -10,6 +10,7 @@ import (
 
 	"github.com/ebitengine/purego"
 
+	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/webview"
 	"github.com/tradalab/scorix/window"
 )
@@ -50,7 +51,7 @@ func initWinSignals() {
 			}
 			return 0
 		})
-		// "delete-event": close button pressed — TRUE swallows the close
+		// "delete-event": close button pressed - TRUE swallows the close
 		// (hide-on-close), FALSE lets GTK destroy the window.
 		deleteCB = purego.NewCallback(func(widget, _, _ uintptr) uintptr {
 			defer recoverCB("window-delete-event")
@@ -91,6 +92,32 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 		gtkWindowSetTitle(gw, opts.Title)
 	}
 	gtkWindowSetDefault(gw, int32(opts.Width), int32(opts.Height))
+	// Options has carried these four since the beginning and only webview2 read
+	// them, so a min_width in scorix.yaml did nothing here and said nothing about
+	// it. Declared at creation, the window manager honours them from the first map.
+	if opts.MinWidth > 0 || opts.MinHeight > 0 {
+		minW, minH := int32(-1), int32(-1) // -1 is GTK's own "no request"
+		if opts.MinWidth > 0 {
+			minW = int32(opts.MinWidth)
+		}
+		if opts.MinHeight > 0 {
+			minH = int32(opts.MinHeight)
+		}
+		gtkWidgetSetSizeReq(gw, minW, minH)
+	}
+	if opts.MaxWidth > 0 || opts.MaxHeight > 0 {
+		// GDK reads 0 as "cannot grow at all", not as "unlimited", so an axis the
+		// app left open gets a cap no display reaches instead of a cap of zero.
+		maxW, maxH := int32(gdkSizeUnlimited), int32(gdkSizeUnlimited)
+		if opts.MaxWidth > 0 {
+			maxW = int32(opts.MaxWidth)
+		}
+		if opts.MaxHeight > 0 {
+			maxH = int32(opts.MaxHeight)
+		}
+		g := gdkGeometry{maxWidth: maxW, maxHeight: maxH}
+		gtkWindowSetGeomHints(gw, 0, unsafe.Pointer(&g), gdkHintMaxSize)
+	}
 	if opts.Frameless {
 		gtkWindowSetDecor(gw, 0)
 	}
@@ -99,6 +126,12 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 	}
 	if opts.X != nil && opts.Y != nil {
 		gtkWindowMove(gw, int32(*opts.X), int32(*opts.Y))
+	}
+	if opts.AlwaysOnTop {
+		gtkWindowKeepAbove(gw, 1)
+	}
+	if opts.IconPath != "" {
+		warnWindowIconIgnored()
 	}
 
 	v, err := newView(m.rt, opts)
@@ -135,6 +168,21 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 		v.Navigate(opts.URL)
 	}
 	return w, nil
+}
+
+// A cap on one axis needs a value for the other, and GDK has no "unlimited":
+// 16.7M pixels is past every display while staying inside int32.
+const gdkSizeUnlimited = 1 << 24
+
+var warnIconOnce sync.Once
+
+// Once per process: an app that opens many windows would otherwise repeat it.
+// Wiring gtk_window_set_icon_from_file would mean one more purego symbol, and a
+// misspelled one panics at runtime while build, vet and tests all stay green.
+func warnWindowIconIgnored() {
+	warnIconOnce.Do(func() {
+		logger.Warn("webkitgtk: app.icon is not a window icon on Linux - a launcher reads Icon= from the .desktop entry, which `scorix package` writes and checks")
+	})
 }
 
 func (m *manager) Get(id window.ID) (window.Window, bool) {

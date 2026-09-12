@@ -22,7 +22,7 @@ type manager struct {
 	seq  int
 }
 
-// New must run on the UI thread (Manager contract — app.OpenWindow dispatches
+// New must run on the UI thread (Manager contract - app.OpenWindow dispatches
 // for you).
 func (m *manager) New(opts window.Options) (window.Window, error) {
 	style := nsWindowStyleTitled | nsWindowStyleClosable | nsWindowStyleMiniaturizable
@@ -77,6 +77,17 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 
 	registerWinDelegate(w)
 
+	// Before SetSize, so AppKit clamps the initial size instead of letting the
+	// window open outside its own limits: Options has carried these four since
+	// the beginning and only webview2 read them, so min_width in scorix.yaml did
+	// nothing here and said nothing about it.
+	if opts.MinWidth > 0 || opts.MinHeight > 0 {
+		w.SetMinSize(opts.MinWidth, opts.MinHeight) // AppKit's own default min is 0
+	}
+	if opts.MaxWidth > 0 || opts.MaxHeight > 0 {
+		w.SetMaxSize(orUnlimited(opts.MaxWidth), orUnlimited(opts.MaxHeight))
+	}
+
 	// Through the same methods the framework calls later, so creation cannot
 	// disagree with them: initWithContentRect: took a CONTENT rect in AppKit's
 	// space, while opts carries an OUTER size measured from the top-left.
@@ -96,11 +107,37 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 		}
 		w.SetPosition(x, y)
 	}
+	if opts.AlwaysOnTop {
+		w.SetAlwaysOnTop(true)
+	}
+	if opts.IconPath != "" {
+		warnWindowIconIgnored()
+	}
 
 	if opts.URL != "" {
 		v.Navigate(opts.URL)
 	}
 	return w, nil
+}
+
+// A window with one axis capped needs a value for the other: NSWindow reads 0 as
+// "cannot grow at all", not as "unlimited", and its own default is FLT_MAX.
+const nsSizeUnlimited = 1 << 24
+
+func orUnlimited(v int) int {
+	if v <= 0 {
+		return nsSizeUnlimited
+	}
+	return v
+}
+
+var warnIconOnce sync.Once
+
+// Once per process: an app that opens many windows would otherwise repeat it.
+func warnWindowIconIgnored() {
+	warnIconOnce.Do(func() {
+		logger.Warn("wkwebview: app.icon is ignored on macOS - Finder and the Dock read CFBundleIconFile from the .app bundle, which `scorix package` stages")
+	})
 }
 
 func (m *manager) Get(id window.ID) (window.Window, bool) {

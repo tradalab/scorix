@@ -340,7 +340,7 @@ func (s *senderChan) enqueue(msg []byte) {
 	select {
 	case s.ch <- msg:
 	default:
-		logger.Warn("app: dropped event — client outbound queue full")
+		logger.Warn("app: dropped event - client outbound queue full")
 	}
 }
 
@@ -389,7 +389,7 @@ func (a *App) Run() error {
 		})
 		if err != nil {
 			if err == ErrAlreadyRunning {
-				logger.Info("app: another instance is already running — asked it to show and exiting")
+				logger.Info("app: another instance is already running - asked it to show and exiting")
 			}
 			return err
 		}
@@ -425,7 +425,7 @@ func (a *App) Run() error {
 	mainURL := a.opts.URL
 	devURL := os.Getenv("SCORIX_DEV_URL")
 	if devURL != "" {
-		logger.Info("app: dev mode — loading frontend from dev server", "url", devURL)
+		logger.Info("app: dev mode - loading frontend from dev server", "url", devURL)
 		mainURL = devURL
 	}
 
@@ -452,6 +452,7 @@ func (a *App) Run() error {
 			MaxHeight:   a.cfg.Window.MaxHeight,
 			Resizable:   a.cfg.Window.Resizable,
 			Frameless:   a.cfg.Window.Frameless,
+			AlwaysOnTop: a.cfg.Window.AlwaysOnTop,
 			HideOnClose: a.cfg.Window.HideOnClose,
 			DevTools:    a.cfg.Window.Debug || devURL != "",
 			FileDrop:    a.cfg.Window.FileDrop,
@@ -476,7 +477,7 @@ func (a *App) Run() error {
 		}
 		aw, err := a.attachWindow(rt, mainOpts)
 		if err != nil {
-			logger.Error("app: failed to open main window — quitting", "err", err)
+			logger.Error("app: failed to open main window - quitting", "err", err)
 			rt.Quit()
 			return
 		}
@@ -565,14 +566,14 @@ func (a *App) WebAddr() string {
 // network clients trusted) - otherwise an operator gets no signal.
 func (a *App) warnWebExposure(addr string) {
 	if a.opts.Security == nil {
-		logger.Warn("scorix web: no security config — all module capabilities are allowed; ship a manifest with security.allowlist to gate them")
+		logger.Warn("scorix web: no security config - all module capabilities are allowed; ship a manifest with security.allowlist to gate them")
 	}
 	host := addr
 	if h, _, err := net.SplitHostPort(addr); err == nil {
 		host = h
 	}
 	if !isLoopbackHost(host) && a.opts.WebToken == "" {
-		logger.Warn("scorix web: bound to a non-loopback host with no WebToken — every network client is trusted", "addr", addr)
+		logger.Warn("scorix web: bound to a non-loopback host with no WebToken - every network client is trusted", "addr", addr)
 	}
 }
 

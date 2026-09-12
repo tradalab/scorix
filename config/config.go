@@ -59,6 +59,7 @@ type WindowConfig struct {
 	MaxHeight     int    `yaml:"max_height" json:"max_height"`
 	Resizable     bool   `yaml:"resizable" json:"resizable"`
 	Frameless     bool   `yaml:"frameless" json:"frameless"`
+	AlwaysOnTop   bool   `yaml:"always_on_top" json:"always_on_top"`
 	Debug         bool   `yaml:"debug" json:"debug" env:""`
 	HideOnClose   bool   `yaml:"hide_on_close" json:"hide_on_close" env:""`
 	FileDrop      bool   `yaml:"file_drop" json:"file_drop"`

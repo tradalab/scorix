@@ -39,6 +39,8 @@ window:
   width: 800
   height: 600
   debug: true
+  # min_width: 640 # min_height / max_width / max_height too; honoured on all three platforms
+  # always_on_top: true # keep this window above other applications
   # file_drop: true # deliver OS file drops as sys:file-drop with real paths
   # remember_state: true # restore last window position/size/maximized
   # theme: system # system|dark|light native titlebar (Windows)
