@@ -28,6 +28,7 @@ type ProjectConfig struct {
 	Build   *BuildConfig   `yaml:"build"`
 	Package *PackageConfig `yaml:"package"`
 	Dev     *DevConfig     `yaml:"dev"`
+	Check   *CheckConfig   `yaml:"check"`
 }
 
 type ShellConfig struct {
@@ -51,6 +52,48 @@ type ModelConfig struct {
 
 type BuildConfig struct {
 	Tags []string `yaml:"tags"`
+}
+
+// What `scorix test` and `scorix lint` add to the baseline. Declared per app so
+// one shared command covers every repo; a per-repo build script meant a green
+// run described a different check each time.
+type CheckConfig struct {
+	Test *TestCheckConfig `yaml:"test"`
+	Lint *LintCheckConfig `yaml:"lint"`
+}
+
+type TestCheckConfig struct {
+	Race bool `yaml:"race"`
+	// Script names, not command lines: nothing goes through a shell, so there is
+	// no quoting that behaves differently on Windows.
+	Scripts []string `yaml:"scripts"`
+}
+
+type LintCheckConfig struct {
+	// nil means ON: silence gets the check, opting out has to be written down.
+	Typecheck *bool    `yaml:"typecheck"`
+	Scripts   []string `yaml:"scripts"`
+}
+
+func (c *CheckConfig) TypecheckEnabled() bool {
+	if c == nil || c.Lint == nil || c.Lint.Typecheck == nil {
+		return true
+	}
+	return *c.Lint.Typecheck
+}
+
+func (c *CheckConfig) testCheck() TestCheckConfig {
+	if c == nil || c.Test == nil {
+		return TestCheckConfig{}
+	}
+	return *c.Test
+}
+
+func (c *CheckConfig) lintScripts() []string {
+	if c == nil || c.Lint == nil {
+		return nil
+	}
+	return c.Lint.Scripts
 }
 
 func loadProjectConfig(path string) (*ProjectConfig, error) {

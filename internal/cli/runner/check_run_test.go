@@ -130,7 +130,7 @@ func TestCleanProjectPassesBothChecks(t *testing.T) {
 // has to compile before a test can say anything at all.
 func TestChecksCreateTheEmbedDirectory(t *testing.T) {
 	dir := checkFixture(t, map[string]string{"ok.go": "package fixture\n"})
-	if _, _, err := checkContext(dir, nil); err != nil {
+	if _, _, _, err := checkContext(dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".scorix", "dist")); err != nil {

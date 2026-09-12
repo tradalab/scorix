@@ -60,12 +60,13 @@ func Test(ctx context.Context, opt TestOptions) error {
 }
 
 func runTests(ctx context.Context, opt TestOptions, res *TestResult) error {
-	root, tags, err := checkContext(opt.Dir, opt.Tags)
+	root, tags, check, err := checkContext(opt.Dir, opt.Tags)
 	if err != nil {
 		return err
 	}
+	tc := check.testCheck()
 	args := []string{"test", "-json"}
-	if opt.Race {
+	if opt.Race || tc.Race {
 		args = append(args, "-race")
 	}
 	if len(tags) > 0 {
@@ -95,7 +96,11 @@ func runTests(ctx context.Context, opt TestOptions, res *TestResult) error {
 		return &ExitError{Code: ExitFailed, Kind: "failed",
 			Err: fmt.Errorf("%d test(s) failed", res.Failed)}
 	}
-	return toolchainError(runErr, stderr.String())
+	if err := toolchainError(runErr, stderr.String()); err != nil {
+		return err
+	}
+	// After the Go tests: a script failing first would hide which of the two broke.
+	return runScripts(ctx, root, tc.Scripts)
 }
 
 // collectTestEvents keeps the failing output and nothing else: an agent handed
@@ -184,7 +189,7 @@ func Lint(ctx context.Context, opt LintOptions) error {
 }
 
 func runLint(ctx context.Context, opt LintOptions, res *LintResult) error {
-	root, tags, err := checkContext(opt.Dir, opt.Tags)
+	root, tags, check, err := checkContext(opt.Dir, opt.Tags)
 	if err != nil {
 		return err
 	}
@@ -208,7 +213,16 @@ func runLint(ctx context.Context, opt LintOptions, res *LintResult) error {
 		return &ExitError{Code: ExitFailed, Kind: "failed",
 			Err: fmt.Errorf("%d vet finding(s)", len(res.Findings))}
 	}
-	return toolchainError(runErr, stderr.String())
+	if err := toolchainError(runErr, stderr.String()); err != nil {
+		return err
+	}
+
+	if check.TypecheckEnabled() {
+		if err := typecheckFrontend(ctx, root); err != nil {
+			return err
+		}
+	}
+	return runScripts(ctx, root, check.lintScripts())
 }
 
 // go vet -json writes a bare `{}` before the real document, so the values are
@@ -237,26 +251,60 @@ func parseVetJSON(s string) []BuildDiagnostic {
 
 // The embed directory has to exist first: `//go:embed all:.scorix/dist` must
 // compile before `go test` or `go vet` can say anything at all.
-func checkContext(dir string, extraTags []string) (root string, tags []string, err error) {
+func checkContext(dir string, extraTags []string) (root string, tags []string, check *CheckConfig, err error) {
 	if dir == "" {
 		dir = "."
 	}
 	root, err = filepath.Abs(dir)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	cfg, err := loadProjectConfig(filepath.Join(root, "scorix.yaml"))
 	if err != nil {
-		return "", nil, fmt.Errorf("load scorix.yaml: %w", err)
+		return "", nil, nil, fmt.Errorf("load scorix.yaml: %w", err)
 	}
 	if cfg.Build != nil {
 		tags = append(tags, cfg.Build.Tags...)
 	}
 	tags = append(tags, extraTags...)
 	if err := ensureEmbedDir(filepath.Join(root, ".scorix", "dist")); err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
-	return root, tags, nil
+	return root, tags, cfg.Check, nil
+}
+
+func runScripts(ctx context.Context, root string, names []string) error {
+	shellDir := filepath.Join(root, "shell")
+	for _, name := range names {
+		fmt.Printf("==> pnpm run %s\n", name)
+		cmd := exec.CommandContext(ctx, "pnpm", "run", name)
+		cmd.Dir = shellDir
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return &ExitError{Code: ExitFailed, Kind: "failed",
+				Err: fmt.Errorf("pnpm run %s: %w", name, err)}
+		}
+	}
+	return nil
+}
+
+// `pnpm exec` rather than a `typecheck` script: the apps name that script four
+// different ways, or not at all.
+func typecheckFrontend(ctx context.Context, root string) error {
+	shellDir := filepath.Join(root, "shell")
+	if _, err := os.Stat(filepath.Join(shellDir, "package.json")); err != nil {
+		return nil // no frontend to check
+	}
+	fmt.Println("==> pnpm exec tsc --noEmit")
+	cmd := exec.CommandContext(ctx, "pnpm", "exec", "tsc", "--noEmit")
+	cmd.Dir = shellDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return &ExitError{Code: ExitFailed, Kind: "failed", Err: fmt.Errorf("tsc: %w", err)}
+	}
+	return nil
 }
 
 // Go puts compile diagnostics on its JSON stream but reports its own failures - a

@@ -5,6 +5,8 @@ name: scorix checks
 #   jobs:
 #     check:
 #       uses: tradalab/scorix/.github/workflows/scorix-pr.yml@v0.27.1
+#       with:
+#         runners: '["ubuntu-22.04","windows-2022","macos-14"]'   # optional
 #
 # Callers pass nothing unless they pin a different toolchain. Copying this file
 # instead is how redishub ended up installing pnpm 10 for a repo that declares
@@ -28,10 +30,28 @@ on:
       pnpm-version:
         type: string
         default: "11.22.0"
+      runners:
+        type: string
+        # Machines to check on, as a JSON array. It is an input because a caller
+        # cannot set `runs-on` on a reusable workflow - without it, an app
+        # wanting Windows or macOS had to copy this whole setup block, and the
+        # toolchain versions above then lived in two places.
+        default: '["ubuntu-22.04"]'
 
 jobs:
   check:
-    runs-on: ubuntu-22.04
+    strategy:
+      # One platform failing should still report the others: the whole reason to
+      # run more than one is to see which of them disagrees.
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.runners) }}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        # Windows runners default to pwsh; bash is on all three images and keeps
+        # one syntax across the matrix.
+        shell: bash
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -61,15 +81,18 @@ jobs:
         working-directory: shell
         run: pnpm install --frozen-lockfile
 
-      # Build first: it fills .scorix/dist, so the _ensure-embed guard in
-      # `make test` / `make lint` does not build the frontend a second time. No
-      # GTK/WebKit dev packages needed - the webview is dlopen'd at runtime
-      # (no-CGO); only the AppImage build installs them.
+      # The CLI, not `make`: GNU make is not on the windows-2022 image, and a
+      # per-repo Makefile made a green run mean something different in each one.
+      # What an app adds is declared in its scorix.yaml `check:` block.
+      #
+      # Build first: main.go embeds .scorix/dist, so nothing else compiles until
+      # that directory exists. No GTK/WebKit dev packages needed - the webview is
+      # dlopen'd at runtime (no-CGO); only the AppImage build installs them.
       - name: Build
-        run: make build
+        run: scorix build
 
       - name: Test
-        run: make test
+        run: scorix test
 
       - name: Lint
-        run: make lint
+        run: scorix lint
