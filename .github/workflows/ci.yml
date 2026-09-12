@@ -90,3 +90,25 @@ jobs:
         env:
           SCORIX_E2E: "1"
         run: go test ./internal/e2e/ -count=1 -v
+
+  # The only job on the webkitgtk 4.0 soname: every other one installs 4.1, so
+  # the driver's dlopen fallback has never run in CI, and an LTS desktop is
+  # exactly where it fires.
+  e2e-oldest:
+    runs-on: ubuntu-22.04
+    continue-on-error: true # a probe until it goes green once, like macOS above
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: webkitgtk 4.0 runtime + a virtual display
+        run: |
+          sudo apt-get update
+          # 4.0-37 is how 22.04 spells the 4.0 soname; installing only it is what
+          # forces the fallback instead of letting 4.1 answer.
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.0-37 xvfb xauth openbox
+      - name: e2e under Xvfb on the 4.0 soname
+        env:
+          SCORIX_E2E: "1"
+        run: xvfb-run -a -s "-screen 0 1280x1024x24" bash -c "openbox & sleep 2; go test ./internal/e2e/ -count=1 -v"

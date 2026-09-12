@@ -67,7 +67,7 @@ func Doctor(ctx context.Context, opt DoctorOptions) error {
 // keeps the exit status at 0 for CI that only asks "can I build here".
 func doctorChecks(ctx context.Context, res *DoctorResult) error {
 	if _, err := exec.LookPath("go"); err != nil {
-		hint := fmt.Sprintf("go not found in PATH — install Go >= %d.%d from https://go.dev/dl/", minGoMajor, minGoMinor)
+		hint := fmt.Sprintf("go not found in PATH - install Go >= %d.%d from https://go.dev/dl/", minGoMajor, minGoMinor)
 		res.add(DoctorCheck{Name: "go", Status: "error", Hint: hint})
 		return exitErrorf(ExitMissing, "missing_prerequisite", "%s", hint)
 	}
@@ -79,15 +79,15 @@ func doctorChecks(ctx context.Context, res *DoctorResult) error {
 		note string
 	}
 	soft := []tool{
-		{"node", "Next.js shell runtime — install Node.js >= 18 LTS (https://nodejs.org)"},
-		{"pnpm", "frontend build (scorix dev/build/package) — `npm i -g pnpm` or `corepack enable`"},
+		{"node", "Next.js shell runtime - install Node.js >= 18 LTS (https://nodejs.org)"},
+		{"pnpm", "frontend build (scorix dev/build/package) - `npm i -g pnpm` or `corepack enable`"},
 	}
 	switch runtime.GOOS {
 	case "windows":
 		soft = append(soft,
-			tool{"wix", "Windows MSI packaging (scorix package) — `dotnet tool install --global wix`"},
+			tool{"wix", "Windows MSI packaging (scorix package) - `dotnet tool install --global wix`"},
 			tool{"makensis", "NSIS installer (scorix package --format nsis) - `winget install NSIS.NSIS`"},
-			tool{"signtool", "Windows code signing (optional; package.sign.windows) — ships with the Windows SDK"},
+			tool{"signtool", "Windows code signing (optional; package.sign.windows) - ships with the Windows SDK"},
 		)
 	case "linux":
 		soft = append(soft,
@@ -108,7 +108,7 @@ func doctorChecks(ctx context.Context, res *DoctorResult) error {
 			res.add(DoctorCheck{
 				Name:   t.bin,
 				Status: "warn",
-				Hint:   fmt.Sprintf("%s not found — needed for %s", t.bin, t.note),
+				Hint:   fmt.Sprintf("%s not found - needed for %s", t.bin, t.note),
 			})
 			continue
 		}
@@ -154,14 +154,14 @@ func checkGoVersion(ctx context.Context, res *DoctorResult) {
 	major, minor, ok := parseGoVersion(string(out))
 	if !ok {
 		res.add(DoctorCheck{Name: name, Status: "warn",
-			Hint: fmt.Sprintf("could not parse Go version from %q — project needs Go >= %d.%d",
+			Hint: fmt.Sprintf("could not parse Go version from %q - project needs Go >= %d.%d",
 				strings.TrimSpace(string(out)), minGoMajor, minGoMinor)})
 		return
 	}
 	found := fmt.Sprintf("%d.%d", major, minor)
 	if major < minGoMajor || (major == minGoMajor && minor < minGoMinor) {
 		res.add(DoctorCheck{Name: name, Status: "warn", Detail: found,
-			Hint: fmt.Sprintf("Go %s detected — project needs Go >= %d.%d; upgrade from https://go.dev/dl/",
+			Hint: fmt.Sprintf("Go %s detected - project needs Go >= %d.%d; upgrade from https://go.dev/dl/",
 				found, minGoMajor, minGoMinor)})
 		return
 	}
@@ -191,7 +191,13 @@ func parseGoVersion(s string) (major, minor int, ok bool) {
 	return 0, 0, false
 }
 
+// 107 is what `vite build` targets (Baseline "widely available"); under it a
+// bundle can fail to parse and the window opens blank with nothing logged. Raise
+// it only with the scaffold's browser target, and update ARCHITECTURE.md §2.3.
+const minWebView2Major = 107
+
 func checkWebView2Runtime(res *DoctorResult) {
+	name := fmt.Sprintf("WebView2 Runtime >= Chromium %d", minWebView2Major)
 	candidates := []string{}
 	if pf := os.Getenv("ProgramFiles(x86)"); pf != "" {
 		candidates = append(candidates, filepath.Join(pf, "Microsoft", "EdgeWebView", "Application"))
@@ -202,26 +208,62 @@ func checkWebView2Runtime(res *DoctorResult) {
 	if la := os.Getenv("LocalAppData"); la != "" {
 		candidates = append(candidates, filepath.Join(la, "Microsoft", "EdgeWebView", "Application"))
 	}
+
+	// Newest across install roots: per-user and machine-wide can coexist, and
+	// WebView2 loads the newest.
+	bestMajor, bestVer := 0, ""
 	for _, dir := range candidates {
-		if hasVersionedSubdir(dir) {
-			res.add(DoctorCheck{Name: "WebView2 Runtime", Status: "ok"})
-			return
+		for _, sub := range versionedSubdirs(dir) {
+			if m, ok := parseChromiumMajor(sub); ok && m > bestMajor {
+				bestMajor, bestVer = m, sub
+			}
 		}
 	}
-	res.add(DoctorCheck{Name: "WebView2 Runtime", Status: "warn",
-		Hint: "WebView2 Runtime not detected — the native window needs the Evergreen WebView2 Runtime " +
-			"(https://developer.microsoft.com/microsoft-edge/webview2/). Bundled with Windows 11; install it on older systems."})
+
+	if bestVer == "" {
+		res.add(DoctorCheck{Name: name, Status: "warn",
+			Hint: "WebView2 Runtime not detected - the native window needs the Evergreen WebView2 Runtime " +
+				"(https://developer.microsoft.com/microsoft-edge/webview2/). Bundled with Windows 11; install it on older systems."})
+		return
+	}
+	if bestMajor < minWebView2Major {
+		res.add(DoctorCheck{Name: name, Status: "warn", Detail: bestVer,
+			Hint: fmt.Sprintf("WebView2 Runtime %s is older than Chromium %d, which is what `vite build` targets - "+
+				"the shell can open blank with nothing logged. The runtime is evergreen, so a version this old usually means "+
+				"a managed fleet is pinning it", bestVer, minWebView2Major)})
+		return
+	}
+	res.add(DoctorCheck{Name: "WebView2 Runtime", Status: "ok", Detail: bestVer})
 }
 
-func hasVersionedSubdir(dir string) bool {
+// Version dirs ("120.0.2210.91") sit beside others ("Installer"); the caller
+// filters by what parses.
+func versionedSubdirs(dir string) []string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return false
+		return nil
 	}
+	var out []string
 	for _, e := range entries {
-		if e.IsDir() && len(e.Name()) > 0 && e.Name()[0] >= '0' && e.Name()[0] <= '9' {
-			return true
+		if e.IsDir() {
+			out = append(out, e.Name())
 		}
 	}
-	return false
+	return out
+}
+
+// Refuses a name whose digits do not end at a dot: "1x2.0" must not pass as 1.
+func parseChromiumMajor(name string) (int, bool) {
+	i := 0
+	for i < len(name) && name[i] >= '0' && name[i] <= '9' {
+		i++
+	}
+	if i == 0 || (i < len(name) && name[i] != '.') {
+		return 0, false
+	}
+	n, err := strconv.Atoi(name[:i])
+	if err != nil {
+		return 0, false
+	}
+	return n, true
 }
