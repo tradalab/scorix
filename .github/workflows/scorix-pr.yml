@@ -4,7 +4,7 @@ name: scorix checks
 #
 #   jobs:
 #     check:
-#       uses: tradalab/scorix/.github/workflows/scorix-pr.yml@v0.27.1
+#       uses: tradalab/scorix/.github/workflows/scorix-pr.yml@v0.28.0
 #       with:
 #         runners: '["ubuntu-22.04","windows-2022","macos-14"]'   # optional
 #
@@ -20,7 +20,7 @@ on:
         type: string
         # Must match the tag this workflow ships in: a caller pins the workflow by
         # tag but gets the CLI named here. Bump it BEFORE cutting the tag.
-        default: "v0.27.1"
+        default: "v0.28.0"
       go-version:
         type: string
         default: "1.27"
