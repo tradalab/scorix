@@ -120,7 +120,7 @@ func TestGenerateModelJSON_Drift(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	err := GenerateModel(context.Background(), GenerateModelOptions{
-		Dir: dir, Schema: "etc/schema.sql", Check: true, JSONOut: &buf,
+		Dir: dir, Schema: "idl/schema.sql", Check: true, JSONOut: &buf,
 	})
 	if err == nil {
 		t.Fatal("a never-generated model must report drift")

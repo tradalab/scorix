@@ -37,8 +37,8 @@ func newCheckProject(t *testing.T) string {
 	files := map[string]string{
 		"go.mod":         "module example.com/demo\n\ngo 1.26\n",
 		"idl/app.proto":  checkProto,
-		"scorix.yaml":    "name: example.com/demo\nmodel:\n  schema: etc/schema.sql\n  dialect: sqlite\napp:\n  name: demo\nmodules:\n  fs:\n    enabled: true\n",
-		"etc/schema.sql": checkSchema,
+		"scorix.yaml":    "name: example.com/demo\nmodel:\n  schema: idl/schema.sql\n  dialect: sqlite\napp:\n  name: demo\nmodules:\n  fs:\n    enabled: true\n",
+		"idl/schema.sql": checkSchema,
 	}
 	for rel, content := range files {
 		path := filepath.Join(dir, filepath.FromSlash(rel))
@@ -137,7 +137,7 @@ func TestGenerateProto_Check_CRLFNoFalseDrift(t *testing.T) {
 func TestGenerateProto_HonorsManifestProtoPath(t *testing.T) {
 	dir := t.TempDir()
 	// Proto lives at a NON-default path so this proves the manifest overrides the
-	// idl/app.proto default — not that it merely happens to match it.
+	// idl/app.proto default - not that it merely happens to match it.
 	files := map[string]string{
 		"go.mod":        "module example.com/demo\n\ngo 1.26\n",
 		"api/app.proto": checkProto,
@@ -176,10 +176,10 @@ func TestGenerateModel_Check(t *testing.T) {
 	if err := GenerateProto(ctx, GenerateProtoOptions{Dir: dir}); err != nil {
 		t.Fatalf("generate proto: %v", err)
 	}
-	if err := GenerateModel(ctx, GenerateModelOptions{Dir: dir, Schema: "etc/schema.sql"}); err != nil {
+	if err := GenerateModel(ctx, GenerateModelOptions{Dir: dir, Schema: "idl/schema.sql"}); err != nil {
 		t.Fatalf("generate model: %v", err)
 	}
-	if err := GenerateModel(ctx, GenerateModelOptions{Dir: dir, Schema: "etc/schema.sql", Check: true}); err != nil {
+	if err := GenerateModel(ctx, GenerateModelOptions{Dir: dir, Schema: "idl/schema.sql", Check: true}); err != nil {
 		t.Fatalf("check after generate must be clean: %v", err)
 	}
 
@@ -192,7 +192,7 @@ func TestGenerateModel_Check(t *testing.T) {
 	if err := os.WriteFile(gen, append(b, []byte("\n// tampered\n")...), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := GenerateModel(ctx, GenerateModelOptions{Dir: dir, Schema: "etc/schema.sql", Check: true}); err == nil {
+	if err := GenerateModel(ctx, GenerateModelOptions{Dir: dir, Schema: "idl/schema.sql", Check: true}); err == nil {
 		t.Fatal("tampered model_gen.go must drift")
 	}
 	if err := os.WriteFile(gen, b, 0o644); err != nil {
@@ -200,13 +200,13 @@ func TestGenerateModel_Check(t *testing.T) {
 	}
 
 	// Schema edited without regen (new column) → drift.
-	schema := filepath.Join(dir, "etc", "schema.sql")
+	schema := filepath.Join(dir, "idl", "schema.sql")
 	updated := strings.Replace(checkSchema, "username TEXT NOT NULL UNIQUE,",
 		"username TEXT NOT NULL UNIQUE,\n  email TEXT,", 1)
 	if err := os.WriteFile(schema, []byte(updated), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := GenerateModel(ctx, GenerateModelOptions{Dir: dir, Schema: "etc/schema.sql", Check: true}); err == nil {
+	if err := GenerateModel(ctx, GenerateModelOptions{Dir: dir, Schema: "idl/schema.sql", Check: true}); err == nil {
 		t.Fatal("schema edited without regen must drift")
 	}
 }

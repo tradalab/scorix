@@ -15,7 +15,7 @@ import (
 const fixtureManifest = `name: probe
 proto: idl/app.proto
 model:
-  schema: etc/schema.sql
+  schema: idl/schema.sql
 `
 
 const fixtureGoMod = `module probe
@@ -46,7 +46,7 @@ func fixtureProject(t *testing.T) string {
 		"scorix.yaml":    fixtureManifest,
 		"go.mod":         fixtureGoMod,
 		"idl/app.proto":  fixtureProto,
-		"etc/schema.sql": fixtureSchema,
+		"idl/schema.sql": fixtureSchema,
 	} {
 		p := filepath.Join(dir, rel)
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {

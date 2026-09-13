@@ -20,7 +20,7 @@ func GenerateProto(ctx context.Context, opt GenerateProtoOptions) error {
 
 func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateResult) error {
 	if opt.Proto == "" {
-		opt.Proto = "idl/app.proto"
+		opt.Proto = DefaultProtoPath
 	}
 	if opt.Dir == "" {
 		opt.Dir = "."

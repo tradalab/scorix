@@ -88,7 +88,7 @@ func Dev(ctx context.Context, opt DevOptions) error {
 
 	if opt.Legacy || (!hasShell && devURL == "") {
 		if hasShell {
-			fmt.Println("==> Building shell (legacy dev — no HMR)...")
+			fmt.Println("==> Building shell (legacy dev - no HMR)...")
 			buildCmd := exec.CommandContext(ctx, "pnpm", "build")
 			buildCmd.Dir = shellDir
 			buildCmd.Stdout = os.Stdout
@@ -141,7 +141,7 @@ func Dev(ctx context.Context, opt DevOptions) error {
 }
 
 func devWatch(ctx context.Context, root string, cfg *ProjectConfig, tags, env []string) error {
-	protoRel, schemaRel := "idl/app.proto", "etc/schema.sql"
+	protoRel, schemaRel := DefaultProtoPath, DefaultSchemaPath
 	if cfg != nil && cfg.Proto != "" {
 		protoRel = cfg.Proto
 	}
@@ -174,13 +174,13 @@ func devWatch(ctx context.Context, root string, cfg *ProjectConfig, tags, env []
 		regenerate: func(proto, schema bool) error {
 			if proto {
 				fmt.Println("==> [watch] proto changed: regenerating")
-				if err := GenerateProto(ctx, GenerateProtoOptions{Proto: "idl/app.proto", Dir: root}); err != nil {
+				if err := GenerateProto(ctx, GenerateProtoOptions{Proto: DefaultProtoPath, Dir: root}); err != nil {
 					return err
 				}
 			}
 			if schema {
 				fmt.Println("==> [watch] schema changed: regenerating models")
-				if err := GenerateModel(ctx, GenerateModelOptions{Schema: "etc/schema.sql", Dir: root}); err != nil {
+				if err := GenerateModel(ctx, GenerateModelOptions{Schema: DefaultSchemaPath, Dir: root}); err != nil {
 					return err
 				}
 			}
@@ -193,7 +193,7 @@ func devWatch(ctx context.Context, root string, cfg *ProjectConfig, tags, env []
 	})
 }
 
-// waitForServer polls url until it answers (any HTTP status counts — Next dev
+// waitForServer polls url until it answers (any HTTP status counts - Next dev
 // may 404 the root mid-compile but the socket is what matters).
 func waitForServer(ctx context.Context, url string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)

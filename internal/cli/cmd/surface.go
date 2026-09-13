@@ -21,7 +21,7 @@ var surfaceCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(surfaceCmd)
 	surfaceCmd.Flags().StringVarP(&surfaceDir, "dir", "d", ".", "project root directory")
-	surfaceCmd.Flags().StringVarP(&surfaceProto, "proto", "p", "idl/app.proto", "proto path (overridden by scorix.yaml proto:)")
+	surfaceCmd.Flags().StringVarP(&surfaceProto, "proto", "p", runner.DefaultProtoPath, "proto path (overridden by scorix.yaml proto:)")
 	jsonCommand(surfaceCmd, func(cmd *cobra.Command, out io.Writer) error {
 		return runner.Surface(cmd.Context(), runner.SurfaceOptions{
 			Dir:     surfaceDir,

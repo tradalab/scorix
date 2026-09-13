@@ -38,7 +38,7 @@ func Surface(_ context.Context, opt SurfaceOptions) error {
 
 func surfaceOf(opt SurfaceOptions, res *SurfaceResult) error {
 	if opt.Proto == "" {
-		opt.Proto = "idl/app.proto"
+		opt.Proto = DefaultProtoPath
 	}
 	if opt.Dir == "" {
 		opt.Dir = "."
@@ -81,7 +81,7 @@ func printSurface(res *SurfaceResult) {
 // missing or unreadable manifest keeps the default.
 func resolveProtoPath(root, flag string, cfg *ProjectConfig) string {
 	p := flag
-	if p == "idl/app.proto" && cfg != nil && cfg.Proto != "" {
+	if p == DefaultProtoPath && cfg != nil && cfg.Proto != "" {
 		p = cfg.Proto
 	}
 	if !filepath.IsAbs(p) {

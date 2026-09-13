@@ -126,12 +126,53 @@ func GenerateModel(ctx context.Context, opt GenerateModelOptions) error {
 	return err
 }
 
+// Moving the schema leaves the old schema_gen.go behind, still embedding a file
+// that is gone: that package stops compiling, and no scorix command says a word
+// about it - `--check` and `validate` both pass. Name it here, where the move is
+// the visible event.
+func refuseOrphanSchemaGen(root, schemaDir string) error {
+	var stale string
+	_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			switch info.Name() {
+			case ".git", ".scorix", "node_modules", "shell":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		dir := filepath.Dir(path)
+		if info.Name() != "schema_gen.go" || dir == schemaDir {
+			return nil
+		}
+		if _, statErr := os.Stat(filepath.Join(dir, "schema.sql")); statErr == nil {
+			return nil
+		}
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			rel = path
+		}
+		if stale != "" {
+			stale += ", "
+		}
+		stale += filepath.ToSlash(rel)
+		return nil
+	})
+	if stale == "" {
+		return nil
+	}
+	return fmt.Errorf("%s still embeds a schema.sql that is gone - delete it. The schema now lives in %s/, and nothing else will tell you: --check and validate keep passing while that package stops compiling",
+		stale, filepath.Base(schemaDir))
+}
+
 func generateModel(ctx context.Context, opt GenerateModelOptions, res *GenerateResult) error {
 	// Same defaulting as generateProto: a caller that is not cobra (scorix mcp)
 	// passes the zero value, and an empty path read as a real one only fails
 	// once it tries to open the project root as a file.
 	if opt.Schema == "" {
-		opt.Schema = "etc/schema.sql"
+		opt.Schema = DefaultSchemaPath
 	}
 	if opt.Dir == "" {
 		opt.Dir = "."
@@ -148,7 +189,7 @@ func generateModel(ctx context.Context, opt GenerateModelOptions, res *GenerateR
 	}
 
 	schemaPath := opt.Schema
-	if schemaPath == "etc/schema.sql" { // default
+	if schemaPath == DefaultSchemaPath { // default
 		if cfg.Model != nil && cfg.Model.Schema != "" {
 			schemaPath = cfg.Model.Schema
 		}
@@ -184,9 +225,12 @@ func generateModel(ctx context.Context, opt GenerateModelOptions, res *GenerateR
 	schemaDir := filepath.Dir(schemaAbs)
 	if schemaDir == root {
 		return fmt.Errorf(
-			"schema.sql at project root is not supported — the root package is typically `main` which cannot be imported.\n"+
-				"Move %s into a subdirectory (recommended: etc/schema.sql) and update scorix.yaml model.schema accordingly",
+			"schema.sql at project root is not supported - the root package is typically `main` which cannot be imported.\n"+
+				"Move %s into a subdirectory (recommended: idl/schema.sql) and update scorix.yaml model.schema accordingly",
 			schemaPath)
+	}
+	if err := refuseOrphanSchemaGen(root, schemaDir); err != nil {
+		return err
 	}
 	schemaPkgName := sanitisePackageName(filepath.Base(schemaDir))
 	relSchemaDir, err := filepath.Rel(root, schemaDir)

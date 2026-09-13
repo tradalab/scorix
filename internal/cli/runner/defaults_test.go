@@ -9,7 +9,7 @@ import (
 )
 
 // The CLI keeps its defaults in cobra flags (--proto idl/app.proto, --schema
-// etc/schema.sql), which a caller that is not cobra never sees. scorix mcp
+// idl/schema.sql), which a caller that is not cobra never sees. scorix mcp
 // passed the zero value and generate model read the project root as a file.
 func TestZeroValueOptionsUseTheSamePathsAsTheFlags(t *testing.T) {
 	// A manifest that names neither path, so the default is the only source.
@@ -28,7 +28,7 @@ func TestZeroValueOptionsUseTheSamePathsAsTheFlags(t *testing.T) {
 		}, "idl"},
 		{"generate model", func() error {
 			return GenerateModel(context.Background(), GenerateModelOptions{Dir: dir})
-		}, "etc"},
+		}, "idl"},
 	}
 	for _, c := range cases {
 		err := c.run()

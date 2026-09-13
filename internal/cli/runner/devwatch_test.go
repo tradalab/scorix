@@ -132,7 +132,7 @@ func TestDevLoopRebuildsAndKeepsAppOnFailure(t *testing.T) {
 	out := &syncBuffer{}
 	ctx, cancel := context.WithCancel(context.Background())
 	loopDone := make(chan error, 1)
-	go func() { loopDone <- devLoop(ctx, ws, "idl/app.proto", "etc/schema.sql", f.hooks(out)) }()
+	go func() { loopDone <- devLoop(ctx, ws, "idl/app.proto", "idl/schema.sql", f.hooks(out)) }()
 
 	waitFor := func(cond func() bool, what string) {
 		t.Helper()

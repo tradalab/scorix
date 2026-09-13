@@ -33,7 +33,7 @@ func init() {
 	})
 	generateCmd.AddCommand(generateModelCmd)
 
-	generateModelCmd.Flags().StringVarP(&generateModelSchema, "schema", "s", "etc/schema.sql", "SQL schema file path")
+	generateModelCmd.Flags().StringVarP(&generateModelSchema, "schema", "s", runner.DefaultSchemaPath, "SQL schema file path")
 	generateModelCmd.Flags().StringVarP(&generateModelDir, "dir", "d", ".", "project root directory")
 	generateModelCmd.Flags().BoolVarP(&generateModelForce, "force", "f", false, "overwrite existing implementation files")
 	generateModelCmd.Flags().StringVar(&generateModelDialect, "dialect", "", "DB dialect: sqlite | mysql | postgres (default: scorix.yaml model.dialect, else sqlite)")

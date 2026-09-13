@@ -39,7 +39,7 @@ func init() {
 	rootCmd.AddCommand(generateCmd)
 	generateCmd.AddCommand(generateProtoCmd)
 
-	generateProtoCmd.Flags().StringVarP(&generateProtoFile, "proto", "p", "idl/app.proto", "proto file path (overrides scorix.yaml proto:)")
+	generateProtoCmd.Flags().StringVarP(&generateProtoFile, "proto", "p", runner.DefaultProtoPath, "proto file path (overrides scorix.yaml proto:)")
 	generateProtoCmd.Flags().StringVarP(&generateProtoDir, "dir", "d", ".", "project root directory")
 	generateProtoCmd.Flags().BoolVarP(&generateProtoForce, "force", "f", false, "overwrite existing logic files")
 	generateProtoCmd.Flags().BoolVar(&generateProtoCheck, "check", false, "verify generated code is in sync without writing (CI drift guard)")

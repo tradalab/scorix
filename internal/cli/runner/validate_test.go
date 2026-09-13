@@ -42,11 +42,11 @@ func project(t *testing.T, manifest, proto, schema string) string {
 	}
 	write("scorix.yaml", manifest)
 	write("idl/app.proto", proto)
-	write("etc/schema.sql", schema)
+	write("idl/schema.sql", schema)
 	return dir
 }
 
-const manifest = "name: probe\nproto: idl/app.proto\nmodel:\n  schema: etc/schema.sql\n"
+const manifest = "name: probe\nproto: idl/app.proto\nmodel:\n  schema: idl/schema.sql\n"
 
 func validate(t *testing.T, dir string) (*ValidateResult, error) {
 	t.Helper()

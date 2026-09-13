@@ -71,7 +71,7 @@ func validateProject(opt ValidateOptions, res *ValidateResult) error {
 
 	protoRel := cfg.Proto
 	if protoRel == "" {
-		protoRel = "idl/app.proto"
+		protoRel = DefaultProtoPath
 	}
 	res.Proto = protoRel
 	if src, err := os.ReadFile(filepath.Join(root, protoRel)); err != nil {
@@ -86,7 +86,7 @@ func validateProject(opt ValidateOptions, res *ValidateResult) error {
 		}
 	}
 
-	schemaRel := "etc/schema.sql"
+	schemaRel := DefaultSchemaPath
 	if cfg.Model != nil && cfg.Model.Schema != "" {
 		schemaRel = cfg.Model.Schema
 	}

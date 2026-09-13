@@ -10,7 +10,7 @@ shell:
   dir: shell
   dist: shell/dist
 model:
-  schema: etc/schema.sql
+  schema: idl/schema.sql
 
 # Runtime manifest (embedded; read by app.New)
 app:
