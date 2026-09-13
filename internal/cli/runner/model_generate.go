@@ -29,6 +29,15 @@ type ProjectConfig struct {
 	Package *PackageConfig `yaml:"package"`
 	Dev     *DevConfig     `yaml:"dev"`
 	Check   *CheckConfig   `yaml:"check"`
+	App     *AppManifest   `yaml:"app"`
+}
+
+// Only the two keys the data dir is derived from. The `app:` block holds the
+// runtime manifest and the app reads the rest of it itself; declaring more here
+// would be a second reader of fields nothing in the CLI acts on.
+type AppManifest struct {
+	Name       string `yaml:"name"`
+	Identifier string `yaml:"identifier"`
 }
 
 type ShellConfig struct {

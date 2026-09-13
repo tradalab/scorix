@@ -1,130 +1,14 @@
 package mcp
 
 import (
-	"bytes"
 	"context"
-	"errors"
+	"encoding/json"
 	"fmt"
 	"io"
 	"time"
 
 	"github.com/tradalab/scorix/internal/cli/runner"
 )
-
-type tool struct {
-	name        string
-	description string
-	schema      map[string]any
-	run         func(ctx context.Context, a args, out io.Writer) error
-	timeout     time.Duration // zero uses defaultToolTimeout
-	direct      bool          // answers on the read loop, takes no turn
-}
-
-// invoke returns the tool's JSON document and whether it failed. The document is
-// the runner's own envelope, so an agent branches on the same ok/exit/kind it
-// gets from the CLI - this layer is transport, not translation.
-func (t tool) invoke(ctx context.Context, raw map[string]any) (text string, failed bool) {
-	var buf bytes.Buffer
-	err := t.guarded(ctx, args(raw), &buf)
-	if buf.Len() == 0 {
-		return errorEnvelope(t.name, err), true
-	}
-	return buf.String(), err != nil
-}
-
-// A panic in a runner would take the whole server down with it, and the client
-// would see the pipe close rather than which tool broke.
-func (t tool) guarded(ctx context.Context, a args, out io.Writer) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("panic: %v", r)
-		}
-	}()
-	return t.run(ctx, a, out)
-}
-
-// Reuses the runner's writer so the fallback cannot drift into a second envelope
-// shape; a tool only lands here when it panicked before writing its own.
-func errorEnvelope(command string, err error) string {
-	if err == nil {
-		err = errors.New("produced no result")
-	}
-	var b bytes.Buffer
-	_ = runner.EmitJSON(&b, command, nil, err)
-	return b.String()
-}
-
-type args map[string]any
-
-func (a args) str(key, def string) string {
-	if s, ok := a[key].(string); ok && s != "" {
-		return s
-	}
-	return def
-}
-
-func (a args) truthy(key string) bool {
-	b, _ := a[key].(bool)
-	return b
-}
-
-// truthyOr keeps a flag whose CLI default is true (dev --watch) at true when the
-// caller says nothing, instead of flipping it to Go's zero value.
-func (a args) truthyOr(key string, def bool) bool {
-	if b, ok := a[key].(bool); ok {
-		return b
-	}
-	return def
-}
-
-func (a args) num(key string, def int) int {
-	if f, ok := a[key].(float64); ok && f > 0 {
-		return int(f)
-	}
-	return def
-}
-
-func (a args) strs(key string) []string {
-	raw, ok := a[key].([]any)
-	if !ok {
-		return nil
-	}
-	out := make([]string, 0, len(raw))
-	for _, v := range raw {
-		if s, ok := v.(string); ok && s != "" {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
-func obj(props map[string]any) map[string]any {
-	return map[string]any{"type": "object", "properties": props}
-}
-
-func strProp(desc string) map[string]any {
-	return map[string]any{"type": "string", "description": desc}
-}
-
-func boolProp(desc string) map[string]any {
-	return map[string]any{"type": "boolean", "description": desc}
-}
-
-func intProp(desc string) map[string]any {
-	return map[string]any{"type": "integer", "description": desc}
-}
-
-func listProp(desc string) map[string]any {
-	return map[string]any{
-		"type":        "array",
-		"items":       map[string]any{"type": "string"},
-		"description": desc,
-	}
-}
-
-func dirProp() map[string]any {
-	return strProp("project root; defaults to the working directory")
-}
 
 func builtinTools(s *Server) []tool {
 	return []tool{
@@ -284,16 +168,36 @@ func builtinTools(s *Server) []tool {
 			timeout:     30 * time.Minute,
 			description: "Scaffold a new scorix project: manifest, proto surface, SQL schema, Go entrypoint and the frontend shell.",
 			schema: obj(map[string]any{
-				"name": strProp("app name; defaults to the directory name"),
-				"dir":  dirProp(),
+				"name":  strProp("app name; defaults to the directory name"),
+				"dir":   dirProp(),
+				"shell": strProp("frontend scaffold: nextjs | vite-react | vanilla-ts (default nextjs)"),
 			}),
 			run: func(ctx context.Context, a args, out io.Writer) error {
 				return runner.Init(ctx, runner.InitOptions{
 					JSONOut: out,
 					Name:    a.str("name", ""),
 					Dir:     a.str("dir", "."),
+					Shell:   a.str("shell", ""),
 				})
 			},
+		},
+		{
+			name: "scorix_surface",
+			description: "The IPC surface the proto declares: commands with their arity and middleware, events with their direction and both helper names. " +
+				"Reads the proto and writes nothing, so it carries no drift verdict - ask this instead of `generate proto --check` when you only want the contract.",
+			schema: obj(map[string]any{
+				"dir":   dirProp(),
+				"proto": strProp("proto path; defaults to idl/app.proto, or scorix.yaml's proto: key"),
+			}),
+			run: func(ctx context.Context, a args, out io.Writer) error {
+				return runner.Surface(ctx, runner.SurfaceOptions{
+					JSONOut: out,
+					Dir:     a.str("dir", "."),
+					Proto:   a.str("proto", ""),
+				})
+			},
+			// One file parse, no subprocess: it answers while a build holds the turn.
+			direct: true,
 		},
 		{
 			name: "scorix_status",
@@ -306,8 +210,9 @@ func builtinTools(s *Server) []tool {
 			},
 		},
 		{
-			name:        "scorix_dev_start",
-			description: "Start the dev loop (frontend dev server plus rebuild-and-relaunch on Go changes) as a background job and return at once. Read its output with scorix_dev_status.",
+			name: "scorix_dev_start",
+			description: "Start the dev loop (frontend dev server plus rebuild-and-relaunch on Go changes) as a background job and return at once. Read its output with scorix_dev_status. " +
+				"The app it launches opens a loopback control socket, so scorix_app_eval, scorix_app_dom, scorix_app_input and scorix_app_call can drive the running window.",
 			schema: obj(map[string]any{
 				"dir":    dirProp(),
 				"url":    strProp("use an already-running frontend dev server instead of spawning one"),
@@ -332,58 +237,116 @@ func builtinTools(s *Server) []tool {
 			run:    func(_ context.Context, a args, out io.Writer) error { return s.dev.status(a, out) },
 			direct: true,
 		},
+		{
+			name: "scorix_app_status",
+			description: "Whether a running app is reachable on its dev control socket, and what it has bound. " +
+				"Ask this first: the other scorix_app_* tools need that socket, and the app opens it only under SCORIX_DEV_CONTROL.",
+			schema: obj(map[string]any{"dir": dirProp()}),
+			run: func(ctx context.Context, a args, out io.Writer) error {
+				return runner.AppControl(ctx, runner.AppControlOptions{JSONOut: out, Dir: a.str("dir", "."), Op: "status"})
+			},
+			direct: true,
+		},
+		{
+			name:        "scorix_app_eval",
+			description: "Evaluate JavaScript in the running app's window and return the value. A strict CSP can refuse eval; scorix_app_dom and scorix_app_input do not need it.",
+			schema: obj(map[string]any{
+				"dir":  dirProp(),
+				"code": strProp("the expression to evaluate, in page context"),
+			}),
+			run: func(ctx context.Context, a args, out io.Writer) error {
+				return runner.AppControl(ctx, runner.AppControlOptions{JSONOut: out, Dir: a.str("dir", "."), Op: "eval",
+					Args: map[string]any{"code": a.str("code", "")}})
+			},
+		},
+		{
+			name:        "scorix_app_dom",
+			description: "Match a CSS selector in the running app and return each node's tag, text, attributes and on-screen box. A zero-area box is how an element nobody can click looks.",
+			schema: obj(map[string]any{
+				"dir":      dirProp(),
+				"selector": strProp("CSS selector"),
+				"limit":    intProp("how many nodes to return; default 20"),
+			}),
+			run: func(ctx context.Context, a args, out io.Writer) error {
+				return runner.AppControl(ctx, runner.AppControlOptions{JSONOut: out, Dir: a.str("dir", "."), Op: "dom",
+					Args: map[string]any{"selector": a.str("selector", ""), "limit": a.num("limit", 20)}})
+			},
+		},
+		{
+			name:        "scorix_app_input",
+			description: "Click or type into an element of the running app. These are synthesized DOM events, so they drive the page but not a native menu or the OS focus.",
+			schema: obj(map[string]any{
+				"dir":      dirProp(),
+				"selector": strProp("CSS selector of the target element"),
+				"action":   strProp("click (default) | type"),
+				"text":     strProp("what to type, for action=type"),
+				"clear":    boolProp("replace the field's value instead of appending"),
+			}),
+			run: func(ctx context.Context, a args, out io.Writer) error {
+				return runner.AppControl(ctx, runner.AppControlOptions{JSONOut: out, Dir: a.str("dir", "."), Op: "input",
+					Args: map[string]any{"selector": a.str("selector", ""), "action": a.str("action", "click"),
+						"text": a.str("text", ""), "clear": a.truthy("clear")}})
+			},
+		},
+		{
+			name:        "scorix_app_call",
+			description: "Invoke a command the running app has bound, by its IPC name, and return the reply. With no name it lists what is bound - which is what the frontend may call.",
+			schema: obj(map[string]any{
+				"dir":     dirProp(),
+				"name":    strProp("IPC command name, e.g. todo:list; omit to list them"),
+				"payload": strProp("JSON request body"),
+			}),
+			run: func(ctx context.Context, a args, out io.Writer) error {
+				name := a.str("name", "")
+				if name == "" {
+					return runner.AppControl(ctx, runner.AppControlOptions{JSONOut: out, Dir: a.str("dir", "."), Op: "commands"})
+				}
+				req := map[string]any{"name": name}
+				if p := a.str("payload", ""); p != "" {
+					// Straight into RawMessage, a malformed payload fails inside
+					// json.Marshal and reads as an internal error, not as bad input.
+					if !json.Valid([]byte(p)) {
+						return runner.EmitJSON(out, "app call", nil, fmt.Errorf("payload is not JSON: %s", p))
+					}
+					req["payload"] = json.RawMessage(p)
+				}
+				return runner.AppControl(ctx, runner.AppControlOptions{JSONOut: out, Dir: a.str("dir", "."), Op: "call", Args: req})
+			},
+		},
+		{
+			name:        "scorix_app_window",
+			description: "Drive the running app's native window: show, hide, focus, maximize, restore, resize or retitle, and read back its box and state. A bare call only reports. Web mode has no native window to drive.",
+			schema: obj(map[string]any{
+				"dir":    dirProp(),
+				"action": strProp("info (default) | show | hide | focus | maximize | restore | resize | title"),
+				"w":      intProp("width, for action=resize"),
+				"h":      intProp("height, for action=resize"),
+				"title":  strProp("new title, for action=title"),
+			}),
+			run: func(ctx context.Context, a args, out io.Writer) error {
+				return runner.AppControl(ctx, runner.AppControlOptions{JSONOut: out, Dir: a.str("dir", "."), Op: "window",
+					Args: map[string]any{"action": a.str("action", "info"), "w": a.num("w", 0),
+						"h": a.num("h", 0), "title": a.str("title", "")}})
+			},
+		},
+		{
+			name:        "scorix_app_emit",
+			description: "Emit an event to every client of the running app, so a frontend that only listens for events can be driven without binding a command. There is no wait-for-event counterpart yet.",
+			schema: obj(map[string]any{
+				"dir":  dirProp(),
+				"name": strProp("event topic, e.g. todo:changed"),
+				"data": strProp("JSON payload"),
+			}),
+			run: func(ctx context.Context, a args, out io.Writer) error {
+				req := map[string]any{"name": a.str("name", "")}
+				if d := a.str("data", ""); d != "" {
+					if !json.Valid([]byte(d)) {
+						return runner.EmitJSON(out, "app emit", nil, fmt.Errorf("data is not JSON: %s", d))
+					}
+					req["data"] = json.RawMessage(d)
+				}
+				return runner.AppControl(ctx, runner.AppControlOptions{JSONOut: out, Dir: a.str("dir", "."), Op: "emit", Args: req})
+			},
+		},
 	}
-}
-
-// checkArgs rejects an argument whose JSON type contradicts the schema the tool
-// published. Ignoring it instead is worse than an error: a dir that is not a
-// string falls back to "." and the command runs against the wrong directory.
-func checkArgs(schema map[string]any, given map[string]any) error {
-	props, _ := schema["properties"].(map[string]any)
-	for key, val := range given {
-		spec, ok := props[key].(map[string]any)
-		if !ok || val == nil {
-			continue // unknown keys and explicit nulls are the caller's business
-		}
-		want, _ := spec["type"].(string)
-		if !matchesJSONType(want, val) {
-			return fmt.Errorf("argument %q must be %s, got %T", key, want, val)
-		}
-	}
-	return nil
-}
-
-func matchesJSONType(want string, val any) bool {
-	switch want {
-	case "string":
-		_, ok := val.(string)
-		return ok
-	case "boolean":
-		_, ok := val.(bool)
-		return ok
-	case "integer", "number":
-		_, ok := val.(float64)
-		return ok
-	case "array":
-		_, ok := val.([]any)
-		return ok
-	case "object":
-		_, ok := val.(map[string]any)
-		return ok
-	}
-	return true // no declared type: nothing to contradict
-}
-
-// Every tool answers with the runner's envelope, so one schema describes them
-// all; a per-tool `data` shape would be a second copy of what the runner types
-// already say.
-func envelopeSchema() map[string]any {
-	return obj(map[string]any{
-		"command": strProp("the command that ran"),
-		"ok":      boolProp("false when it failed"),
-		"exit":    intProp("0 ok - 1 ran and failed - 2 called wrong - 3 drift found - 4 a required tool is missing"),
-		"kind":    strProp("failure class, present only on failure"),
-		"error":   strProp("what went wrong, present only on failure"),
-		"data":    map[string]any{"type": "object", "description": "per-command result"},
-	})
 }

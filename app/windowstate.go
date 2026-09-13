@@ -21,11 +21,17 @@ type windowState struct {
 
 var stateKeyClean = regexp.MustCompile(`[^A-Za-z0-9._-]`)
 
-func (a *App) windowStatePath(key string) string {
-	name := a.cfg.App.Name
-	if name == "" {
-		name = a.opts.Identifier
+// Keys the per-app data dir. The dev control file resolves the same way, in the
+// CLI too, so the three must not drift apart.
+func (a *App) appDataName() string {
+	if a.cfg.App.Name != "" {
+		return a.cfg.App.Name
 	}
+	return a.opts.Identifier
+}
+
+func (a *App) windowStatePath(key string) string {
+	name := a.appDataName()
 	file := "window-state.json" // the main window keeps the pre-keyed filename
 	if key != "main" {
 		file = "window-state-" + stateKeyClean.ReplaceAllString(key, "-") + ".json"

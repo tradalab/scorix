@@ -41,6 +41,7 @@ type IPCCommand struct {
 	Reply      string   `json:"reply"`
 	Arity      string   `json:"arity"` // unary | server-stream
 	Middleware []string `json:"middleware,omitempty"`
+	MCP        bool     `json:"mcp,omitempty"` // the @mcp opt-in
 }
 
 type IPCEvent struct {
@@ -121,6 +122,11 @@ type protoRPC struct {
 	EventDir    string // "out" (Go -> JS push, default) | "in" (JS -> Go one-way)
 	EventName   string // wire topic, e.g. "monitor:message"
 	EventGoName string // service-prefixed identifier, e.g. "MonitorMessage"
+
+	// MCP opts this rpc in as a domain tool for an MCP client. Declared here and
+	// carried in the surface; nothing serves it yet, and enrichProto refuses the
+	// shapes a tool call cannot have (an event, or a stream).
+	MCP bool
 }
 
 type protoTemplateData struct {

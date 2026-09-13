@@ -39,7 +39,7 @@ func (a *App) capabilityOf(name string) string {
 }
 
 // Module registers a Scorix module (enabled by default). MUST be called before
-// Run/RunWeb/Handler — modules load+start once at startup; later calls no-op (warned).
+// Run/RunWeb/Handler - modules load+start once at startup; later calls no-op (warned).
 func (a *App) Module(m module.Module) {
 	a.warnIfStarted("Module(" + m.Name() + ")")
 	a.mods.Register(m)
@@ -69,7 +69,7 @@ func (a *App) warnIfStarted(call string) {
 	started := a.started
 	a.mu.Unlock()
 	if started {
-		logger.Warn("app: "+call+" after Run/RunWeb/Handler — modules already started, this has no effect", "call", call)
+		logger.Warn("app: "+call+" after Run/RunWeb/Handler - modules already started, this has no effect", "call", call)
 	}
 }
 
@@ -95,6 +95,9 @@ func (a *App) startModules() error {
 		return err
 	}
 	a.auditAllowlist()
+	// Here rather than in Run so web mode gets it too, and because the socket
+	// needs no window to be useful.
+	a.startDevControl()
 	return nil
 }
 
@@ -124,6 +127,7 @@ func (a *App) resetStarted() {
 }
 
 func (a *App) stopModules() {
+	a.stopDevControl()
 	a.mods.StopAll()
 	a.mods.UnloadAll()
 }

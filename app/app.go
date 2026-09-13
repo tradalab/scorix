@@ -39,6 +39,9 @@ var ErrAlreadyRunning = singleinstance.ErrAlreadyRunning
 //go:embed scorix.js
 var bridgeJS string
 
+//go:embed devctl.js
+var devCtlJS string
+
 type Options struct {
 	Title      string
 	Width      int
@@ -93,6 +96,8 @@ type App struct {
 
 	blobs map[string]blobEntry
 	calls map[string]pendingCall // in-flight reverse RPCs, keyed by frame id
+
+	devctl *devControl // dev-time control socket; nil unless SCORIX_DEV_CONTROL asked for it
 }
 
 func (a *App) OnSystemEvent(evt window.RuntimeEvent, fn func()) {
@@ -461,6 +466,7 @@ func (a *App) Run() error {
 			Center:      true,
 			URL:         mainURL,
 			IconPath:    a.cfg.App.Icon,
+			InitScript:  devControlScript(),
 		}
 		var restored windowState
 		var hadState bool
@@ -791,7 +797,11 @@ func readAsset(fsys fs.FS, name string) ([]byte, string, bool) {
 }
 
 func injectBridge(html []byte) []byte {
-	tag := "<script>" + bridgeJS + "</script>"
+	js := bridgeJS
+	if dev := devControlScript(); dev != "" {
+		js += "\n;" + dev // both are IIFEs, and without the separator the first swallows the second
+	}
+	tag := "<script>" + js + "</script>"
 	s := string(html)
 	if i := strings.Index(strings.ToLower(s), "</head>"); i >= 0 {
 		return []byte(s[:i] + tag + s[i:])

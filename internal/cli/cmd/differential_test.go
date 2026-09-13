@@ -125,6 +125,7 @@ func TestEveryToolAnswersExactlyLikeItsCLICommand(t *testing.T) {
 			"scorix_generate", map[string]any{"kind": "model", "dir": dir, "check": true}},
 		{"test", []string{"test", "-d", dir}, "scorix_test", map[string]any{"dir": dir}},
 		{"lint", []string{"lint", "-d", dir}, "scorix_lint", map[string]any{"dir": dir}},
+		{"surface", []string{"surface", "-d", dir}, "scorix_surface", map[string]any{"dir": dir}},
 	}
 
 	for _, c := range cases {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"sync"
 )
 
@@ -59,6 +60,20 @@ func (r *Registry) rpc(name string) (rpcEntry, bool) {
 	defer r.mu.RUnlock()
 	e, ok := r.rpcs[name]
 	return e, ok
+}
+
+// Invoke already refuses an unknown name, so this exists for the other half: a
+// caller that has to find out what it may ask for, rather than guess and read
+// the refusal.
+func (r *Registry) Names() []string {
+	r.mu.RLock()
+	names := make([]string, 0, len(r.cmds))
+	for name := range r.cmds {
+		names = append(names, name)
+	}
+	r.mu.RUnlock()
+	sort.Strings(names)
+	return names
 }
 
 func (r *Registry) command(name string) (CmdFunc, bool) {

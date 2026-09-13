@@ -2,16 +2,17 @@
 # IPC surface
 
 Generated from `{{ .Proto.Package }}` by `scorix generate proto`. Every name here is
-wire contract; types are the TypeScript names from `@/types`.
+wire contract; types are the TypeScript names from `@/types`. MCP marks a command
+opted in as a domain tool with `@mcp`.
 {{ range .Services }}
 ## {{ .Name }}
 {{ if .RPCs }}
 ### Commands
 
-| Command | Request | Reply | Arity | Middleware |
-|---|---|---|---|---|
+| Command | Request | Reply | Arity | Middleware | MCP |
+|---|---|---|---|---|---|
 {{- range .RPCs }}
-| `{{ .CommandName }}` | `{{ .RequestTSType }}` | `{{ .ResultTSType }}` | {{ .Arity }} | {{ if .Middlewares }}{{ range $i, $m := .Middlewares }}{{ if $i }}, {{ end }}`{{ $m }}`{{ end }}{{ else }}-{{ end }} |
+| `{{ .CommandName }}` | `{{ .RequestTSType }}` | `{{ .ResultTSType }}` | {{ .Arity }} | {{ if .Middlewares }}{{ range $i, $m := .Middlewares }}{{ if $i }}, {{ end }}`{{ $m }}`{{ end }}{{ else }}-{{ end }} | {{ if .MCP }}yes{{ else }}-{{ end }} |
 {{- end }}
 {{ end }}
 {{- if .Events }}

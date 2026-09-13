@@ -21,21 +21,28 @@ func parseProto(src string) (protoFile, error) {
 	}
 
 	middlewareRe := regexp.MustCompile(`@middleware\s+([A-Za-z_][A-Za-z0-9_]*)`)
+	// An annotation must be the WHOLE comment line, not a word inside one: with
+	// `\b` alone, `// see @event-bus design` above an rpc turned it into an event
+	// and dropped it from the command surface, and `// see @mcp-host design` opted
+	// one in as a tool. Measured 2026-09-13; no real app's proto was affected.
+	//
 	// @event [in|out] marks an rpc as a one-way event (default direction: out)
-	eventRe := regexp.MustCompile(`@event\b(?:[ \t]+(in|out))?`)
+	eventRe := regexp.MustCompile(`(?m)^[ \t]*//[ \t]*@event\b(?:[ \t]+(in|out))?[ \t]*\r?$`)
 	// @broadcast is the v2 spelling of a callerless Go->JS push (== @event out)
-	broadcastRe := regexp.MustCompile(`@broadcast\b`)
+	broadcastRe := regexp.MustCompile(`(?m)^[ \t]*//[ \t]*@broadcast[ \t]*\r?$`)
+	// @mcp opts a command in as a domain tool for an MCP client
+	mcpRe := regexp.MustCompile(`(?m)^[ \t]*//[ \t]*@mcp[ \t]*\r?$`)
 
-	// A trailing same-line @event/@broadcast would be captured as the NEXT rpc's
-	// leading comment and silently reclassify it — reject it loudly. Annotation must
-	// END the comment line so prose like `// see @event-bus design` isn't matched.
-	trailingAnno := regexp.MustCompile(`returns\s*\(\s*(?:stream\s+)?[A-Za-z_][A-Za-z0-9_.]*\s*\)[ \t]*;?[ \t]*//[^\n]*@(?:event|broadcast)(?:[ \t]+(?:in|out))?[ \t]*(?:\r?\n|$)`)
+	// A trailing same-line annotation would be captured as the NEXT rpc's leading
+	// comment. The line anchors above already refuse to read it, so without this
+	// guard it would be dropped in silence; reject it loudly instead.
+	trailingAnno := regexp.MustCompile(`returns\s*\(\s*(?:stream\s+)?[A-Za-z_][A-Za-z0-9_.]*\s*\)[ \t]*;?[ \t]*//[^\n]*@(?:event|broadcast|mcp)(?:[ \t]+(?:in|out))?[ \t]*(?:\r?\n|$)`)
 	if m := trailingAnno.FindString(src); m != "" {
-		return pf, fmt.Errorf("proto: @event/@broadcast must be on its own comment line above the rpc, not a trailing comment: %q", strings.TrimSpace(m))
+		return pf, fmt.Errorf("proto: @event/@broadcast/@mcp must be on its own comment line above the rpc, not a trailing comment: %q", strings.TrimSpace(m))
 	}
 
 	// Collect @middleware only from service-header/rpc scopes (below), not a global
-	// scan — else one in an unrelated message comment leaks into every service.
+	// scan - else one in an unrelated message comment leaks into every service.
 	middlewareMap := make(map[string]bool)
 	addMiddleware := func(name string) {
 		if !middlewareMap[name] {
@@ -132,6 +139,7 @@ func parseProto(src string) (protoFile, error) {
 				rpc.IsEvent = true
 				rpc.EventDir = "out"
 			}
+			rpc.MCP = mcpRe.MatchString(commentBlock)
 			svc.RPCs = append(svc.RPCs, rpc)
 		}
 		if len(svc.RPCs) == 0 {

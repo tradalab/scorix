@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/tradalab/scorix/internal/cli/template"
 )
@@ -41,22 +40,11 @@ func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateR
 		return fmt.Errorf("scorix.yaml shell: %w", err)
 	}
 
-	protoPath := opt.Proto
-	// Flag default (untouched by the caller) yields to scorix.yaml's proto: key;
-	// an explicit --proto still wins. Missing/unreadable manifest → keep default.
-	if protoPath == "idl/app.proto" && cfg != nil && cfg.Proto != "" {
-		protoPath = cfg.Proto
-	}
-	if !filepath.IsAbs(protoPath) {
-		protoPath = filepath.Join(root, protoPath)
-	}
+	protoPath := resolveProtoPath(root, opt.Proto, cfg)
 
-	data, err := os.ReadFile(protoPath)
+	pf, err := readProto(protoPath)
 	if err != nil {
-		return fmt.Errorf("read proto: %w", err)
-	}
-	if strings.TrimSpace(string(data)) == "" {
-		return fmt.Errorf("proto file is empty: %s", protoPath)
+		return err
 	}
 
 	modPath, err := readModulePath(filepath.Join(root, "go.mod"))
@@ -64,64 +52,11 @@ func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateR
 		return err
 	}
 
-	pf, err := parseProto(string(data))
+	// Shared with `scorix surface`, so the two can never describe the same proto
+	// differently.
+	outEvents, inEvents, err := enrichProto(&pf)
 	if err != nil {
 		return err
-	}
-	if len(pf.Services) == 0 {
-		return fmt.Errorf("no service found in proto: %s", protoPath)
-	}
-
-	var outEvents, inEvents []protoRPC
-	for i := range pf.Services {
-		svc := &pf.Services[i]
-		svc.Package = lowerCamel(svc.Name)
-		svcExported := exportedName(svc.Name)
-		commands := svc.RPCs[:0]
-		for j := range svc.RPCs {
-			rpc := svc.RPCs[j]
-			// A stream keyword on a one-way event would be silently discarded.
-			if rpc.IsEvent && rpc.Arity != "unary" {
-				return fmt.Errorf("rpc %s.%s is @event/@broadcast and cannot also be a %s; drop the stream keyword or the annotation", svc.Name, rpc.Name, rpc.Arity)
-			}
-			if !rpc.IsEvent && (rpc.Arity == "client-stream" || rpc.Arity == "bidi") {
-				return fmt.Errorf("rpc %s.%s uses the %s arity; codegen emits only unary and server-stream — wire %s by hand with app.RegisterDuplex", svc.Name, rpc.Name, rpc.Arity, rpc.Name)
-			}
-			rpc.LogicName = exportedName(rpc.Name) + "Logic"
-			rpc.MethodName = exportedName(rpc.Name)
-			rpc.FileName = snakeName(rpc.Name) + "_logic.go"
-			rpc.CommandName = svc.Package + ":" + kebabName(rpc.Name)
-			rpc.RequestGoType = typeRef(rpc.RequestType)
-			rpc.ResultGoType = typeRef(rpc.ResponseType)
-			rpc.RequestTSType = tsTypeRef(rpc.RequestType)
-			rpc.ResultTSType = tsTypeRef(rpc.ResponseType)
-			if len(rpc.Middlewares) == 0 {
-				rpc.Middlewares = svc.Middlewares
-			}
-			// Middleware can't wrap a server-stream Sink handler; emitting one anyway
-			// would silently drop an auth gate, so fail closed.
-			if rpc.IsServerStream && len(rpc.Middlewares) > 0 {
-				return fmt.Errorf("rpc %s.%s is a server-stream with @middleware %v; middleware is not supported on streaming handlers yet — remove it, or split the auth check into the handler body", svc.Name, rpc.Name, rpc.Middlewares)
-			}
-			if rpc.IsEvent {
-				// Service-prefix the identifier so rpc names need only be unique
-				// within their service (e.g. Message in both monitor and pubsub).
-				rpc.EventName = rpc.CommandName
-				rpc.EventGoName = rpc.MethodName
-				if !strings.HasPrefix(rpc.EventGoName, svcExported) {
-					rpc.EventGoName = svcExported + rpc.EventGoName
-				}
-				svc.Events = append(svc.Events, rpc)
-				if rpc.EventDir == "in" {
-					inEvents = append(inEvents, rpc)
-				} else {
-					outEvents = append(outEvents, rpc)
-				}
-				continue
-			}
-			commands = append(commands, rpc)
-		}
-		svc.RPCs = commands
 	}
 
 	gen := protoTemplateData{
