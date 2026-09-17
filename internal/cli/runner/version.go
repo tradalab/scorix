@@ -83,6 +83,6 @@ func Upgrade(ctx context.Context, ref string) error {
 	if err := c.Run(); err != nil {
 		return fmt.Errorf("go install %s: %w", target, err)
 	}
-	fmt.Println("==> upgraded — run `scorix version` to confirm")
+	fmt.Println("==> upgraded - run `scorix version` to confirm")
 	return nil
 }

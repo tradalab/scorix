@@ -7,9 +7,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 
 	"github.com/tradalab/scorix/internal/cli/template"
+	"golang.org/x/mod/module"
+	"golang.org/x/mod/semver"
 )
 
 type InitOptions struct {
@@ -91,7 +94,7 @@ func initProject(ctx context.Context, opt InitOptions, res *InitResult) error {
 
 		fmt.Println("==> Adding scorix dependency...")
 
-		pinnedAs = scorixPinVersion(Version().Version)
+		pinnedAs = scorixPinVersion(Version().Version, builtFromCheckout())
 		e1 := exec.CommandContext(ctx, "go", scorixRequireArgs(pinnedAs)...)
 		e1.Dir = root
 		e1.Stderr = os.Stderr
@@ -107,7 +110,7 @@ func initProject(ctx context.Context, opt InitOptions, res *InitResult) error {
 				rel = "../scorix"
 			}
 			rel = filepath.ToSlash(rel)
-			fmt.Printf("==> Detected monorepo layout — replacing scorix with %s\n", rel)
+			fmt.Printf("==> Detected monorepo layout - replacing scorix with %s\n", rel)
 			e2 := exec.CommandContext(ctx, "go", "mod", "edit", "-replace", "github.com/tradalab/scorix="+rel)
 			e2.Dir = root
 			e2.Stderr = os.Stderr
@@ -166,11 +169,31 @@ func initProject(ctx context.Context, opt InitOptions, res *InitResult) error {
 	return nil
 }
 
-func scorixPinVersion(cliVersion string) string {
-	if strings.HasPrefix(cliVersion, "v") {
-		return cliVersion
+// scorixPinVersion pins only a version known to resolve: a tag, or the pseudo-version `go install
+// <module>@<ref>` just fetched (`scorix upgrade main`). A build inside a checkout carries a
+// pseudo-version too, for a commit that may never have been pushed, and "+dirty" matches no revision.
+func scorixPinVersion(cliVersion string, fromCheckout bool) string {
+	if !semver.IsValid(cliVersion) || semver.Build(cliVersion) != "" {
+		return "latest"
 	}
-	return "latest"
+	if fromCheckout && module.IsPseudoVersion(cliVersion) {
+		return "latest"
+	}
+	return cliVersion
+}
+
+// `go install <module>@<ref>` builds from the module cache, which stamps no vcs.* settings.
+func builtFromCheckout() bool {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return false
+	}
+	for _, s := range bi.Settings {
+		if s.Key == "vcs.revision" {
+			return true
+		}
+	}
+	return false
 }
 
 func scorixRequireArgs(pin string) []string {
