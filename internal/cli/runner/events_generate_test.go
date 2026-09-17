@@ -109,7 +109,7 @@ func TestGenerateProto_Events(t *testing.T) {
 			t.Errorf("handler.go registers event %q as a command", banned)
 		}
 	}
-	// An event-only service contributes no commands — importing its (nonexistent)
+	// An event-only service contributes no commands - importing its (nonexistent)
 	// logic package would break the build.
 	if strings.Contains(h, "internal/logic/console") {
 		t.Error("handler.go imports the logic package of an event-only service")

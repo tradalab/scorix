@@ -32,6 +32,6 @@ func (l *{{ .RPC.LogicName }}) {{ .RPC.MethodName }}(req *{{ .RPC.RequestGoType 
 }
 {{- else }}
 func (l *{{ .RPC.LogicName }}) {{ .RPC.MethodName }}(params *{{ .RPC.RequestGoType }}) (*{{ .RPC.ResultGoType }}, error) {
-	return nil, nil
+	return new({{ .RPC.ResultGoType }}), nil
 }
 {{- end }}
