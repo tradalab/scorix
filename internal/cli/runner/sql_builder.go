@@ -11,7 +11,7 @@ import (
 type tableSQL struct {
 	FindOneSQL      string
 	FindAllSQL      string
-	FindManyBaseSQL string // contains literal `?` for IN clause — sqlx.In + Rebind handle dialect at runtime
+	FindManyBaseSQL string // contains literal `?` for IN clause - sqlx.In + Rebind handle dialect at runtime
 
 	InsertSQL    string
 	InsertFields []sqlColumn

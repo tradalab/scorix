@@ -16,7 +16,7 @@ import (
 func TestRenderGeneratedFile_FailureLeavesNoFile(t *testing.T) {
 	dst := filepath.Join(t.TempDir(), "broken.go")
 
-	// A Go file whose template renders to non-compiling source — format.Source
+	// A Go file whose template renders to non-compiling source - format.Source
 	// fails, so renderGeneratedFile must return an error and never write.
 	_, err := renderGeneratedFile(generatedFile{
 		Path:     dst,
@@ -224,10 +224,10 @@ CREATE TABLE doc (
 		t.Fatalf("expected exactly 1 table, got %d", len(tables))
 	}
 	tbl := tables[0]
-	// `body` is the LAST real column — it only survives if body extraction did
+	// `body` is the LAST real column - it only survives if body extraction did
 	// not stop at an earlier `)`.
 	if findColumnByName(&tbl, "body") == nil {
-		t.Fatalf("body column missing — body extraction terminated early; cols=%+v", tbl.Columns)
+		t.Fatalf("body column missing - body extraction terminated early; cols=%+v", tbl.Columns)
 	}
 	if c := findColumnByName(&tbl, "tags"); c == nil || c.DefaultValue != "(json_array())" {
 		t.Fatalf("tags DEFAULT expression mis-bounded: %+v", c)

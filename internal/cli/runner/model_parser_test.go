@@ -110,7 +110,7 @@ func TestParseSQLSchema_SQLite(t *testing.T) {
 	if memb.PKGoFields[0] != "UserID" || memb.PKGoFields[1] != "RoleID" {
 		t.Errorf("membership PK go fields = %v, want [UserID RoleID]", memb.PKGoFields)
 	}
-	// Should have exactly 2 columns — FOREIGN KEY clauses must not become columns.
+	// Should have exactly 2 columns - FOREIGN KEY clauses must not become columns.
 	if len(memb.Columns) != 2 {
 		t.Errorf("membership columns = %d, want 2", len(memb.Columns))
 	}
@@ -423,7 +423,7 @@ CREATE TABLE IF NOT EXISTS t (
 			}
 			for _, name := range tc.notCol {
 				if _, ok := byName[name]; ok {
-					t.Errorf("spurious column %q — a definition was wrongly split", name)
+					t.Errorf("spurious column %q - a definition was wrongly split", name)
 				}
 			}
 		})
@@ -457,7 +457,7 @@ CREATE TABLE IF NOT EXISTS foo (
 		}
 	}
 	if !hasA {
-		t.Error("first occurrence should win — column `a` missing")
+		t.Error("first occurrence should win - column `a` missing")
 	}
 }
 

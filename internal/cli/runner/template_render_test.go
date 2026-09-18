@@ -118,7 +118,7 @@ CREATE TABLE IF NOT EXISTS connection (
 		// Sequential positional placeholders in INSERT/UPDATE.
 		`VALUES ($1,$2,$3,$4,$5,$6,$7)`,
 		`WHERE \"id\" = $6`, // UPDATE WHERE pos = number-of-SET-cols + 1
-		// FindMany STILL uses ? — sqlx.In + Rebind handles the conversion
+		// FindMany STILL uses ? - sqlx.In + Rebind handles the conversion
 		`IN (?)`,
 		`sqlx.In(connectionFindManySQL, ids)`,
 		`conn.Rebind(query)`,

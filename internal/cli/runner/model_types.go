@@ -17,7 +17,7 @@ type GenerateModelOptions struct {
 	JSONOut io.Writer // non-nil switches the result to one JSON document on this writer
 }
 
-// sqlTable: per-table CRUD only — callers stitch relations in internal/logic/.
+// sqlTable: per-table CRUD only - callers stitch relations in internal/logic/.
 type sqlTable struct {
 	Name      string
 	GoName    string
@@ -30,7 +30,7 @@ type sqlTable struct {
 	HasNullable  bool
 	HasDeletedAt bool
 
-	PKGoType   string // first PK column's Go type — composite PKs rejected by validateTableForCodegen
+	PKGoType   string // first PK column's Go type - composite PKs rejected by validateTableForCodegen
 	PKGoName   string
 	PKGoFields []string
 	PKSqlNames []string
