@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"errors"
+
 	"github.com/spf13/cobra"
 	"github.com/tradalab/scorix/internal/cli/runner"
 )
@@ -10,6 +12,9 @@ var iconCmd = &cobra.Command{
 	Short: "Generate multi-size PNG icons and a Windows .ico from one source (.svg/.png)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		src, _ := cmd.Flags().GetString("source")
+		if src == "" {
+			return runner.UsageError(errors.New("icon needs a source image: scorix icon -s app.svg"))
+		}
 		out, _ := cmd.Flags().GetString("out")
 		opts := runner.IconOptions{Source: src, OutDir: out}
 		// Changed() distinguishes "flag absent → default" from "flag passed → honor exactly".
@@ -33,5 +38,4 @@ func init() {
 	iconCmd.Flags().StringP("out", "o", "", "output directory (default: source's directory)")
 	iconCmd.Flags().IntSlice("sizes", nil, "PNG sizes to emit (default: 16,32,48,128,256,512,1024)")
 	iconCmd.Flags().IntSlice("ico", nil, "sizes to bundle into icon.ico (default: 16,32,48,128,256; pass empty to skip)")
-	_ = iconCmd.MarkFlagRequired("source")
 }

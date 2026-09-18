@@ -52,7 +52,11 @@ func appControlCall(ctx context.Context, opt AppControlOptions) (*appControlResu
 	if err != nil {
 		return nil, err
 	}
-	return appControlAt(ctx, AppControlPath(root), opt)
+	path, err := AppControlPath(root)
+	if err != nil {
+		return nil, err
+	}
+	return appControlAt(ctx, path, opt)
 }
 
 // Split from the path resolution so a test can drive the wire against a control
@@ -110,15 +114,19 @@ func appControlAt(ctx context.Context, path string, opt AppControlOptions) (*app
 // Reads the `app:` block, the same one the running app reads from its embedded
 // manifest. Deriving it from the top-level `name:` instead would point at another
 // directory the moment someone edits one of the two.
-func AppControlPath(root string) string {
+func AppControlPath(root string) (string, error) {
+	cfg, err := loadOptionalProjectConfig(filepath.Join(root, "scorix.yaml"))
+	if err != nil {
+		return "", err
+	}
 	name := ""
-	if cfg, err := loadProjectConfig(filepath.Join(root, "scorix.yaml")); err == nil && cfg != nil && cfg.App != nil {
+	if cfg != nil && cfg.App != nil {
 		name = cfg.App.Name
 		if name == "" {
 			name = cfg.App.Identifier
 		}
 	}
-	return filepath.Join(module.DataDir(name), devctl.FileName)
+	return filepath.Join(module.DataDir(name), devctl.FileName), nil
 }
 
 func readDevControlFile(path string) (devctl.File, error) {

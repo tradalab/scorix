@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -88,7 +89,7 @@ func bump(ctx context.Context, opt BumpOptions, res *BumpResult) error {
 
 	if opt.Check {
 		res.Pins = pins
-		return checkPins(root, pins, floors, res)
+		return checkPins(root, opt.Version, pins, floors, res)
 	}
 	if opt.Version == "" {
 		return UsageError(fmt.Errorf("bump needs the version to move to, `latest` included: scorix bump vX.Y.Z"))
@@ -216,8 +217,17 @@ func lineOf(text string, offset int) int {
 	return strings.Count(text[:offset], "\n") + 1
 }
 
-// Offline on purpose: a guard that needs the network gets switched off.
-func checkPins(root string, pins, floors []BumpPin, res *BumpResult) error {
+// Offline on purpose: a guard that needs the network gets switched off. `want` is the
+// version asked about, "" for none: answered from the pins alone, `bump vX --check`
+// passes for any vX.
+func checkPins(root, want string, pins, floors []BumpPin, res *BumpResult) error {
+	// Offline, so `latest` cannot be resolved here - and must not pass as "nothing to compare".
+	if want == "latest" {
+		return UsageError(errors.New("--check cannot resolve `latest` without the network: name the version to compare against"))
+	}
+	if want != "" && !semver.IsValid(want) {
+		return UsageError(fmt.Errorf("%q is not a version: --check compares the pins against a vX.Y.Z", want))
+	}
 	versions := map[string][]BumpPin{}
 	for _, p := range pins {
 		if p.Kind == "go" {
@@ -242,6 +252,10 @@ func checkPins(root string, pins, floors []BumpPin, res *BumpResult) error {
 	var pinned string
 	for v := range versions {
 		pinned = v
+	}
+	if want != "" && want != pinned {
+		return exitErrorf(ExitDrift, "behind",
+			"the app is on %s, not %s: run `scorix bump %s`", pinned, want, want)
 	}
 	fmt.Printf("==> every pin says %s\n", pinned)
 	for _, f := range floors {

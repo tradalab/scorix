@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -126,6 +127,53 @@ func TestBumpCheckCannotCompareACLIBuiltFromACheckout(t *testing.T) {
 			t.Errorf("CLI %q made --check fail: %v", cli, err)
 		}
 	}
+}
+
+// In CI, `bump vX --check` reads as "is this app on vX".
+func TestBumpCheckAnswersAboutTheVersionItWasAsked(t *testing.T) {
+	root := bumpApp(t, "v0.28.0", "1.27.0")
+
+	fakeTools(t, "v0.28.0", "", "", "")
+	if err := Bump(context.Background(), BumpOptions{Dir: root, Version: "v0.28.0", Check: true}); err != nil {
+		t.Fatalf("the app is on v0.28.0 and --check v0.28.0 failed: %v", err)
+	}
+
+	fakeTools(t, "v0.28.0", "", "", "")
+	err := Bump(context.Background(), BumpOptions{Dir: root, Version: "v0.29.0", Check: true})
+	if code := exitCode(err); code != ExitDrift {
+		t.Fatalf("--check v0.29.0 on an app pinned to v0.28.0 exited %d, want Drift: %v", code, err)
+	}
+	if !strings.Contains(err.Error(), "v0.29.0") || !strings.Contains(err.Error(), "v0.28.0") {
+		t.Errorf("the error names neither side: %v", err)
+	}
+
+	// A typo is Usage, not Drift: CI branches on which.
+	fakeTools(t, "v0.28.0", "", "", "")
+	err = Bump(context.Background(), BumpOptions{Dir: root, Version: "not-a-version", Check: true})
+	if code := exitCode(err); code != ExitUsage {
+		t.Errorf("--check with an argument that is not a version exited %d, want Usage: %v", code, err)
+	}
+
+	fakeTools(t, "v0.28.0", "", "", "")
+	err = Bump(context.Background(), BumpOptions{Dir: root, Version: "latest", Check: true})
+	if code := exitCode(err); code != ExitUsage {
+		t.Errorf("--check latest exited %d, want Usage: %v", code, err)
+	}
+	// "not a version" would be wrong: bump itself accepts latest.
+	if err != nil && !strings.Contains(err.Error(), "network") {
+		t.Errorf("--check latest blames the argument instead of the missing network: %v", err)
+	}
+}
+
+func exitCode(err error) int {
+	if err == nil {
+		return ExitOK
+	}
+	var ee *ExitError
+	if errors.As(err, &ee) {
+		return ee.Code
+	}
+	return ExitFailed
 }
 
 func TestBumpRewritesEveryPinAndLeavesTheFloorAlone(t *testing.T) {
@@ -294,11 +342,7 @@ func TestBumpWithoutAVersionIsAUsageError(t *testing.T) {
 	root := bumpApp(t, "v0.28.0", "1.27.0")
 	fakeTools(t, "v0.28.0", "", "", "")
 	err := Bump(context.Background(), BumpOptions{Dir: root})
-	var code int
-	if ee, ok := err.(*ExitError); ok {
-		code = ee.Code
-	}
-	if code != ExitUsage {
+	if code := exitCode(err); code != ExitUsage {
 		t.Fatalf("err = %v (exit %d), want a usage error", err, code)
 	}
 }

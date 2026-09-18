@@ -10,9 +10,7 @@ import (
 	"github.com/tradalab/scorix/internal/cli/runner"
 )
 
-var (
-	cfgFile string
-)
+var ()
 
 // Execute maps a failure onto the documented exit statuses. The message goes to
 // STDERR: in --json mode stdout already carries the result document, and a
@@ -47,5 +45,4 @@ func init() {
 	rootCmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 		return runner.UsageError(err)
 	})
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config path (optional)")
 }

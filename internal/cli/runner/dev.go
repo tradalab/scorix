@@ -58,6 +58,11 @@ func Dev(ctx context.Context, opt DevOptions) error {
 	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
 		return fmt.Errorf("scorix.yaml not found in %s", root)
 	}
+	// Present, so it must parse: both reads below fall back silently, dropping the app's
+	// build tags and dev port.
+	if _, err := loadProjectConfig(cfgPath); err != nil {
+		return fmt.Errorf("load scorix.yaml: %w", err)
+	}
 
 	shellDir := filepath.Join(root, "shell")
 	hasShell := false

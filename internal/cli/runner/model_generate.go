@@ -3,10 +3,12 @@ package runner
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"go/format"
 	"go/parser"
 	"go/token"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path"
@@ -111,6 +113,19 @@ func (c *CheckConfig) lintScripts() []string {
 	return c.Lint.Scripts
 }
 
+// Absent is a choice and the defaults apply; present but unparseable is a broken file,
+// and falling back to the defaults would read a proto the app never named.
+func loadOptionalProjectConfig(path string) (*ProjectConfig, error) {
+	cfg, err := loadProjectConfig(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load scorix.yaml: %w", err)
+	}
+	return cfg, nil
+}
+
 func loadProjectConfig(path string) (*ProjectConfig, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -138,9 +153,10 @@ func GenerateModel(ctx context.Context, opt GenerateModelOptions) error {
 // the visible event.
 func refuseOrphanSchemaGen(root, schemaDir string) error {
 	var stale string
-	_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	// Fail closed: this guard is the only thing that reports a stale file.
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil
+			return err
 		}
 		if info.IsDir() {
 			switch info.Name() {
@@ -166,6 +182,9 @@ func refuseOrphanSchemaGen(root, schemaDir string) error {
 		stale += filepath.ToSlash(rel)
 		return nil
 	})
+	if err != nil {
+		return fmt.Errorf("scan %s for a stale schema_gen.go: %w", root, err)
+	}
 	if stale == "" {
 		return nil
 	}
@@ -384,8 +403,12 @@ func generateModel(ctx context.Context, opt GenerateModelOptions, res *GenerateR
 			// Drop legacy internal/model/schema_gen.go to avoid duplicate SchemaSQL across packages.
 			legacyPath := filepath.Join(modelDir, "schema_gen.go")
 			if legacyPath != schemaGenFile {
-				if err := os.Remove(legacyPath); err == nil {
+				switch err := os.Remove(legacyPath); {
+				case err == nil:
 					fmt.Printf("      removed legacy: internal/model/schema_gen.go\n")
+				case !errors.Is(err, fs.ErrNotExist):
+					// Not fatal - the orphan guard refuses the next run - but not silent.
+					fmt.Printf("      note: could not remove legacy internal/model/schema_gen.go (%v) - delete it by hand\n", err)
 				}
 			}
 		}

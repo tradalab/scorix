@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -208,6 +209,10 @@ func loadUpdatePrivateKey(env string) (ed25519.PrivateKey, error) {
 	return ed25519.PrivateKey(raw), nil
 }
 
+// Each must also map to a platform in platformKeysForArtifact: one that does not drops
+// out of the appcast with only a warning.
+var installerExts = []string{".msi", ".dmg", ".appimage"}
+
 func listInstallers(dir string) ([]string, error) {
 	var out []string
 	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
@@ -217,8 +222,7 @@ func listInstallers(dir string) ([]string, error) {
 		if d.IsDir() {
 			return nil
 		}
-		switch strings.ToLower(filepath.Ext(d.Name())) {
-		case ".msi", ".dmg", ".appimage":
+		if slices.Contains(installerExts, strings.ToLower(filepath.Ext(d.Name()))) {
 			out = append(out, p)
 		}
 		return nil

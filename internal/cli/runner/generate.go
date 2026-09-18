@@ -30,7 +30,10 @@ func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateR
 	if err != nil {
 		return err
 	}
-	cfg, _ := loadProjectConfig(filepath.Join(root, "scorix.yaml"))
+	cfg, err := loadOptionalProjectConfig(filepath.Join(root, "scorix.yaml"))
+	if err != nil {
+		return err
+	}
 	shellName := ""
 	if cfg != nil && cfg.Shell != nil {
 		shellName = cfg.Shell.Type

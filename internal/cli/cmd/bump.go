@@ -15,7 +15,7 @@ var bumpCmd = &cobra.Command{
 		"runs the checks the release rule asks for. `upgrade` installs the CLI on this machine;\n" +
 		"`bump` moves a repo, and refuses unless the CLI already is the target version.\n\n" +
 		"--check writes nothing and needs no network: it answers whether the pins agree with\n" +
-		"each other and with this CLI.",
+		"each other and with this CLI, and - when given a version - whether they are on it.",
 	Args: cobra.MaximumNArgs(1),
 }
 
@@ -27,7 +27,7 @@ var (
 func init() {
 	rootCmd.AddCommand(bumpCmd)
 	bumpCmd.Flags().StringVarP(&bumpDir, "dir", "d", ".", "project root directory")
-	bumpCmd.Flags().BoolVar(&bumpCheck, "check", false, "report whether the pins agree; write nothing")
+	bumpCmd.Flags().BoolVar(&bumpCheck, "check", false, "report whether the pins agree, and match [version] if given; write nothing")
 	jsonCommand(bumpCmd, func(cmd *cobra.Command, out io.Writer) error {
 		var version string
 		if args := cmd.Flags().Args(); len(args) == 1 {

@@ -9,15 +9,12 @@ import (
 	"github.com/tradalab/scorix/internal/cli/runner/dialect"
 )
 
-// --- M16: all-or-nothing staging ---------------------------------------------
-
-// TestRenderGeneratedFile_FailureLeavesNoFile: a render/format error surfaces
-// before any write, so a batch caller aborts with the filesystem untouched.
+// A render or format error surfaces before any write, so a batch caller aborts with
+// the filesystem untouched.
 func TestRenderGeneratedFile_FailureLeavesNoFile(t *testing.T) {
 	dst := filepath.Join(t.TempDir(), "broken.go")
 
-	// A Go file whose template renders to non-compiling source - format.Source
-	// fails, so renderGeneratedFile must return an error and never write.
+	// Renders to source that format.Source rejects.
 	_, err := renderGeneratedFile(generatedFile{
 		Path:     dst,
 		Template: "package {{.Bad}} this is not go",
@@ -33,8 +30,8 @@ func TestRenderGeneratedFile_FailureLeavesNoFile(t *testing.T) {
 	}
 }
 
-// TestRenderThenCommit_Batch_AbortsBeforeAnyWrite: in the two-pass batch used by
-// GenerateProto/GenerateModel, if any render fails no file in the batch commits.
+// In the two-pass batch behind GenerateProto/GenerateModel, one failed render must
+// keep every other file in the batch from committing.
 func TestRenderThenCommit_Batch_AbortsBeforeAnyWrite(t *testing.T) {
 	dir := t.TempDir()
 	good := filepath.Join(dir, "good.txt")
@@ -45,7 +42,6 @@ func TestRenderThenCommit_Batch_AbortsBeforeAnyWrite(t *testing.T) {
 		{Path: bad, Template: "package main\nfunc {{.Name}}( {", Data: struct{ Name string }{"f"}, Go: true, Force: true},
 	}
 
-	// Pass 1: render all.
 	var staged []stagedFile
 	var renderErr error
 	for _, f := range files {
@@ -60,14 +56,12 @@ func TestRenderThenCommit_Batch_AbortsBeforeAnyWrite(t *testing.T) {
 		t.Fatal("expected a render error from the malformed Go file")
 	}
 
-	// Because render failed, the caller never reaches the commit pass. Assert
-	// the would-be-good file was NOT written.
+	// Render failed, so the caller never reaches the commit pass.
 	if _, err := os.Stat(good); !os.IsNotExist(err) {
 		t.Fatalf("good file must not be written when a sibling render fails: stat err %v", err)
 	}
 }
 
-// TestCommitStagedFile_Skip is a no-op write.
 func TestCommitStagedFile_Skip(t *testing.T) {
 	dst := filepath.Join(t.TempDir(), "skip.txt")
 	if err := commitStagedFile(stagedFile{Path: dst, Action: "skipped", NeedsWrite: false}); err != nil {
@@ -78,8 +72,6 @@ func TestCommitStagedFile_Skip(t *testing.T) {
 	}
 }
 
-// TestRenderGeneratedFile_SkipExisting preserves the skip-when-exists-and-not-forced
-// semantic, and Force overwrites.
 func TestRenderGeneratedFile_SkipExisting(t *testing.T) {
 	dst := filepath.Join(t.TempDir(), "exists.txt")
 	if err := os.WriteFile(dst, []byte("original"), 0o644); err != nil {
@@ -101,7 +93,6 @@ func TestRenderGeneratedFile_SkipExisting(t *testing.T) {
 		t.Fatalf("skipped file must keep original content, got %q", b)
 	}
 
-	// Force → updated, content replaced.
 	s, err = renderGeneratedFile(generatedFile{Path: dst, Template: "new", Force: true})
 	if err != nil {
 		t.Fatal(err)
@@ -118,19 +109,16 @@ func TestRenderGeneratedFile_SkipExisting(t *testing.T) {
 	}
 }
 
-// TestGenerateProto_RenderFailureWritesNothing: end-to-end guard that a failing
-// render mid-batch (invalid proto → no valid Go) leaves no half-written project.
+// End to end: a render that fails mid-batch must leave no half-written project.
 func TestGenerateProto_RenderFailureWritesNothing(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, "go.mod"), "module example.com/app\n\ngo 1.26\n")
-	// Empty proto → GenerateProto errors before producing files.
 	mustWrite(t, filepath.Join(root, "idl", "app.proto"), "")
 
 	err := GenerateProto(context.Background(), GenerateProtoOptions{Dir: root})
 	if err == nil {
 		t.Fatal("expected error for empty proto")
 	}
-	// Nothing under internal/ should have been created.
 	if _, statErr := os.Stat(filepath.Join(root, "internal", "types", "types.go")); !os.IsNotExist(statErr) {
 		t.Fatalf("no Go output should exist after a failed generation: %v", statErr)
 	}
@@ -145,8 +133,6 @@ func mustWrite(t *testing.T, path, content string) {
 		t.Fatal(err)
 	}
 }
-
-// --- M17: DEFAULT detected as a whole word -----------------------------------
 
 func TestParseColumn_IsDefaultNotTreatedAsDefault(t *testing.T) {
 	d := dialect.MustNew("sqlite")
@@ -205,11 +191,7 @@ func TestIndexKeyword_WholeWord(t *testing.T) {
 	}
 }
 
-// --- M18: paren-depth body extraction ----------------------------------------
-
-// TestParseTable_BodyWithEmbeddedCloseParen ensures a `);` inside the body (here
-// inside a DEFAULT expression and a CHECK) does not prematurely terminate the
-// table body.
+// A `)` inside a DEFAULT expression or a CHECK must not end the table body early.
 func TestParseTable_BodyWithEmbeddedCloseParen(t *testing.T) {
 	d := dialect.MustNew("sqlite")
 	tables := parseInline(t, `
@@ -224,8 +206,7 @@ CREATE TABLE doc (
 		t.Fatalf("expected exactly 1 table, got %d", len(tables))
 	}
 	tbl := tables[0]
-	// `body` is the LAST real column - it only survives if body extraction did
-	// not stop at an earlier `)`.
+	// The last column, so it only survives if extraction passed every inner `)`.
 	if findColumnByName(&tbl, "body") == nil {
 		t.Fatalf("body column missing - body extraction terminated early; cols=%+v", tbl.Columns)
 	}
@@ -234,8 +215,7 @@ CREATE TABLE doc (
 	}
 }
 
-// TestParseSchema_MultipleTables ensures multi-statement schemas each parse, and
-// that a `);` inside one table's body does not swallow the following table.
+// A `)` inside one table's body must not swallow the table after it.
 func TestParseSchema_MultipleTables(t *testing.T) {
 	d := dialect.MustNew("sqlite")
 	tables := parseInline(t, `
@@ -261,9 +241,8 @@ CREATE TABLE b (
 	}
 }
 
-// TestParseSchema_CreateTableInStringLiteralIgnored verifies the string-blanking
-// path still protects the scanner: a CREATE TABLE inside a string literal must
-// not be parsed as a real table.
+// A CREATE TABLE inside a string literal is data, and the scanner's string-blanking
+// is what keeps it from becoming a table.
 func TestParseSchema_CreateTableInStringLiteralIgnored(t *testing.T) {
 	d := dialect.MustNew("sqlite")
 	tables := parseInline(t, `
@@ -284,8 +263,6 @@ func tableNames(ts []sqlTable) []string {
 	}
 	return out
 }
-
-// --- M19: doctor go-version parsing ------------------------------------------
 
 func TestParseGoVersion(t *testing.T) {
 	cases := []struct {

@@ -65,3 +65,10 @@ func TestGenerateModelAcceptsSchemaGenBesideItsSchema(t *testing.T) {
 		t.Fatalf("the live schema_gen.go was reported as stale: %v", err)
 	}
 }
+
+func TestOrphanGuardDoesNotPassAScanItCouldNotRun(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "no-such-root")
+	if err := refuseOrphanSchemaGen(missing, filepath.Join(missing, "idl")); err == nil {
+		t.Error("a scan of a root that is not there came back clean")
+	}
+}

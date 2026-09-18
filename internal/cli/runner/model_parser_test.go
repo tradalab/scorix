@@ -83,7 +83,6 @@ func TestParseSQLSchema_SQLite(t *testing.T) {
 	if groupCol.GoName != "GroupID" {
 		t.Errorf("group_id GoName = %q, want GroupID", groupCol.GoName)
 	}
-	// nullable DATETIME → sql.NullTime; non-null DATETIME → time.Time
 	var delCol *sqlColumn
 	for i := range conn.Columns {
 		if conn.Columns[i].Name == "deleted_at" {
@@ -102,7 +101,6 @@ func TestParseSQLSchema_SQLite(t *testing.T) {
 		t.Errorf("setting UniqueColumns = %+v, want [{key}]", setting.UniqueColumns)
 	}
 
-	// --- membership: composite PK, FK clauses ignored ---
 	memb := tables[2]
 	if len(memb.PKGoFields) != 2 {
 		t.Errorf("membership PK fields = %v, want 2", memb.PKGoFields)
@@ -293,21 +291,18 @@ CREATE TABLE IF NOT EXISTS messages (
 	}
 }
 
-// H-CG1 regression: the body splits on top-level commas, not newlines. A def may
-// span lines or share a line, and commas nested in parens (DECIMAL(10,2),
-// CHECK(... IN (1,2)), DEFAULT (json_array(...))) must not split a def.
+// The body splits on top-level commas, not newlines: a def may span lines or share
+// one, and commas nested in parens (DECIMAL(10,2), CHECK(... IN (1,2))) are not splits.
 func TestParseSQLSchema_TopLevelCommaSplit(t *testing.T) {
 	type colWant struct {
 		sqlType string
 		goType  string
 	}
 	cases := []struct {
-		name    string
-		ddl     string
-		wantCol map[string]colWant // sql column name → expected types
-		// columns that must NOT exist (proves a def wasn't wrongly split)
-		notCol []string
-		// exact expected column count
+		name      string
+		ddl       string
+		wantCol   map[string]colWant
+		notCol    []string // names that appear only if a def was wrongly split
 		wantCount int
 	}{
 		{

@@ -137,7 +137,10 @@ func TestAppControlPathFollowsTheAppBlock(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "scorix.yaml"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	path := AppControlPath(root)
+	path, err := AppControlPath(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(path, "runtime-app-name") {
 		t.Errorf("path %q ignores app.name", path)
 	}
@@ -151,7 +154,11 @@ func TestAppControlPathFallsBackToTheIdentifier(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "scorix.yaml"), []byte("app:\n  identifier: com.example.only\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if path := AppControlPath(root); !strings.Contains(path, "com.example.only") {
+	path, err := AppControlPath(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(path, "com.example.only") {
 		t.Errorf("path %q drops the identifier fallback the app uses", path)
 	}
 }

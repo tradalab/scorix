@@ -47,7 +47,10 @@ func surfaceOf(opt SurfaceOptions, res *SurfaceResult) error {
 	if err != nil {
 		return err
 	}
-	cfg, _ := loadProjectConfig(filepath.Join(root, "scorix.yaml"))
+	cfg, err := loadOptionalProjectConfig(filepath.Join(root, "scorix.yaml"))
+	if err != nil {
+		return err
+	}
 	protoPath := resolveProtoPath(root, opt.Proto, cfg)
 
 	pf, err := readProto(protoPath)

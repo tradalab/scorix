@@ -110,7 +110,11 @@ func resolvePackageTargets(root string, opt PackageOptions) ([]PackageTarget, er
 	}
 
 	host := runtime.GOOS
-	if cfg, err := loadProjectConfig(filepath.Join(root, "scorix.yaml")); err == nil && cfg.Package != nil {
+	cfg, err := loadOptionalProjectConfig(filepath.Join(root, "scorix.yaml"))
+	if err != nil {
+		return nil, err
+	}
+	if cfg != nil && cfg.Package != nil {
 		var matched []PackageTarget
 		for _, t := range cfg.Package.Targets {
 			if t.OS == host {
