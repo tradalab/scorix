@@ -250,6 +250,30 @@ func TestBumpNoteNamesTheCallersItTouched(t *testing.T) {
 	}
 }
 
+// `scorix init` writes a one-line require; the six apps have the block form.
+func TestBumpReadsEveryGoModForm(t *testing.T) {
+	root := bumpApp(t, "v0.28.0", "1.27.0")
+	gomod := filepath.Join(root, "go.mod")
+	if err := os.WriteFile(gomod, []byte("module example.com/app\n\ngo 1.27.0\n\n"+
+		"require github.com/tradalab/scorix v0.28.0\n\n"+
+		"replace (\n\tgithub.com/tradalab/scorix => ../scorix\n)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	calls := fakeTools(t, "v0.29.0", "v0.29.0 1.27.0\n", "abc\trefs/tags/v0.29.0\n", "")
+	res := &BumpResult{CLI: "v0.29.0"}
+	said := captureStdout(t, func() {
+		if err := bump(context.Background(), BumpOptions{Dir: root, Version: "v0.29.0"}, res); err != nil {
+			t.Fatalf("a one-line require was refused: %v", err)
+		}
+	})
+	if !sawArg(calls, "-require=github.com/tradalab/scorix@v0.29.0") {
+		t.Errorf("the module pin was not moved: %+v", *calls)
+	}
+	if !strings.Contains(said, "replaces github.com/tradalab/scorix") {
+		t.Errorf("a replace block went unreported:\n%s", said)
+	}
+}
+
 func TestBumpRefusesARepoThatDoesNotRequireScorix(t *testing.T) {
 	// Otherwise `go mod edit -require` would add scorix to whatever repo this ran in.
 	root := t.TempDir()

@@ -142,10 +142,11 @@ var (
 	// The two forms a pin takes: a reusable workflow ref and a `go install` of the CLI.
 	pinRe = regexp.MustCompile(`(tradalab/scorix/\.github/workflows/[A-Za-z0-9._-]+\.ya?ml|github\.com/tradalab/scorix/cmd/scorix)@(v[0-9][0-9A-Za-z.\-+]*)`)
 	// `must be >= v0.27.1` in a guard's own error message.
-	floorRe   = regexp.MustCompile(`>=\s*(v[0-9][0-9A-Za-z.\-+]*)`)
-	requireRe = regexp.MustCompile(`(?m)^(\s*)` + regexp.QuoteMeta(modulePath) + `\s+(v\S+)`)
+	floorRe = regexp.MustCompile(`>=\s*(v[0-9][0-9A-Za-z.\-+]*)`)
+	// Both forms: `require <mod> vX` on its own line, and the line inside a block.
+	requireRe = regexp.MustCompile(`(?m)^(?:require[ \t]+)?[ \t]*` + regexp.QuoteMeta(modulePath) + `[ \t]+(v\S+)`)
 	goDirRe   = regexp.MustCompile(`(?m)^go\s+(\S+)`)
-	replaceRe = regexp.MustCompile(`(?m)^replace\s+` + regexp.QuoteMeta(modulePath) + `\s`)
+	replaceRe = regexp.MustCompile(`(?m)^(?:replace[ \t]+)?[ \t]*` + regexp.QuoteMeta(modulePath) + `[ \t]*=>`)
 )
 
 func hasKind(pins []BumpPin, kind string) bool {
@@ -166,7 +167,7 @@ func scanPins(root string) (pins, floors []BumpPin, err error) {
 	}
 	text := string(b)
 	if m := requireRe.FindStringSubmatchIndex(text); m != nil {
-		pins = append(pins, BumpPin{File: "go.mod", Line: lineOf(text, m[0]), Kind: "module", Was: text[m[4]:m[5]]})
+		pins = append(pins, BumpPin{File: "go.mod", Line: lineOf(text, m[0]), Kind: "module", Was: text[m[2]:m[3]]})
 	}
 	if m := goDirRe.FindStringSubmatchIndex(text); m != nil {
 		pins = append(pins, BumpPin{File: "go.mod", Line: lineOf(text, m[0]), Kind: "go", Was: text[m[2]:m[3]]})
