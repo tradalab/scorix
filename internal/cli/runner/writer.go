@@ -60,11 +60,14 @@ func renderGeneratedFile(f generatedFile) (stagedFile, error) {
 		content = formatted
 	}
 
-	action := "created"
 	if exists {
-		action = "updated"
+		// Rewriting identical bytes moves the mtime, which is what `scorix dev` watches.
+		if disk, err := os.ReadFile(f.Path); err == nil && bytes.Equal(normalizeNewlines(disk), normalizeNewlines(content)) {
+			return stagedFile{Path: f.Path, Content: content, Action: "unchanged"}, nil
+		}
+		return stagedFile{Path: f.Path, Content: content, Action: "updated", NeedsWrite: true}, nil
 	}
-	return stagedFile{Path: f.Path, Content: content, Action: action, NeedsWrite: true}, nil
+	return stagedFile{Path: f.Path, Content: content, Action: "created", NeedsWrite: true}, nil
 }
 
 // normalizeNewlines strips CR so a git autocrlf checkout on Windows can't
@@ -99,7 +102,7 @@ func reportDrift(root, regenCmd string, drifted []DriftItem) error {
 		fmt.Printf("      drift: %s (%s)\n", d.Path, d.Reason)
 	}
 	return exitErrorf(ExitDrift, "drift",
-		"generated code is out of sync with its sources (%d file(s)) — run `%s` and commit the result", len(drifted), regenCmd)
+		"generated code is out of sync with its sources (%d file(s)) - run `%s` and commit the result", len(drifted), regenCmd)
 }
 
 func driftLabel(root, path, reason string) DriftItem {
@@ -119,7 +122,7 @@ func commitStagedFile(s stagedFile) error {
 	return os.WriteFile(s.Path, s.Content, 0644)
 }
 
-// writeGeneratedFile renders and immediately writes one file — for callers that
+// writeGeneratedFile renders and immediately writes one file - for callers that
 // emit independently, not as an all-or-nothing batch.
 func writeGeneratedFile(f generatedFile) (string, error) {
 	staged, err := renderGeneratedFile(f)
@@ -161,13 +164,18 @@ func writeTemplateFS(srcDir, destDir string, data any) error {
 
 		var action string
 		if isBinary {
-			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
-				return err
+			// Left alone once it exists: the icon is what an app replaces with its own artwork.
+			if _, err := os.Stat(targetPath); err == nil {
+				action = "skipped"
+			} else {
+				if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+					return err
+				}
+				if err := os.WriteFile(targetPath, tplContent, 0644); err != nil {
+					return err
+				}
+				action = "created"
 			}
-			if err := os.WriteFile(targetPath, tplContent, 0644); err != nil {
-				return err
-			}
-			action = "created"
 		} else {
 			action, err = writeGeneratedFile(generatedFile{
 				Path:     targetPath,

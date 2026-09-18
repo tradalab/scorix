@@ -240,13 +240,10 @@ func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateR
 		return reportDrift(root, "scorix generate proto", drifted)
 	}
 
-	var created, updated, skipped int
+	var created, updated, skipped, unchanged int
 	for _, s := range staged {
 		if err := commitStagedFile(s); err != nil {
 			return err
-		}
-		if s.Action != "skipped" {
-			fmt.Printf("      %s: %s\n", s.Action, filepath.Base(s.Path))
 		}
 		switch s.Action {
 		case "created":
@@ -255,11 +252,17 @@ func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateR
 			updated++
 		case "skipped":
 			skipped++
+		case "unchanged":
+			unchanged++
+		}
+		if s.Action == "created" || s.Action == "updated" {
+			fmt.Printf("      %s: %s\n", s.Action, filepath.Base(s.Path))
 		}
 	}
 
-	res.Files, res.Created, res.Updated, res.Skipped = len(staged), created, updated, skipped
-	fmt.Printf("==> Proto generation complete! (created: %d, updated: %d, skipped: %d)\n", created, updated, skipped)
+	res.Files, res.Created, res.Updated, res.Skipped, res.Unchanged = len(staged), created, updated, skipped, unchanged
+	fmt.Printf("==> Proto generation complete! (created: %d, updated: %d, unchanged: %d, skipped: %d)\n",
+		created, updated, unchanged, skipped)
 	return nil
 }
 

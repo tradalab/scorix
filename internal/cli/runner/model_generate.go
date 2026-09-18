@@ -373,8 +373,10 @@ func generateModel(ctx context.Context, opt GenerateModelOptions, res *GenerateR
 					res.Updated++
 				case "skipped":
 					res.Skipped++
+				case "unchanged":
+					res.Unchanged++
 				}
-				if s.Action != "skipped" {
+				if s.Action == "created" || s.Action == "updated" {
 					fmt.Printf("      %s: %s\n", s.Action, labels[i])
 				}
 			}
@@ -406,10 +408,18 @@ func generateModel(ctx context.Context, opt GenerateModelOptions, res *GenerateR
 		return reportDrift(root, "scorix generate model", drifted)
 	}
 
-	if err := patchServiceContext(root, cfg.Name, tables, schemaPkgImport, schemaPkgName, migrationsPkgImport, migrationsPkgName, d); err != nil {
+	patched, err := patchServiceContext(root, cfg.Name, tables, schemaPkgImport, schemaPkgName, migrationsPkgImport, migrationsPkgName, d)
+	if err != nil {
 		return fmt.Errorf("patch service context: %w", err)
 	}
-	fmt.Println("==> Patched internal/svc/service_context.go")
+	// Counted under --check too, or one project reports two different totals.
+	res.Files++
+	if patched {
+		res.Updated++
+		fmt.Println("==> Patched internal/svc/service_context.go")
+	} else {
+		res.Unchanged++
+	}
 
 	// dsn is NOT written here: the module reads modules.sqlx / SCORIX_MODULE_SQLX_DSN
 	// at runtime - one source, no drift.
@@ -420,7 +430,8 @@ func generateModel(ctx context.Context, opt GenerateModelOptions, res *GenerateR
 		fmt.Printf("warning: go fmt ./... failed: %v\n", err)
 	}
 
-	fmt.Println("==> Model generation complete!")
+	fmt.Printf("==> Model generation complete! (created: %d, updated: %d, unchanged: %d, skipped: %d)\n",
+		res.Created, res.Updated, res.Unchanged, res.Skipped)
 	return nil
 }
 
@@ -431,12 +442,16 @@ const (
 	markerAssigns = "scorix:model:assigns"
 )
 
-func patchServiceContext(root, moduleName string, tables []sqlTable, schemaPkgImport, schemaPkgName, migrationsPkgImport, migrationsPkgName string, d dialect.Dialect) error {
+// Reports whether it wrote: the file is hand-edited around its marker zones.
+func patchServiceContext(root, moduleName string, tables []sqlTable, schemaPkgImport, schemaPkgName, migrationsPkgImport, migrationsPkgName string, d dialect.Dialect) (bool, error) {
 	svcPath, content, err := renderServiceContext(root, moduleName, tables, schemaPkgImport, schemaPkgName, migrationsPkgImport, migrationsPkgName, d)
 	if err != nil {
-		return err
+		return false, err
 	}
-	return os.WriteFile(svcPath, content, 0o644)
+	if disk, err := os.ReadFile(svcPath); err == nil && bytes.Equal(normalizeNewlines(disk), normalizeNewlines(content)) {
+		return false, nil
+	}
+	return true, os.WriteFile(svcPath, content, 0o644)
 }
 
 // renderServiceContext does not write, so --check can diff the result against disk.

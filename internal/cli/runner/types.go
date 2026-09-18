@@ -14,13 +14,15 @@ type DriftItem struct {
 // GenerateResult is what `generate proto|model` reports. Check mode fills Drift
 // and leaves the counters at zero; a real run is the other way round.
 type GenerateResult struct {
-	Check   bool        `json:"check"`
-	Files   int         `json:"files"`
-	Created int         `json:"created"`
-	Updated int         `json:"updated"`
-	Skipped int         `json:"skipped"`
-	Drift   []DriftItem `json:"drift,omitempty"`
-	Regen   string      `json:"regen,omitempty"` // the command that fixes the drift
+	Check   bool `json:"check"`
+	Files   int  `json:"files"`
+	Created int  `json:"created"`
+	Updated int  `json:"updated"`
+	Skipped int  `json:"skipped"`
+	// Rendered and identical to what is on disk, so nothing was written.
+	Unchanged int         `json:"unchanged"`
+	Drift     []DriftItem `json:"drift,omitempty"`
+	Regen     string      `json:"regen,omitempty"` // the command that fixes the drift
 	// Nil from `generate model`: it has no IPC to describe.
 	Surface *IPCSurface `json:"surface,omitempty"`
 }

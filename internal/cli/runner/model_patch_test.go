@@ -47,7 +47,7 @@ func TestPatchServiceContext_FreshProject(t *testing.T) {
 		{Name: "user", GoName: "User", TableName: "user"},
 		{Name: "post", GoName: "Post", TableName: "post"},
 	}
-	if err := patchServiceContext(root, "example.com/app", tables, "example.com/app/etc", "etc", "", "", dialect.SQLite{}); err != nil {
+	if _, err := patchServiceContext(root, "example.com/app", tables, "example.com/app/etc", "etc", "", "", dialect.SQLite{}); err != nil {
 		t.Fatalf("patch: %v", err)
 	}
 
@@ -81,7 +81,7 @@ func TestPatchServiceContext_EmptyTables(t *testing.T) {
 	svcPath := filepath.Join(root, "internal", "svc", "service_context.go")
 	writeStub(t, svcPath, stubSvcGo)
 
-	if err := patchServiceContext(root, "example.com/app", nil, "example.com/app/etc", "etc", "", "", dialect.SQLite{}); err != nil {
+	if _, err := patchServiceContext(root, "example.com/app", nil, "example.com/app/etc", "etc", "", "", dialect.SQLite{}); err != nil {
 		t.Fatalf("patch: %v", err)
 	}
 
@@ -109,7 +109,7 @@ func TestPatchServiceContext_MigrationsInsteadOfSchema(t *testing.T) {
 	writeStub(t, svcPath, stubSvcGo)
 
 	tables := []sqlTable{{Name: "user", GoName: "User", TableName: "user"}}
-	if err := patchServiceContext(root, "loom", tables,
+	if _, err := patchServiceContext(root, "loom", tables,
 		"loom/etc", "etc", "loom/internal/migration", "migration", dialect.SQLite{}); err != nil {
 		t.Fatalf("patch: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestPatchServiceContext_DriverFollowsDialect(t *testing.T) {
 			writeStub(t, svcPath, stubSvcGo)
 
 			tables := []sqlTable{{Name: "user", GoName: "User", TableName: "user"}}
-			if err := patchServiceContext(root, "example.com/app", tables,
+			if _, err := patchServiceContext(root, "example.com/app", tables,
 				"example.com/app/etc", "etc", "", "", c.dialect); err != nil {
 				t.Fatalf("patch: %v", err)
 			}
