@@ -46,7 +46,7 @@ func newView(r *rt, opts window.Options) (*view, error) {
 		addUserScript(ucc, opts.InitScript)
 	}
 
-	// In-process custom schemes (scorix:// …) — must be configured before the
+	// In-process custom schemes (scorix:// …) - must be configured before the
 	// web view is created.
 	r.mu.Lock()
 	for scheme := range r.schemes {
@@ -137,7 +137,7 @@ func (v *view) InitScript(js string) {
 
 func (v *view) Eval(js string) {
 	dispatchMain(func() {
-		// nil completion handler — fire and forget, like the other backends.
+		// nil completion handler - fire and forget, like the other backends.
 		v.wk.Send(sel("evaluateJavaScript:completionHandler:"), nsString(js), objc.ID(0))
 	})
 }
@@ -155,7 +155,7 @@ func (v *view) OnMessage(fn func(raw []byte)) {
 }
 
 // PostMessage delivers a Go -> JS envelope by evaluating
-// __scorix_receive("<json>") — the raw JSON is embedded as a JS string
+// __scorix_receive("<json>") - the raw JSON is embedded as a JS string
 // literal (json-escaped), and the bridge JSON.parses it.
 func (v *view) PostMessage(raw []byte) error {
 	lit, err := json.Marshal(string(raw))

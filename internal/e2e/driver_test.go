@@ -129,6 +129,68 @@ func TestMaximizeReachesTheWindowManager(t *testing.T) {
 	})
 }
 
+// The height stays open on purpose: only an open axis shows a zero read as a cap.
+func TestMaxSizeCapsAResize(t *testing.T) {
+	a := harness(t)
+	w := a.MainWindow()
+	ow, oh := w.Size()
+	t.Cleanup(func() { w.SetMaxSize(0, 0); w.SetSize(ow, oh) })
+
+	w.SetMaxSize(600, 0)
+	resizeUntil(t, w, 900, 700, "SetSize(900,700) to stop at the 600px max width and keep its uncapped height",
+		func(gw, gh int) bool { return gw == 600 && gh == 700 })
+	// Polled: webview2 reflows the page after reporting the native size (706px read).
+	eventually(t, "the page to reflow inside the 600px cap", func() bool {
+		return askInt(t, "window.innerWidth") <= 600
+	})
+}
+
+func TestMinSizeFloorsAResize(t *testing.T) {
+	a := harness(t)
+	w := a.MainWindow()
+	ow, oh := w.Size()
+	t.Cleanup(func() { w.SetMinSize(0, 0); w.SetSize(ow, oh) })
+
+	w.SetMinSize(500, 400)
+	resizeUntil(t, w, 200, 150, "SetSize(200,150) to stop at the 500x400 minimum",
+		func(gw, gh int) bool { return gw == 500 && gh == 400 })
+}
+
+func TestAlwaysOnTopReachesTheWindowManager(t *testing.T) {
+	a := harness(t)
+	w := a.MainWindow()
+	r, ok := w.Window.(window.AlwaysOnTopReporter)
+	if !ok {
+		t.Fatalf("%T cannot say whether it is on top, so nothing confirms SetAlwaysOnTop did anything", w.Window)
+	}
+	t.Cleanup(func() { w.SetAlwaysOnTop(false) })
+
+	w.SetAlwaysOnTop(true)
+	eventually(t, "the window to report itself on top", r.IsAlwaysOnTop)
+	w.SetAlwaysOnTop(false)
+	eventually(t, "the window to leave the top layer", func() bool { return !r.IsAlwaysOnTop() })
+}
+
+// Asks again every half second: under openbox a restore from the previous test
+// landed after this resize 1 run in 3. It cannot hide a missing clamp.
+func resizeUntil(t *testing.T, w window.Window, width, height int, what string, ok func(w, h int) bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for i := 0; ; i++ {
+		if i%10 == 0 {
+			w.SetSize(width, height)
+		}
+		gw, gh := w.Size()
+		if ok(gw, gh) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("waited 5s for %s; the window settled at %dx%d", what, gw, gh)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 // StartDrag is deliberately not here: on Windows it hands the window to the OS
 // modal move loop, which parks the message pump until a button release nobody
 // will send. That one needs a human with a mouse.

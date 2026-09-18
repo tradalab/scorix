@@ -4,12 +4,14 @@ package webkitgtk
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"sync"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
 
+	"github.com/tradalab/scorix/internal/ico"
 	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/webview"
 	"github.com/tradalab/scorix/window"
@@ -106,17 +108,8 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 		gtkWidgetSetSizeReq(gw, minW, minH)
 	}
 	if opts.MaxWidth > 0 || opts.MaxHeight > 0 {
-		// GDK reads 0 as "cannot grow at all", not as "unlimited", so an axis the
-		// app left open gets a cap no display reaches instead of a cap of zero.
-		maxW, maxH := int32(gdkSizeUnlimited), int32(gdkSizeUnlimited)
-		if opts.MaxWidth > 0 {
-			maxW = int32(opts.MaxWidth)
-		}
-		if opts.MaxHeight > 0 {
-			maxH = int32(opts.MaxHeight)
-		}
-		g := gdkGeometry{maxWidth: maxW, maxHeight: maxH}
-		gtkWindowSetGeomHints(gw, 0, unsafe.Pointer(&g), gdkHintMaxSize)
+		g, hints := maxGeometry(opts.MaxWidth, opts.MaxHeight)
+		gtkWindowSetGeomHints(gw, 0, unsafe.Pointer(&g), hints)
 	}
 	if opts.Frameless {
 		gtkWindowSetDecor(gw, 0)
@@ -131,7 +124,7 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 		gtkWindowKeepAbove(gw, 1)
 	}
 	if opts.IconPath != "" {
-		warnWindowIconIgnored()
+		setWindowIcon(gw, opts.IconPath)
 	}
 
 	v, err := newView(m.rt, opts)
@@ -174,15 +167,46 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 // 16.7M pixels is past every display while staying inside int32.
 const gdkSizeUnlimited = 1 << 24
 
+// GDK reads a zero max as "cannot grow at all", so an axis the caller left open
+// gets a cap no display reaches; with both open the hint is dropped altogether.
+func maxGeometry(width, height int) (gdkGeometry, int32) {
+	if width <= 0 && height <= 0 {
+		return gdkGeometry{}, 0
+	}
+	g := gdkGeometry{maxWidth: gdkSizeUnlimited, maxHeight: gdkSizeUnlimited}
+	if width > 0 {
+		g.maxWidth = int32(width)
+	}
+	if height > 0 {
+		g.maxHeight = int32(height)
+	}
+	return g, gdkHintMaxSize
+}
+
 var warnIconOnce sync.Once
 
-// Once per process: an app that opens many windows would otherwise repeat it.
-// Wiring gtk_window_set_icon_from_file would mean one more purego symbol, and a
-// misspelled one panics at runtime while build, vet and tests all stay green.
-func warnWindowIconIgnored() {
-	warnIconOnce.Do(func() {
-		logger.Warn("webkitgtk: app.icon is not a window icon on Linux - a launcher reads Icon= from the .desktop entry, which `scorix package` writes and checks")
-	})
+// A missing file is the packaged case: the launcher reads Icon= from the .desktop
+// entry. gdk-pixbuf's ICO loader refuses the PNG frames `scorix icon` writes.
+func setWindowIcon(gw uintptr, path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 {
+		return false
+	}
+	if frame, ok := ico.LargestPNG(data); ok {
+		data = frame
+	}
+	stream := gMemStreamNew(gMemdup(unsafe.Pointer(&data[0]), uint64(len(data))), int64(len(data)), gFreeAddr)
+	defer gObjectUnref(stream)
+	pixbuf := gdkPixbufFromStream(stream, 0, 0)
+	if pixbuf == 0 {
+		warnIconOnce.Do(func() {
+			logger.Warn("webkitgtk: app.icon could not be decoded as the window icon", "path", path)
+		})
+		return false
+	}
+	defer gObjectUnref(pixbuf) // the window holds its own reference
+	gtkWindowSetIcon(gw, pixbuf)
+	return true
 }
 
 func (m *manager) Get(id window.ID) (window.Window, bool) {
@@ -299,8 +323,8 @@ type gdkGeometry struct {
 // SetMinSize put it. g is captured, so the pointer is still valid when the loop
 // runs the task.
 func (w *win) SetMaxSize(width, height int) {
-	g := gdkGeometry{maxWidth: int32(width), maxHeight: int32(height)}
-	dispatchMain(func() { gtkWindowSetGeomHints(w.gw, 0, unsafe.Pointer(&g), gdkHintMaxSize) })
+	g, hints := maxGeometry(width, height)
+	dispatchMain(func() { gtkWindowSetGeomHints(w.gw, 0, unsafe.Pointer(&g), hints) })
 }
 
 func (w *win) Center() { dispatchMain(func() { gtkWindowSetPosition(w.gw, 1) }) }
@@ -347,6 +371,33 @@ func (w *win) SetAlwaysOnTop(on bool) {
 		v = 1
 	}
 	dispatchMain(func() { gtkWindowKeepAbove(w.gw, v) })
+}
+
+// _NET_WM_STATE read directly: GDK3 never folds ABOVE back into
+// gdk_window_get_state. Wayland has neither the property nor keep-above.
+func (w *win) IsAlwaysOnTop() bool {
+	return onMainVal(func() bool {
+		gw := gtkWidgetGetWindow(w.gw)
+		if gw == 0 {
+			return false
+		}
+		var typ, data uintptr
+		var format, length int32
+		if gdkPropertyGet(gw, gdkAtomIntern("_NET_WM_STATE", 0), gdkAtomIntern("ATOM", 0),
+			0, 1024, 0, &typ, &format, &length, &data) == 0 || data == 0 {
+			return false
+		}
+		defer gFree(data)
+		// GDK hands ATOM properties back as GdkAtom values, length counted in bytes.
+		above := gdkAtomIntern("_NET_WM_STATE_ABOVE", 0)
+		atoms := unsafe.Slice((*uintptr)(unsafe.Pointer(data)), int(length)/int(unsafe.Sizeof(uintptr(0))))
+		for _, a := range atoms {
+			if a == above {
+				return true
+			}
+		}
+		return false
+	})
 }
 
 func (w *win) IsVisible() bool {

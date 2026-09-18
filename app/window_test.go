@@ -53,7 +53,7 @@ func TestOpenWindow_MultiWindowTargetedEmit(t *testing.T) {
 	second := make(chan *AppWindow, 1)
 	openErr := make(chan error, 1)
 	a.OnReady(func(*App) {
-		// OnReady runs on the UI thread — OpenWindow must be called off it.
+		// OnReady runs on the UI thread - OpenWindow must be called off it.
 		go func() {
 			w, err := a.OpenWindow(window.Options{Title: "second", URL: "scorix://app/index.html"})
 			openErr <- err
@@ -196,7 +196,7 @@ func TestSecurityWindowWiring(t *testing.T) {
 		t.Fatalf("guard must precede the bridge (guard=%d bridge=%d)", guardAt, bridgeAt)
 	}
 	if rec.ctx == nil || rec.ctx.App == nil {
-		t.Fatal("module Context.App nil in app mode — tray Show/Quit would silently no-op")
+		t.Fatal("module Context.App nil in app mode - tray Show/Quit would silently no-op")
 	}
 
 	a.Show() // with a live runtime: must not deadlock

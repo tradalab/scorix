@@ -16,7 +16,7 @@ const dpiAwarenessContextPerMonitorV2 = ^uintptr(3)
 var dpiAwarenessOnce sync.Once
 
 // enableDPIAwareness opts the process into Per-Monitor-V2 DPI awareness so
-// Windows stops bitmap-stretching our windows on scaled displays — that stretch
+// Windows stops bitmap-stretching our windows on scaled displays - that stretch
 // is what makes WebView2 content look blurry at any scale above 100%. Must run
 // before the first top-level window is created. Falls back to system-DPI
 // awareness on pre-1703 Windows where the context API is absent. Idempotent.

@@ -65,8 +65,7 @@ jobs:
       matrix:
         os: [windows-latest, ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    # macOS is a probe, not a gate: no scorix window has ever opened on Apple
-    # hardware. A red run here is news; promote it the first time it goes green.
+    # A probe, not a gate, until this job has a green run on record.
     continue-on-error: ${{ matrix.os == 'macos-latest' }}
     steps:
       - uses: actions/checkout@v4
@@ -80,11 +79,13 @@ jobs:
           # xauth is a Recommends of xvfb, so --no-install-recommends drops it and
           # xvfb-run then quits with "xauth command not found" before any test runs.
           sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-0 xvfb xauth openbox
-      - name: e2e under Xvfb, with a window manager for the Maximize round trip
+      # The driver package rides along for its icon test; openbox is what Maximize and
+      # keep-above report through.
+      - name: e2e under Xvfb, with a window manager for the Maximize and keep-above round trips
         if: runner.os == 'Linux'
         env:
           SCORIX_E2E: "1"
-        run: xvfb-run -a -s "-screen 0 1280x1024x24" bash -c "openbox & sleep 2; go test ./internal/e2e/ -count=1 -v"
+        run: xvfb-run -a -s "-screen 0 1280x1024x24" bash -c "openbox & sleep 2; go test ./internal/e2e/ ./internal/driver/webkitgtk/ -count=1 -v"
       - name: e2e
         if: runner.os != 'Linux'
         env:
@@ -111,4 +112,4 @@ jobs:
       - name: e2e under Xvfb on the 4.0 soname
         env:
           SCORIX_E2E: "1"
-        run: xvfb-run -a -s "-screen 0 1280x1024x24" bash -c "openbox & sleep 2; go test ./internal/e2e/ -count=1 -v"
+        run: xvfb-run -a -s "-screen 0 1280x1024x24" bash -c "openbox & sleep 2; go test ./internal/e2e/ ./internal/driver/webkitgtk/ -count=1 -v"

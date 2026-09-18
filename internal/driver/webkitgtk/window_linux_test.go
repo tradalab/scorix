@@ -48,6 +48,16 @@ func TestStateFromGdk(t *testing.T) {
 	}
 }
 
+// The e2e test sees the window; this one runs where there is no display.
+func TestMaxGeometryLeavesAZeroAxisOpen(t *testing.T) {
+	if g, hints := maxGeometry(600, 0); hints != gdkHintMaxSize || g.maxWidth != 600 || g.maxHeight != gdkSizeUnlimited {
+		t.Errorf("maxGeometry(600, 0) = %dx%d hints %d, want 600x%d with the max hint", g.maxWidth, g.maxHeight, hints, gdkSizeUnlimited)
+	}
+	if _, hints := maxGeometry(0, 0); hints != 0 {
+		t.Errorf("maxGeometry(0, 0) kept hints %d: clearing the cap must drop the max hint", hints)
+	}
+}
+
 // gdkGeometry is handed to C by pointer, so its layout has to match GdkGeometry
 // field for field. Nothing else in the build checks that.
 func TestGdkGeometryLayout(t *testing.T) {

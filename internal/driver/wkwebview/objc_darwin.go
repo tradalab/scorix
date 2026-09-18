@@ -3,7 +3,7 @@
 // Package wkwebview is the macOS native driver: AppKit window + WKWebView via
 // the Objective-C runtime through purego.
 //
-// EXPERIMENTAL: not yet hardware-validated — objc_msgSend ABI paths (NSRect
+// EXPERIMENTAL: not yet hardware-validated - objc_msgSend ABI paths (NSRect
 // struct args on amd64) need on-device checks.
 package wkwebview
 
@@ -192,6 +192,20 @@ func rectOf(obj objc.ID, key string) (nsRect, bool) {
 	var r nsRect
 	msgSendGetValue(v, sel("getValue:size:"), unsafe.Pointer(&r), uint64(unsafe.Sizeof(r)))
 	return r, true
+}
+
+// sizeOf is rectOf for an NSSize property, and crosses as a pointer for the same reason.
+func sizeOf(obj objc.ID, key string) (nsSize, bool) {
+	if obj == 0 {
+		return nsSize{}, false
+	}
+	v := obj.Send(sel("valueForKey:"), nsString(key))
+	if v == 0 {
+		return nsSize{}, false
+	}
+	var s nsSize
+	msgSendGetValue(v, sel("getValue:size:"), unsafe.Pointer(&s), uint64(unsafe.Sizeof(s)))
+	return s, true
 }
 
 // screens[0] is where AppKit's global origin sits, so its height is the one that

@@ -55,7 +55,7 @@ const (
 	webResourceContextAll = 0
 	// ICoreWebView2PermissionRequestedEventArgs vtable: IUnknown 0-2, get_Uri 3,
 	// get_PermissionKind 4, get_IsUserInitiated 5, get_State 6, put_State 7,
-	// GetDeferral 8. Handled is on ...EventArgs2, not here — calling a wrong slot
+	// GetDeferral 8. Handled is on ...EventArgs2, not here - calling a wrong slot
 	// crashes (0xC0000005).
 	permArgsGetPermissionKind  = 4
 	permArgsPutPermissionState = 7
@@ -128,7 +128,7 @@ func extractEmbeddedLoader() (string, error) {
 // "<exe-name>.exe.WebView2" NEXT TO THE EXECUTABLE; once the app is installed
 // under a read-only location like C:\Program Files, creating it fails with
 // access-denied, environment creation fails, and the window never loads its
-// content — the app appears not to open at all.
+// content - the app appears not to open at all.
 func webviewUserDataFolder(identifier string) string {
 	name := identifier
 	if name == "" {
@@ -185,7 +185,7 @@ func createEnvironment(hwnd windows.Handle, userDataFolder string, schemes []str
 	// Callers pass a writable folder (webviewUserDataFolder); the empty-string
 	// branch passes real NULL rather than a pointer to "" only as a defensive
 	// fallback (WebView2 rejects an empty string). NULL means "beside the exe",
-	// which can be unwritable — avoid relying on it.
+	// which can be unwritable - avoid relying on it.
 	var udf *uint16
 	var udfArg uintptr
 	if userDataFolder != "" {

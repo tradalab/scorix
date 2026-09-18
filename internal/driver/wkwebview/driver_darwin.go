@@ -38,7 +38,7 @@ func (driver) NewRuntime(cfg window.RuntimeConfig) (window.Runtime, error) {
 	}
 	r.manager.rt = r
 
-	// One runtime per process — same constraint as the webview2 backend (the
+	// One runtime per process - same constraint as the webview2 backend (the
 	// ObjC delegate classes are registered process-wide).
 	activeMu.Lock()
 	defer activeMu.Unlock()

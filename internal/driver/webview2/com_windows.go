@@ -68,7 +68,7 @@ func comCallStr(this unsafe.Pointer, index int, s string, extra ...uintptr) uint
 // backs the environment-completed, controller-completed and web-message handlers.
 // The trampolines' uintptr->pointer conversions trip go vet's unsafeptr, but are
 // safe: `this` is one of our pinned *handler objects and a/b are C-owned COM
-// pointers — neither is a movable Go heap pointer.
+// pointers - neither is a movable Go heap pointer.
 
 type comVtbl struct {
 	queryInterface uintptr
@@ -103,7 +103,7 @@ func newHandler(fn func(a, b unsafe.Pointer)) *handler {
 var noopHandler = newHandler(func(unsafe.Pointer, unsafe.Pointer) {})
 
 // handlerSet tracks a window's COM callbacks so they can be unpinned from
-// handlerKeep on dispose — otherwise each handler (and the *win it captures)
+// handlerKeep on dispose - otherwise each handler (and the *win it captures)
 // stays pinned for the process lifetime, leaking per close.
 type handlerSet struct {
 	mu sync.Mutex
@@ -163,7 +163,7 @@ var (
 func coInitSTA() {
 	const coinitApartmentThreaded = 2
 	// S_OK/S_FALSE are fine. A negative HRESULT (notably RPC_E_CHANGED_MODE
-	// 0x80010106 — another component already set a different apartment) means
+	// 0x80010106 - another component already set a different apartment) means
 	// WebView2 may misbehave; surface it rather than ignore.
 	ret, _, _ := procCoInitializeEx.Call(0, coinitApartmentThreaded)
 	if int32(ret) < 0 {

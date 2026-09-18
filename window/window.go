@@ -20,6 +20,7 @@ type Window interface {
 	Size() (w, h int)
 	SetPosition(x, y int)
 	Position() (x, y int)
+	// A zero axis is "no limit"; GDK and AppKit read a zero max as "cannot grow".
 	SetMinSize(w, h int)
 	SetMaxSize(w, h int)
 	Center()
@@ -50,4 +51,9 @@ type Window interface {
 // window manager can undo behind its back.
 type FullscreenReporter interface {
 	IsFullscreen() bool
+}
+
+// AlwaysOnTopReporter asks the OS: a window manager may refuse keep-above.
+type AlwaysOnTopReporter interface {
+	IsAlwaysOnTop() bool
 }

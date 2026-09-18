@@ -15,7 +15,7 @@ import (
 )
 
 // view hosts one WebKitWebView. JS -> Go arrives through the "scorix" script
-// message handler (window.webkit.messageHandlers.scorix.postMessage — the
+// message handler (window.webkit.messageHandlers.scorix.postMessage - the
 // same bridge transport branch as WKWebView); Go -> JS runs JavaScript
 // calling the bridge's global __scorix_receive.
 type view struct {
@@ -47,7 +47,7 @@ func newView(r *rt, opts window.Options) (*view, error) {
 			defer recoverCB("script-message-received")
 			if vv, ok := viewByUcm.Load(ucm); ok {
 				val := wkJSResultGetValue(jsResult)
-				// jsc_value_to_string returns a gchar* the caller owns — read it
+				// jsc_value_to_string returns a gchar* the caller owns - read it
 				// then g_free, or every JS->Go message leaks the string.
 				cstr := jscValueToString(val)
 				raw := goString(cstr)
@@ -100,7 +100,7 @@ func newView(r *rt, opts window.Options) (*view, error) {
 }
 
 // registerSchemes installs every registered custom scheme on the default web
-// context — once per process, before any view loads a scheme URL.
+// context - once per process, before any view loads a scheme URL.
 func registerSchemes(r *rt) {
 	schemeOnce.Do(func() {
 		schemeCB = purego.NewCallback(func(req, _ uintptr) uintptr {

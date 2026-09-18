@@ -3,6 +3,7 @@
 package wkwebview
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 	"unsafe"
@@ -88,6 +89,39 @@ func TestFlipYIsItsOwnInverse(t *testing.T) {
 	// A window sitting on the bottom edge is screenH-winH from the top.
 	if got := flipY(screenH, 0, winH); got != screenH-winH {
 		t.Errorf("a window at the top has origin %v, want %v", got, screenH-winH)
+	}
+}
+
+func TestClampToLimitsTreatsZeroAsOpen(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		in     nsSize
+		lo, hi nsSize
+		want   nsSize
+	}{
+		{"no limits", nsSize{W: 900, H: 700}, nsSize{}, nsSize{}, nsSize{W: 900, H: 700}},
+		{"width capped, height open", nsSize{W: 900, H: 700}, nsSize{}, nsSize{W: 600}, nsSize{W: 600, H: 700}},
+		{"floored", nsSize{W: 200, H: 150}, nsSize{W: 500, H: 400}, nsSize{}, nsSize{W: 500, H: 400}},
+		{"AppKit's own FLT_MAX default", nsSize{W: 900, H: 700}, nsSize{}, nsSize{W: 3.4e38, H: 3.4e38}, nsSize{W: 900, H: 700}},
+	} {
+		if got := clampToLimits(c.in, c.lo, c.hi); got != c.want {
+			t.Errorf("%s: %+v, want %+v", c.name, got, c.want)
+		}
+	}
+}
+
+// The scaffold ships .ico, and only ImageIO on a real Mac says NSImage decodes it.
+func TestLoadImageDecodesTheIcoEveryAppShips(t *testing.T) {
+	if err := initObjC(); err != nil {
+		t.Fatalf("initObjC: %v", err)
+	}
+	img := loadImage(filepath.Join("..", "..", "cli", "template", "static", "project", "assets", "icon.ico"))
+	if img == 0 {
+		t.Fatal("NSImage could not decode the scaffold's icon.ico, so an unbundled run keeps the bare executable icon")
+	}
+	img.Send(sel("release"))
+	if loadImage(filepath.Join(t.TempDir(), "missing.ico")) != 0 {
+		t.Fatal("a missing icon file produced an image")
 	}
 }
 

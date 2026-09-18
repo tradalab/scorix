@@ -66,14 +66,14 @@ type rt struct {
 }
 
 // Run initializes GTK and blocks in gtk_main. Must be called from the main
-// goroutine. RuntimeReady fires before the loop starts — widget creation is
+// goroutine. RuntimeReady fires before the loop starts - widget creation is
 // legal pre-gtk_main, matching how the headless driver sequences it.
 func (r *rt) Run() error {
 	runtime.LockOSThread()
 	mainTID.Store(int64(unix.Gettid()))
 
 	if gtkInitCheck(0, 0) == 0 {
-		return fmt.Errorf("webkitgtk: gtk_init failed (no display?) — use web mode on headless hosts")
+		return fmt.Errorf("webkitgtk: gtk_init failed (no display?) - use web mode on headless hosts")
 	}
 	initDispatch()
 	registerSchemes(r)
@@ -132,7 +132,7 @@ func initDispatch() {
 			if fn != nil {
 				fn()
 			}
-			return 0 // G_SOURCE_REMOVE — run once
+			return 0 // G_SOURCE_REMOVE - run once
 		})
 	})
 }

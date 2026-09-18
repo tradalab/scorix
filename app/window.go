@@ -36,7 +36,7 @@ func (aw *AppWindow) IsFullscreen() bool {
 
 // OpenWindow opens an additional native window (bridge injected, IPC wired); zero
 // Width/Height/URL fall back to main-window options. App mode only, after Run.
-// Blocks on the UI thread — don't call from code already on it (OnReady, window
+// Blocks on the UI thread - don't call from code already on it (OnReady, window
 // event handlers); wrap those in a goroutine.
 func (a *App) OpenWindow(opts window.Options) (*AppWindow, error) {
 	a.mu.Lock()
@@ -170,7 +170,7 @@ func (a *App) attachWindow(rt window.Runtime, opts window.Options) (*AppWindow, 
 		a.EmitTo(aw.Client, "sys:file-drop", map[string]any{"paths": d.Files, "x": d.X, "y": d.Y})
 	})
 	// On close, cancel the bridge's handlers too: else a long-lived stream (monitor,
-	// pubsub) leaks a goroutine per closed window — native PostMessage can't report
+	// pubsub) leaks a goroutine per closed window - native PostMessage can't report
 	// the gone client.
 	w.On(window.EventClose, func(window.EventData) {
 		a.removeSender(sid)

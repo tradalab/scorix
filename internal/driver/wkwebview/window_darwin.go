@@ -4,11 +4,14 @@ package wkwebview
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"sync"
+	"unsafe"
 
 	"github.com/ebitengine/purego/objc"
 
+	"github.com/tradalab/scorix/internal/ico"
 	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/webview"
 	"github.com/tradalab/scorix/window"
@@ -77,15 +80,12 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 
 	registerWinDelegate(w)
 
-	// Before SetSize, so AppKit clamps the initial size instead of letting the
-	// window open outside its own limits: Options has carried these four since
-	// the beginning and only webview2 read them, so min_width in scorix.yaml did
-	// nothing here and said nothing about it.
+	// Before SetSize, which clamps to them: the window must not open outside its limits.
 	if opts.MinWidth > 0 || opts.MinHeight > 0 {
 		w.SetMinSize(opts.MinWidth, opts.MinHeight) // AppKit's own default min is 0
 	}
 	if opts.MaxWidth > 0 || opts.MaxHeight > 0 {
-		w.SetMaxSize(orUnlimited(opts.MaxWidth), orUnlimited(opts.MaxHeight))
+		w.SetMaxSize(opts.MaxWidth, opts.MaxHeight)
 	}
 
 	// Through the same methods the framework calls later, so creation cannot
@@ -111,7 +111,7 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 		w.SetAlwaysOnTop(true)
 	}
 	if opts.IconPath != "" {
-		warnWindowIconIgnored()
+		setAppIcon(opts.IconPath)
 	}
 
 	if opts.URL != "" {
@@ -131,13 +131,47 @@ func orUnlimited(v int) int {
 	return v
 }
 
-var warnIconOnce sync.Once
+var appIconOnce sync.Once
 
-// Once per process: an app that opens many windows would otherwise repeat it.
-func warnWindowIconIgnored() {
-	warnIconOnce.Do(func() {
-		logger.Warn("wkwebview: app.icon is ignored on macOS - Finder and the Dock read CFBundleIconFile from the .app bundle, which `scorix package` stages")
+// macOS has no per-window icon: the Dock reads CFBundleIconFile from the bundle, so
+// app.icon only stands in for a run straight from the binary.
+func setAppIcon(path string) {
+	appIconOnce.Do(func() {
+		if objc.ID(cls("NSBundle")).Send(sel("mainBundle")).Send(sel("bundleIdentifier")) != 0 {
+			return
+		}
+		img := loadImage(path)
+		if img == 0 {
+			if _, err := os.Stat(path); err == nil {
+				logger.Warn("wkwebview: app.icon could not be loaded as the Dock icon", "path", path)
+			}
+			return
+		}
+		app := objc.ID(cls("NSApplication")).Send(sel("sharedApplication"))
+		app.Send(sel("setApplicationIconImage:"), img)
+		img.Send(sel("release"))
 	})
+}
+
+// 0 for a missing or undecodable file. An ICO goes in as its largest PNG frame.
+func loadImage(path string) objc.ID {
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 {
+		return 0
+	}
+	if frame, ok := ico.LargestPNG(data); ok {
+		data = frame
+	}
+	nsData := msgSendBytesLen(objc.ID(cls("NSData")), sel("dataWithBytes:length:"), unsafe.Pointer(&data[0]), uint64(len(data)))
+	img := objc.ID(cls("NSImage")).Send(sel("alloc")).Send(sel("initWithData:"), nsData)
+	if img == 0 {
+		return 0
+	}
+	if !isYes(img, "isValid") {
+		img.Send(sel("release"))
+		return 0
+	}
+	return img
 }
 
 func (m *manager) Get(id window.ID) (window.Window, bool) {
@@ -215,10 +249,30 @@ func (w *win) SetSize(width, height int) {
 			logger.Warn("wkwebview: cannot read the frame, window not resized")
 			return
 		}
-		f.Origin.Y = pinTop(f.Origin.Y, f.Size.H, float64(height))
-		f.Size = nsSize{W: float64(width), H: float64(height)}
+		// AppKit documents minSize/maxSize for the user's resize, not for setFrame.
+		lo, _ := sizeOf(w.nw, "minSize")
+		hi, _ := sizeOf(w.nw, "maxSize")
+		size := clampToLimits(nsSize{W: float64(width), H: float64(height)}, lo, hi)
+		f.Origin.Y = pinTop(f.Origin.Y, f.Size.H, size.H)
+		f.Size = size
 		msgSendSetFrame(w.nw, sel("setFrame:display:"), f, true)
 	})
+}
+
+func clampToLimits(s, lo, hi nsSize) nsSize {
+	if lo.W > 0 && s.W < lo.W {
+		s.W = lo.W
+	}
+	if lo.H > 0 && s.H < lo.H {
+		s.H = lo.H
+	}
+	if hi.W > 0 && s.W > hi.W {
+		s.W = hi.W
+	}
+	if hi.H > 0 && s.H > hi.H {
+		s.H = hi.H
+	}
+	return s
 }
 
 func (w *win) Size() (int, int) {
@@ -269,12 +323,14 @@ func flipY(screenH, y, winH float64) float64 { return screenH - (y + winH) }
 // window upwards, so without this a resize walks the title bar down the screen.
 func pinTop(originY, oldH, newH float64) float64 { return originY + oldH - newH }
 
+// onMain: a queued setter would land after the SetSize it must bound.
 func (w *win) SetMinSize(width, height int) {
-	dispatchMain(func() { w.nw.Send(sel("setMinSize:"), nsSize{W: float64(width), H: float64(height)}) })
+	onMain(func() { w.nw.Send(sel("setMinSize:"), nsSize{W: float64(width), H: float64(height)}) })
 }
 
 func (w *win) SetMaxSize(width, height int) {
-	dispatchMain(func() { w.nw.Send(sel("setMaxSize:"), nsSize{W: float64(width), H: float64(height)}) })
+	s := nsSize{W: float64(orUnlimited(width)), H: float64(orUnlimited(height))}
+	onMain(func() { w.nw.Send(sel("setMaxSize:"), s) })
 }
 
 func (w *win) Center() { dispatchMain(func() { w.nw.Send(sel("center")) }) }
@@ -355,6 +411,10 @@ func (w *win) SetAlwaysOnTop(on bool) {
 		level = 3 // NSFloatingWindowLevel
 	}
 	dispatchMain(func() { w.nw.Send(sel("setLevel:"), level) })
+}
+
+func (w *win) IsAlwaysOnTop() bool {
+	return onMainVal(func() bool { return objc.Send[int64](w.nw, sel("level")) > 0 })
 }
 
 func (w *win) IsVisible() bool {

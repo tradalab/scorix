@@ -52,6 +52,10 @@ var (
 	gtkWindowFullscreen   func(uintptr)
 	gtkWindowUnfullscrn   func(uintptr)
 	gtkWindowKeepAbove    func(uintptr, int32)
+	gtkWindowSetIcon      func(uintptr, uintptr)
+	gdkPixbufFromStream   func(uintptr, uintptr, uintptr) uintptr
+	gdkAtomIntern         func(string, int32) uintptr
+	gdkPropertyGet        func(uintptr, uintptr, uintptr, uint64, uint64, int32, *uintptr, *int32, *int32, *uintptr) int32
 	gtkWindowSetDecor     func(uintptr, int32)
 	gtkWindowSetResize    func(uintptr, int32)
 	gtkWindowSetPosition  func(uintptr, int32)
@@ -129,7 +133,7 @@ var (
 	jscValueToString func(uintptr) uintptr
 )
 
-// webkitSonames in probe order — 4.1 (libsoup3) first, then 4.0 (libsoup2).
+// webkitSonames in probe order - 4.1 (libsoup3) first, then 4.0 (libsoup2).
 // GTK4/webkitgtk-6.0 is a different API generation: explicitly phase 2.
 var webkitSonames = []string{
 	"libwebkit2gtk-4.1.so.0",
@@ -183,6 +187,11 @@ func initLibs() error {
 			libErr = err
 			return
 		}
+		pixbuf, err := purego.Dlopen("libgdk_pixbuf-2.0.so.0", flags)
+		if err != nil {
+			libErr = err
+			return
+		}
 		webkit, _, err := dlopenFirst(webkitSonames)
 		if err != nil {
 			libErr = err
@@ -212,6 +221,9 @@ func initLibs() error {
 		purego.RegisterLibFunc(&gtkWindowFullscreen, gtk, "gtk_window_fullscreen")
 		purego.RegisterLibFunc(&gtkWindowUnfullscrn, gtk, "gtk_window_unfullscreen")
 		purego.RegisterLibFunc(&gtkWindowKeepAbove, gtk, "gtk_window_set_keep_above")
+		purego.RegisterLibFunc(&gtkWindowSetIcon, gtk, "gtk_window_set_icon")
+		purego.RegisterLibFunc(&gdkAtomIntern, gdk, "gdk_atom_intern")
+		purego.RegisterLibFunc(&gdkPropertyGet, gdk, "gdk_property_get")
 		purego.RegisterLibFunc(&gtkWindowSetDecor, gtk, "gtk_window_set_decorated")
 		purego.RegisterLibFunc(&gtkWindowSetResize, gtk, "gtk_window_set_resizable")
 		purego.RegisterLibFunc(&gtkWindowSetPosition, gtk, "gtk_window_set_position")
@@ -267,6 +279,7 @@ func initLibs() error {
 			return
 		}
 		purego.RegisterLibFunc(&gMemStreamNew, gio, "g_memory_input_stream_new_from_data")
+		purego.RegisterLibFunc(&gdkPixbufFromStream, pixbuf, "gdk_pixbuf_new_from_stream")
 
 		purego.RegisterLibFunc(&wkUcmNew, webkit, "webkit_user_content_manager_new")
 		purego.RegisterLibFunc(&wkUcmRegisterScript, webkit, "webkit_user_content_manager_register_script_message_handler")
@@ -301,7 +314,7 @@ func registerMemdup(glib uintptr) error {
 		purego.RegisterLibFunc(&gMemdup, glib, "g_memdup2")
 		return nil
 	}
-	// Legacy g_memdup takes guint (32-bit) — wrap to the same Go signature.
+	// Legacy g_memdup takes guint (32-bit) - wrap to the same Go signature.
 	var legacy func(unsafe.Pointer, uint32) uintptr
 	if _, err := purego.Dlsym(glib, "g_memdup"); err != nil {
 		return fmt.Errorf("webkitgtk: neither g_memdup2 nor g_memdup found: %w", err)

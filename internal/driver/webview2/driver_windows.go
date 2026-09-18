@@ -104,6 +104,7 @@ const (
 	swpFrameChanged uintptr = 0x0020
 
 	gwlStyle                 = ^uintptr(15) // GWL_STYLE (-16)
+	gwlExStyle               = ^uintptr(19) // GWL_EXSTYLE (-20)
 	monitorToNearest uintptr = 2            // MONITOR_DEFAULTTONEAREST
 
 	wmDestroy       uint32 = 0x0002
@@ -719,7 +720,7 @@ func (w *win) startAttach(identifier string) error {
 	}
 	// A writable, per-user userDataFolder is REQUIRED: passing "" makes WebView2
 	// default to "<exe>.WebView2" next to the executable, which is unwritable when
-	// the app is installed under C:\Program Files — env creation then fails and the
+	// the app is installed under C:\Program Files - env creation then fails and the
 	// window never loads (the app looks like it "won't open"). See
 	// webviewUserDataFolder. w.handlers.add tracks the env/controller completion
 	// handlers so they're unpinned when the window is disposed.
@@ -729,7 +730,7 @@ func (w *win) startAttach(identifier string) error {
 		// releases them and our stored pointers dangle (crash on next use, e.g.
 		// WM_SIZE -> PutBounds). `core` is NOT AddRef'd: it came from
 		// get_CoreWebView2 (comCallOut), an [out,retval] getter that already returns
-		// an owned ref — dispose()'s single Release balances it. (AddRef'ing here too
+		// an owned ref - dispose()'s single Release balances it. (AddRef'ing here too
 		// was a +1 leak per window. NEEDS Windows runtime validation.)
 		comCall(controller, iunknownAddRef)
 		comCall(env, iunknownAddRef)
@@ -999,7 +1000,7 @@ func monitorRect(hwnd windows.Handle) tagRECT {
 }
 
 // monitorWorkRect returns the work area (full bounds minus taskbar) of the
-// window's monitor — the region to center within.
+// window's monitor - the region to center within.
 func monitorWorkRect(hwnd windows.Handle) tagRECT {
 	return monitorInfoFor(hwnd).rcWork
 }
@@ -1020,6 +1021,12 @@ func (w *win) SetAlwaysOnTop(on bool) {
 	procSetWindowPos.Call(uintptr(w.hwnd), after, 0, 0, 0, 0, swpNoMove|swpNoSize)
 }
 
+// Read off the window: another app demoting us clears WS_EX_TOPMOST.
+func (w *win) IsAlwaysOnTop() bool {
+	ex, _, _ := procGetWindowLongPtr.Call(uintptr(w.hwnd), gwlExStyle)
+	return ex&wsExTopmost != 0
+}
+
 func (w *win) IsVisible() bool {
 	r, _, _ := procIsWindowVisible.Call(uintptr(w.hwnd))
 	return r != 0
@@ -1035,7 +1042,7 @@ func (w *win) State() window.State {
 // run on the creating (UI) thread.
 //
 // Close destroys the window. Programmatic close goes straight to WM_DESTROY
-// (bypassing WM_CLOSE/hideOnClose/PreventDefault — code that calls Close means
+// (bypassing WM_CLOSE/hideOnClose/PreventDefault - code that calls Close means
 // it); dispose() fires EventClose on that path so app teardown still runs.
 func (w *win) Close() {
 	hwnd := w.hwnd
