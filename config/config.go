@@ -39,6 +39,9 @@ type Config struct {
 	Logger   LoggerConfig  `yaml:"logger" json:"logger"`
 	Security SandboxConfig `yaml:"security" json:"security"`
 
+	// SEALED like security: a runtime overlay must not open what the build kept shut.
+	MCP MCPConfig `yaml:"mcp" json:"mcp"`
+
 	// Values are free-form so each module package defines its own shape.
 	Modules map[string]any `yaml:"modules" json:"modules"`
 
@@ -66,6 +69,11 @@ type WindowConfig struct {
 	RememberState bool   `yaml:"remember_state" json:"remember_state"`
 	Theme         string `yaml:"theme" json:"theme" validate:"omitempty,oneof=system dark light"`
 	Backdrop      string `yaml:"backdrop" json:"backdrop" validate:"omitempty,oneof=mica acrylic tabbed none"`
+}
+
+type MCPConfig struct {
+	// The user must still turn MCP on inside the app.
+	Enabled bool `yaml:"enabled" json:"enabled"`
 }
 
 type LoggerConfig struct {

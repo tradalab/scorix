@@ -47,6 +47,21 @@ func RegisterHandlers(a *app.App, svcCtx *svc.ServiceContext) {
 {{- end }}
 		return h(ctx, r)
 	})
+{{- if .MCP }}
+	a.MCPTool(app.MCPTool{
+		Name:        {{ printf "%q" .MCPToolName }},
+		Command:     {{ printf "%q" .CommandName }},
+		Description: {{ printf "%q" .Doc }},
+		InputSchema: json.RawMessage({{ printf "%q" .MCPSchema }}),
+		OutputSchema: json.RawMessage({{ printf "%q" .MCPOutputSchema }}),
+{{- if .MCPDestructive }}
+		Destructive: true,
+{{- end }}
+{{- if .MCPTimeout }}
+		Timeout: {{ printf "%d" .MCPTimeout }}, // {{ .MCPTimeout }}
+{{- end }}
+	})
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

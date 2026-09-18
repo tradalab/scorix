@@ -60,6 +60,11 @@ security:
     clipboard: true
     notification: true
 
+# Offers the rpcs marked `// @mcp` to an MCP client, which launches this binary with
+# --mcp. Sealed, and the user must still turn it on in the app.
+# mcp:
+#   enabled: true
+
 # modules:
 #   http:
 #     enabled: true

@@ -30,6 +30,24 @@ security:
 	}
 }
 
+func TestRuntimeOverlayCannotEnableMCP(t *testing.T) {
+	cfg, err := FromBytes([]byte("app:\n  name: sealed\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SCORIX_MCP_ENABLED", "true")
+	if err := ApplyOverlays(cfg, map[string]any{"mcp": map[string]any{"enabled": true}}); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.MCP.Enabled {
+		t.Fatal("a runtime overlay turned mcp.enabled on")
+	}
+	built, err := FromBytes([]byte("mcp:\n  enabled: true\n"))
+	if err != nil || !built.MCP.Enabled {
+		t.Fatalf("the manifest's own mcp.enabled did not decode: %v", err)
+	}
+}
+
 func TestDefaultCSPIsPreset(t *testing.T) {
 	if got := DefaultConfig().Security.CSP; got != "default" {
 		t.Fatalf("default CSP = %q, want the %q preset", got, "default")

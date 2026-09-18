@@ -12,3 +12,37 @@ export interface {{ .GoName }} {
 {{- end }}
 }
 {{ end }}
+{{- if .HasMCP }}
+export interface ScorixMCPTool {
+  name: string;
+  description: string;
+  destructive: boolean;
+  enabled: boolean;
+}
+
+export interface ScorixMCPStatus {
+  offered: boolean;
+  enabled: boolean;
+  running: boolean;
+  tools: ScorixMCPTool[];
+  clients: ScorixMCPClient[];
+  client: { command: string; args: string[] };
+  audit_log: string;
+}
+
+export interface ScorixMCPClient {
+  path: string;
+  name?: string;
+  approved_at: string;
+}
+
+export interface ScorixMCPCall {
+  tool: string;
+  // What the client calls itself; client_path is the program the OS says it is.
+  client: string;
+  client_path: string;
+  outcome: "ok" | "error" | "denied";
+  error?: string;
+  ms: number;
+}
+{{ end }}

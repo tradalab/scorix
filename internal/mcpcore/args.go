@@ -1,6 +1,12 @@
 package mcpcore
 
-import "fmt"
+import (
+	"fmt"
+	"maps"
+	"math"
+	"slices"
+	"strings"
+)
 
 // Args is one tool call's arguments, already unmarshalled.
 type Args map[string]any
@@ -74,16 +80,48 @@ func ListProp(desc string) map[string]any {
 // CheckArgs rejects an argument whose JSON type contradicts the schema the tool
 // published. Ignoring it instead is worse than an error: a dir that is not a
 // string falls back to "." and the command runs against the wrong directory.
+//
+// A closed schema refuses keys it does not name, at every depth: the tool's struct
+// would drop a misspelt one and run with that field empty.
 func CheckArgs(schema map[string]any, given map[string]any) error {
+	return checkObject("", schema, given)
+}
+
+func checkObject(path string, schema map[string]any, given map[string]any) error {
 	props, _ := schema["properties"].(map[string]any)
+	closed := schema["additionalProperties"] == false
 	for key, val := range given {
 		spec, ok := props[key].(map[string]any)
-		if !ok || val == nil {
-			continue // unknown keys and explicit nulls are the caller's business
+		if !ok {
+			if closed {
+				return fmt.Errorf("unknown argument %q; this takes: %s", path+key, strings.Join(slices.Sorted(maps.Keys(props)), ", "))
+			}
+			continue
 		}
-		want, _ := spec["type"].(string)
-		if !matchesJSONType(want, val) {
-			return fmt.Errorf("argument %q must be %s, got %T", key, want, val)
+		if err := checkValue(path+key, spec, val); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func checkValue(path string, spec map[string]any, val any) error {
+	if val == nil {
+		return nil // an explicit null is the caller's business
+	}
+	want, _ := spec["type"].(string)
+	if !matchesJSONType(want, val) {
+		return fmt.Errorf("argument %q must be %s, got %T", path, want, val)
+	}
+	switch v := val.(type) {
+	case map[string]any:
+		return checkObject(path+".", spec, v)
+	case []any:
+		items, _ := spec["items"].(map[string]any)
+		for i, item := range v {
+			if err := checkValue(fmt.Sprintf("%s[%d]", path, i), items, item); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -97,7 +135,10 @@ func matchesJSONType(want string, val any) bool {
 	case "boolean":
 		_, ok := val.(bool)
 		return ok
-	case "integer", "number":
+	case "integer":
+		f, ok := val.(float64)
+		return ok && f == math.Trunc(f)
+	case "number":
 		_, ok := val.(float64)
 		return ok
 	case "array":

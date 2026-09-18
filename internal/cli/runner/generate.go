@@ -68,6 +68,11 @@ func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateR
 		HasEvents: len(outEvents)+len(inEvents) > 0,
 		Shell:     shell,
 	}
+	for _, svc := range pf.Services {
+		for _, rpc := range svc.RPCs {
+			gen.HasMCP = gen.HasMCP || rpc.MCP
+		}
+	}
 
 	pageGen := gen
 	pageGen.Services = nil

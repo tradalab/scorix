@@ -26,7 +26,16 @@ func main() {
 	log.SetFlags(log.Ltime)
 	mode := flag.String("mode", "app", "run mode: app | web")
 	addr := flag.String("addr", "", "web listen address override (default: manifest web.host:port / SCORIX_WEB_*)")
+	mcp := flag.Bool("mcp", false, "relay MCP over stdin/stdout to the running app, starting it if needed (what an MCP client launches)")
 	flag.Parse()
+
+	// Before app.New: stdout is the protocol stream from its first byte.
+	if *mcp {
+		if err := app.RunMCPProxy(manifest); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 
 	site, err := fs.Sub(embeddedPublic, ".scorix/dist")
 	if err != nil {

@@ -84,6 +84,7 @@ func validateProject(opt ValidateOptions, res *ValidateResult) error {
 			add("warn", "proto", protoRel, "no service declared, so no handler or client is generated",
 				"declare a service, or drop the proto if this app has no IPC")
 		}
+		validateMCP(root, protoRel, cfg, pf, add)
 	}
 
 	schemaRel := DefaultSchemaPath
@@ -142,6 +143,34 @@ func validateProject(opt ValidateOptions, res *ValidateResult) error {
 			"check the path and that the CREATE TABLE statements are not commented out")
 	}
 	return finish(res)
+}
+
+// Each of these generates and builds clean, then serves nothing.
+func validateMCP(root, protoRel string, cfg *ProjectConfig, pf protoFile, add func(sev, source, path, msg, hint string)) {
+	on := cfg.MCP != nil && cfg.MCP.Enabled
+	tools := 0
+	for _, svc := range pf.Services {
+		for _, rpc := range svc.RPCs {
+			if rpc.MCP {
+				tools++
+			}
+		}
+	}
+	switch {
+	case tools > 0 && !on:
+		add("warn", "mcp", "scorix.yaml", fmt.Sprintf("%d rpc(s) are @mcp but mcp.enabled is off, so no client can reach them", tools),
+			"set mcp.enabled: true in scorix.yaml when the tools should ship")
+	case on && tools == 0:
+		add("warn", "mcp", protoRel, "mcp.enabled is on but no rpc is @mcp, so the app serves nothing",
+			"mark each rpc to offer with a // @mcp line above it")
+	}
+	if !on {
+		return
+	}
+	if src, err := os.ReadFile(filepath.Join(root, "main.go")); err == nil && !strings.Contains(string(src), "RunMCPProxy") {
+		add("warn", "mcp", "main.go", "mcp.enabled is on but main.go never calls app.RunMCPProxy, so `<App> --mcp` exits on an unknown flag",
+			"handle -mcp before app.New, as the scaffold's main.go does")
+	}
 }
 
 // The findings are the whole command, and they used to exist only inside the

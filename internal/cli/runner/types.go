@@ -1,6 +1,9 @@
 package runner
 
-import "io"
+import (
+	"io"
+	"time"
+)
 
 // DriftItem is one generated file that --check found out of sync.
 type DriftItem struct {
@@ -36,12 +39,13 @@ type IPCService struct {
 }
 
 type IPCCommand struct {
-	Command    string   `json:"command"`
-	Request    string   `json:"request"`
-	Reply      string   `json:"reply"`
-	Arity      string   `json:"arity"` // unary | server-stream
-	Middleware []string `json:"middleware,omitempty"`
-	MCP        bool     `json:"mcp,omitempty"` // the @mcp opt-in
+	Command        string   `json:"command"`
+	Request        string   `json:"request"`
+	Reply          string   `json:"reply"`
+	Arity          string   `json:"arity"` // unary | server-stream
+	Middleware     []string `json:"middleware,omitempty"`
+	MCP            bool     `json:"mcp,omitempty"` // the @mcp opt-in
+	MCPDestructive bool     `json:"mcp_destructive,omitempty"`
 }
 
 type IPCEvent struct {
@@ -123,10 +127,14 @@ type protoRPC struct {
 	EventName   string // wire topic, e.g. "monitor:message"
 	EventGoName string // service-prefixed identifier, e.g. "MonitorMessage"
 
-	// MCP opts this rpc in as a domain tool for an MCP client. Declared here and
-	// carried in the surface; nothing serves it yet, and enrichProto refuses the
-	// shapes a tool call cannot have (an event, or a stream).
-	MCP bool
+	MCP             bool
+	MCPDestructive  bool
+	MCPToolName     string
+	MCPSchema       string
+	MCPOutputSchema string
+	MCPTimeout      time.Duration // zero keeps mcpcore's default
+	// Doc is the rpc's leading comment without its annotation lines.
+	Doc string
 }
 
 type protoTemplateData struct {
@@ -136,6 +144,7 @@ type protoTemplateData struct {
 	OutEvents []protoRPC
 	InEvents  []protoRPC
 	HasEvents bool
+	HasMCP    bool // gates scorixMCP, so an app without @mcp regenerates unchanged
 	Shell     ShellKind
 }
 

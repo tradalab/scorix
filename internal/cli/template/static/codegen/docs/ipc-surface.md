@@ -12,7 +12,7 @@ opted in as a domain tool with `@mcp`.
 | Command | Request | Reply | Arity | Middleware | MCP |
 |---|---|---|---|---|---|
 {{- range .RPCs }}
-| `{{ .CommandName }}` | `{{ .RequestTSType }}` | `{{ .ResultTSType }}` | {{ .Arity }} | {{ if .Middlewares }}{{ range $i, $m := .Middlewares }}{{ if $i }}, {{ end }}`{{ $m }}`{{ end }}{{ else }}-{{ end }} | {{ if .MCP }}yes{{ else }}-{{ end }} |
+| `{{ .CommandName }}` | `{{ .RequestTSType }}` | `{{ .ResultTSType }}` | {{ .Arity }} | {{ if .Middlewares }}{{ range $i, $m := .Middlewares }}{{ if $i }}, {{ end }}`{{ $m }}`{{ end }}{{ else }}-{{ end }} | {{ if .MCP }}{{ if .MCPDestructive }}destructive{{ else }}yes{{ end }}{{ else }}-{{ end }} |
 {{- end }}
 {{ end }}
 {{- if .Events }}

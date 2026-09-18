@@ -30,6 +30,12 @@ type ProjectConfig struct {
 	Dev     *DevConfig     `yaml:"dev"`
 	Check   *CheckConfig   `yaml:"check"`
 	App     *AppManifest   `yaml:"app"`
+	MCP     *MCPManifest   `yaml:"mcp"`
+}
+
+// Read only to warn when the switch and the proto disagree; the app decides.
+type MCPManifest struct {
+	Enabled bool `yaml:"enabled"`
 }
 
 // Only the two keys the data dir is derived from. The `app:` block holds the
@@ -211,7 +217,7 @@ func generateModel(ctx context.Context, opt GenerateModelOptions, res *GenerateR
 	}
 	if d.Name() != "sqlite" {
 		// No app validates these dialects end-to-end yet (all are SQLite).
-		fmt.Printf("warning: dialect %q is EXPERIMENTAL — no app validates it end-to-end yet; review generated SQL carefully\n", d.Name())
+		fmt.Printf("warning: dialect %q is EXPERIMENTAL - no app validates it end-to-end yet; review generated SQL carefully\n", d.Name())
 	}
 
 	fmt.Printf("==> Parsing schema from %s (dialect: %s)\n", schemaPath, d.Name())

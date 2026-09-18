@@ -98,6 +98,11 @@ type App struct {
 	calls map[string]pendingCall // in-flight reverse RPCs, keyed by frame id
 
 	devctl *devControl // dev-time control socket; nil unless SCORIX_DEV_CONTROL asked for it
+
+	mcpTools []MCPTool
+	mcpHost  bool // Run only; web mode never serves MCP
+	mcp      *mcpServer
+	mcpMu    sync.Mutex // one start or stop at a time, so the endpoint on disk names the live socket
 }
 
 func (a *App) OnSystemEvent(evt window.RuntimeEvent, fn func()) {
@@ -121,43 +126,9 @@ var newDriver = defaultDriver // indirected so tests substitute the headless dri
 
 func New(opts Options) (*App, error) {
 	hasManifest := len(opts.Manifest) > 0
-	cfg := &config.Config{Modules: map[string]any{}}
-
-	if hasManifest {
-		mf, err := config.FromBytes(opts.Manifest)
-		if err != nil {
-			return nil, fmt.Errorf("app: parse manifest: %w", err)
-		}
-		cfg = mf
-		if cfg.Modules == nil {
-			cfg.Modules = map[string]any{}
-		}
-	}
-
-	// Applied even without a manifest so the no-manifest path still honors SCORIX_* env.
-	raw, err := loadRuntimeOverlay(opts.RuntimeConfigPath)
+	cfg, runtimeModules, err := resolveConfig(opts)
 	if err != nil {
 		return nil, err
-	}
-	if err := config.ApplyOverlays(cfg, raw); err != nil {
-		return nil, fmt.Errorf("app: apply runtime overlay: %w", err)
-	}
-	// No-manifest cfg has no CSP; "default" keeps 'unsafe-inline' for the injected bridge.
-	if !hasManifest && cfg.Security.CSP == "" {
-		cfg.Security.CSP = "default"
-	}
-	// No-manifest path skips DefaultConfig, so default the main window to resizable
-	// (a bare Options{} would otherwise create a non-resizable window).
-	if !hasManifest {
-		cfg.Window.Resizable = true
-	}
-	// Re-validate: the overlay can push out-of-range values past FromBytes's check.
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("app: validate config after overrides: %w", err)
-	}
-	var runtimeModules map[string]any
-	if raw != nil {
-		runtimeModules = config.AsStringMap(raw["modules"])
 	}
 
 	// Seed Options from resolved config; explicit Options win. Security seeds only
@@ -196,6 +167,7 @@ func New(opts Options) (*App, error) {
 	}
 	a.registerWindowCommands()
 	a.registerLaunchCommand()
+	a.registerMCPCommands()
 	if a.cfg.App.Name == "" {
 		a.cfg.App.Name = opts.Identifier
 	}
@@ -218,6 +190,50 @@ func New(opts Options) (*App, error) {
 		}
 	}
 	return a, nil
+}
+
+// Shared with RunMCPProxy, which must find the same data dir without New's side effects.
+func resolveConfig(opts Options) (*config.Config, map[string]any, error) {
+	hasManifest := len(opts.Manifest) > 0
+	cfg := &config.Config{Modules: map[string]any{}}
+
+	if hasManifest {
+		mf, err := config.FromBytes(opts.Manifest)
+		if err != nil {
+			return nil, nil, fmt.Errorf("app: parse manifest: %w", err)
+		}
+		cfg = mf
+		if cfg.Modules == nil {
+			cfg.Modules = map[string]any{}
+		}
+	}
+
+	// Applied even without a manifest so the no-manifest path still honors SCORIX_* env.
+	raw, err := loadRuntimeOverlay(opts.RuntimeConfigPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := config.ApplyOverlays(cfg, raw); err != nil {
+		return nil, nil, fmt.Errorf("app: apply runtime overlay: %w", err)
+	}
+	// No-manifest cfg has no CSP; "default" keeps 'unsafe-inline' for the injected bridge.
+	if !hasManifest && cfg.Security.CSP == "" {
+		cfg.Security.CSP = "default"
+	}
+	// No-manifest path skips DefaultConfig, so default the main window to resizable
+	// (a bare Options{} would otherwise create a non-resizable window).
+	if !hasManifest {
+		cfg.Window.Resizable = true
+	}
+	// Re-validate: the overlay can push out-of-range values past FromBytes's check.
+	if err := cfg.Validate(); err != nil {
+		return nil, nil, fmt.Errorf("app: validate config after overrides: %w", err)
+	}
+	var runtimeModules map[string]any
+	if raw != nil {
+		runtimeModules = config.AsStringMap(raw["modules"])
+	}
+	return cfg, runtimeModules, nil
 }
 
 // CrashDir is where crash reports land for an app, so a support request can ask
@@ -421,6 +437,9 @@ func (a *App) Run() error {
 		return err
 	}
 	defer a.stopModules()
+	// Before the modules stop: a tool call must not land on a torn-down database.
+	a.openMCP()
+	defer a.closeMCP()
 
 	a.mu.Lock()
 	a.rt = rt

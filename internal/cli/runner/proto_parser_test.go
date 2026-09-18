@@ -23,8 +23,27 @@ func hasField(m *protoMessage, name string) bool {
 	return false
 }
 
+func TestParseProto_FieldsSharingALineAreAllRead(t *testing.T) {
+	pf, err := parseProto(`syntax = "proto3";
+package demo;
+message Node { string name = 1; repeated Node children = 2; int64 size = 3 [deprecated = true]; }
+service S {
+  rpc Get (Node) returns (Node);
+}
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := findMessage(pf, "Node")
+	for _, name := range []string{"name", "children", "size"} {
+		if !hasField(m, name) {
+			t.Errorf("field %q was dropped; parsed %+v", name, m)
+		}
+	}
+}
+
 // L9: a nested `{}` (inline option block) must not truncate the body at the first
-// inner `}` — fields after the nested braces must keep parsing.
+// inner `}` - fields after the nested braces must keep parsing.
 func TestParseProto_NestedBracesDoNotTruncateFields(t *testing.T) {
 	src := `
 syntax = "proto3";
@@ -52,7 +71,7 @@ service Svc {
 	}
 	// The load-bearing assertion: the field AFTER the nested `{...}` survived.
 	if !hasField(outer, "after") {
-		t.Errorf("field `after` lost — body truncated at nested brace; fields=%+v", outer.Fields)
+		t.Errorf("field `after` lost - body truncated at nested brace; fields=%+v", outer.Fields)
 	}
 }
 
@@ -126,7 +145,7 @@ service Healthz {
 }
 
 // L10: a malformed field line is skipped (good fields still parse, bad one
-// dropped); the warning goes to stdout — here we assert the parse stays robust.
+// dropped); the warning goes to stdout - here we assert the parse stays robust.
 func TestParseProto_MalformedFieldSkippedNotFatal(t *testing.T) {
 	src := `
 syntax = "proto3";

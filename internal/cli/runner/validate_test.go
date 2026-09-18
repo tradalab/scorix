@@ -76,6 +76,47 @@ func TestValidateAcceptsWhatInitProduces(t *testing.T) {
 	}
 }
 
+func TestValidateWarnsWhenMCPIsHalfWired(t *testing.T) {
+	mcpProto := strings.Replace(okProto, "  rpc Ping", "  // Reports whether the app is up.\n  // @mcp\n  rpc Ping", 1)
+	withMain := func(dir, body string) string {
+		if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	relayMain := "package main\n\nfunc main() { _ = app.RunMCPProxy(manifest) }\n"
+	cases := []struct {
+		name, want string
+		dir        string
+	}{
+		{"tools declared, switch off", "mcp.enabled is off",
+			withMain(project(t, manifest, mcpProto, okSchema), relayMain)},
+		{"switch on, no tool", "no rpc is @mcp",
+			withMain(project(t, manifest+"mcp:\n  enabled: true\n", okProto, okSchema), relayMain)},
+		{"switch on, main.go never relays", "RunMCPProxy",
+			withMain(project(t, manifest+"mcp:\n  enabled: true\n", mcpProto, okSchema), "package main\n\nfunc main() {}\n")},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			res, err := validate(t, c.dir)
+			if err != nil {
+				t.Fatalf("a half-wired MCP setup must warn, not fail: %v", err)
+			}
+			var hit bool
+			for _, f := range only(t, res, "warn") {
+				hit = hit || (f.Source == "mcp" && strings.Contains(f.Message, c.want))
+			}
+			if !hit {
+				t.Fatalf("no mcp warning mentioning %q; got %+v", c.want, res.Findings)
+			}
+		})
+	}
+	ok, err := validate(t, withMain(project(t, manifest+"mcp:\n  enabled: true\n", mcpProto, okSchema), relayMain))
+	if err != nil || len(only(t, ok, "warn")) != 0 {
+		t.Fatalf("a fully wired MCP setup still warned: %v %+v", err, ok.Findings)
+	}
+}
+
 func TestValidateReportsEachBrokenInput(t *testing.T) {
 	cases := []struct {
 		name     string

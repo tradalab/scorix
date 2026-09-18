@@ -71,6 +71,47 @@ type Tool struct {
 	Run         func(ctx context.Context, a Args, out io.Writer) error
 	Timeout     time.Duration // zero uses DefaultToolTimeout
 	Direct      bool          // answers on the read loop, takes no turn
+	Annotations map[string]any
+	// OutputSchema wins over Options.OutputSchema.
+	OutputSchema map[string]any
+}
+
+type serverKey struct{}
+
+type callKey struct{}
+
+type callRef struct {
+	call *liveCall
+	enc  *json.Encoder // nil for a batched call: its reply is one array, with no room for a notification
+}
+
+// ClientName is self-reported: it names a caller and authorizes nothing.
+func ClientName(ctx context.Context) string {
+	s, ok := ctx.Value(serverKey{}).(*Server)
+	if !ok {
+		return ""
+	}
+	s.clientMu.Lock()
+	defer s.clientMu.Unlock()
+	return s.client
+}
+
+// Progress is false when the client asked for none, or the call cannot carry one.
+func Progress(ctx context.Context, message string) bool {
+	s, _ := ctx.Value(serverKey{}).(*Server)
+	ref, ok := ctx.Value(callKey{}).(callRef)
+	if s == nil || !ok || ref.enc == nil {
+		return false
+	}
+	s.callMu.Lock()
+	if len(ref.call.token) == 0 {
+		s.callMu.Unlock()
+		return false
+	}
+	ref.call.seq++
+	params := map[string]any{"progressToken": ref.call.token, "progress": ref.call.seq, "message": message}
+	s.callMu.Unlock()
+	return s.write(ref.enc, map[string]any{"jsonrpc": "2.0", "method": "notifications/progress", "params": params}) == nil
 }
 
 type Options struct {
@@ -108,6 +149,9 @@ type Server struct {
 
 	progressIn  io.Reader
 	progressTee io.Writer
+
+	clientMu sync.Mutex
+	client   string
 }
 
 type liveCall struct {
@@ -325,7 +369,7 @@ func (s *Server) dispatchCall(ctx context.Context, req Request, enc *json.Encode
 		if prev != nil {
 			<-prev
 		}
-		callCtx, release := s.beginCall(ctx, req.ID, t, token)
+		callCtx, release := s.beginCall(ctx, req.ID, t, token, enc)
 		defer release()
 		_ = s.write(enc, Response{JSONRPC: "2.0", ID: req.ID, Result: s.runCall(callCtx, t, arguments)})
 	}()
@@ -334,16 +378,18 @@ func (s *Server) dispatchCall(ctx context.Context, req Request, enc *json.Encode
 
 // Registered while it runs, so notifications/cancelled and a status tool can
 // both find it.
-func (s *Server) beginCall(ctx context.Context, id json.RawMessage, t Tool, token json.RawMessage) (context.Context, func()) {
+func (s *Server) beginCall(ctx context.Context, id json.RawMessage, t Tool, token json.RawMessage, enc *json.Encoder) (context.Context, func()) {
 	limit := t.Timeout
 	if limit == 0 {
 		limit = DefaultToolTimeout
 	}
 	callCtx, cancel := context.WithTimeout(ctx, limit)
 	key := string(id)
+	call := &liveCall{tool: t.Name, started: time.Now(), cancel: cancel, token: token}
 	s.callMu.Lock()
-	s.calls[key] = &liveCall{tool: t.Name, started: time.Now(), cancel: cancel, token: token}
+	s.calls[key] = call
 	s.callMu.Unlock()
+	callCtx = context.WithValue(callCtx, callKey{}, callRef{call: call, enc: enc})
 	return callCtx, func() {
 		s.callMu.Lock()
 		delete(s.calls, key)
@@ -421,7 +467,7 @@ func (s *Server) takeTurn() (prev <-chan struct{}, done func()) {
 }
 
 func (s *Server) runCall(ctx context.Context, t Tool, arguments map[string]any) map[string]any {
-	text, failed := s.invoke(ctx, t, arguments)
+	text, failed := s.invoke(context.WithValue(ctx, serverKey{}, s), t, arguments)
 	res := map[string]any{
 		"content": []map[string]any{{"type": "text", "text": text}},
 		"isError": failed,
@@ -429,8 +475,10 @@ func (s *Server) runCall(ctx context.Context, t Tool, arguments map[string]any) 
 	// The envelope goes back parsed as well as as text: a client that only
 	// reads content would otherwise hand the model a JSON string to parse by
 	// hand, which is the one thing this whole layer exists to avoid.
-	var structured any
-	if json.Unmarshal([]byte(text), &structured) == nil {
+	// Objects only: the spec types structuredContent as one, and a command may answer
+	// an array or a string. An error envelope keeps no outputSchema promise.
+	var structured map[string]any
+	if json.Unmarshal([]byte(text), &structured) == nil && structured != nil && !(failed && t.OutputSchema != nil) {
 		res["structuredContent"] = structured
 	}
 	return res
@@ -473,8 +521,14 @@ func guarded(ctx context.Context, t Tool, a Args, out io.Writer) (err error) {
 func (s *Server) initialize(params json.RawMessage) map[string]any {
 	var p struct {
 		ProtocolVersion string `json:"protocolVersion"`
+		ClientInfo      struct {
+			Name string `json:"name"`
+		} `json:"clientInfo"`
 	}
 	_ = json.Unmarshal(params, &p)
+	s.clientMu.Lock()
+	s.client = p.ClientInfo.Name
+	s.clientMu.Unlock()
 	version := ProtocolVersions[0]
 	for _, v := range ProtocolVersions {
 		if v == p.ProtocolVersion {
@@ -497,8 +551,13 @@ func (s *Server) toolDescriptors() []map[string]any {
 			"description": t.Description,
 			"inputSchema": t.Schema,
 		}
-		if s.outputSchema != nil {
+		if t.OutputSchema != nil {
+			d["outputSchema"] = t.OutputSchema
+		} else if s.outputSchema != nil {
 			d["outputSchema"] = s.outputSchema()
+		}
+		if t.Annotations != nil {
+			d["annotations"] = t.Annotations
 		}
 		out = append(out, d)
 	}

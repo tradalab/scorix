@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
 
 var unsupportedProtoRe = regexp.MustCompile(`\b(enum\s+[A-Za-z_]|oneof\s+[A-Za-z_]|map\s*<)`)
@@ -30,13 +31,13 @@ func parseProto(src string) (protoFile, error) {
 	eventRe := regexp.MustCompile(`(?m)^[ \t]*//[ \t]*@event\b(?:[ \t]+(in|out))?[ \t]*\r?$`)
 	// @broadcast is the v2 spelling of a callerless Go->JS push (== @event out)
 	broadcastRe := regexp.MustCompile(`(?m)^[ \t]*//[ \t]*@broadcast[ \t]*\r?$`)
-	// @mcp opts a command in as a domain tool for an MCP client
-	mcpRe := regexp.MustCompile(`(?m)^[ \t]*//[ \t]*@mcp[ \t]*\r?$`)
+	// Modifiers are captured whatever they say, so a misspelt one is refused below.
+	mcpRe := regexp.MustCompile(`(?m)^[ \t]*//[ \t]*@mcp(?:[ \t]+([^\r\n]*?))?[ \t]*\r?$`)
 
 	// A trailing same-line annotation would be captured as the NEXT rpc's leading
 	// comment. The line anchors above already refuse to read it, so without this
 	// guard it would be dropped in silence; reject it loudly instead.
-	trailingAnno := regexp.MustCompile(`returns\s*\(\s*(?:stream\s+)?[A-Za-z_][A-Za-z0-9_.]*\s*\)[ \t]*;?[ \t]*//[^\n]*@(?:event|broadcast|mcp)(?:[ \t]+(?:in|out))?[ \t]*(?:\r?\n|$)`)
+	trailingAnno := regexp.MustCompile(`returns\s*\(\s*(?:stream\s+)?[A-Za-z_][A-Za-z0-9_.]*\s*\)[ \t]*;?[ \t]*//[^\n]*@(?:event|broadcast|mcp)(?:[ \t]+(?:in|out|destructive|timeout=\S+))*[ \t]*(?:\r?\n|$)`)
 	if m := trailingAnno.FindString(src); m != "" {
 		return pf, fmt.Errorf("proto: @event/@broadcast/@mcp must be on its own comment line above the rpc, not a trailing comment: %q", strings.TrimSpace(m))
 	}
@@ -139,7 +140,24 @@ func parseProto(src string) (protoFile, error) {
 				rpc.IsEvent = true
 				rpc.EventDir = "out"
 			}
-			rpc.MCP = mcpRe.MatchString(commentBlock)
+			if m := mcpRe.FindStringSubmatch(commentBlock); m != nil {
+				for _, mod := range strings.Fields(m[1]) {
+					switch {
+					case mod == "destructive":
+						rpc.MCPDestructive = true
+					case strings.HasPrefix(mod, "timeout="):
+						d, err := time.ParseDuration(strings.TrimPrefix(mod, "timeout="))
+						if err != nil || d <= 0 {
+							return protoFile{}, fmt.Errorf("proto: rpc %s.%s has `@mcp %s`; timeout takes a positive Go duration such as 10m", svc.Name, rpcName, mod)
+						}
+						rpc.MCPTimeout = d
+					default:
+						return protoFile{}, fmt.Errorf("proto: rpc %s.%s has `@mcp %s`; the modifiers are `destructive` and `timeout=<duration>`", svc.Name, rpcName, mod)
+					}
+				}
+				rpc.MCP = true
+			}
+			rpc.Doc = rpcDoc(commentBlock)
 			svc.RPCs = append(svc.RPCs, rpc)
 		}
 		if len(svc.RPCs) == 0 {
@@ -155,6 +173,18 @@ func parseProto(src string) (protoFile, error) {
 		return protoFile{}, err
 	}
 	return pf, nil
+}
+
+func rpcDoc(commentBlock string) string {
+	var words []string
+	for _, line := range strings.Split(commentBlock, "\n") {
+		text := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "//"))
+		if text == "" || strings.HasPrefix(text, "@") {
+			continue
+		}
+		words = append(words, text)
+	}
+	return strings.Join(words, " ")
 }
 
 // An rpc naming a message that was never declared generates code around a type
@@ -208,7 +238,12 @@ func stripProtoComments(src string) string {
 func parseProtoFields(msgName, body string) []protoField {
 	fieldRe := regexp.MustCompile(`(?m)^\s*(repeated\s+)?([A-Za-z_][A-Za-z0-9_.<>]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\d+`)
 	var fields []protoField
+	// Statements, not lines: a second field on the same line was dropped, silently.
+	var statements []string
 	for _, line := range strings.Split(body, "\n") {
+		statements = append(statements, strings.Split(line, ";")...)
+	}
+	for _, line := range statements {
 		trimmed := strings.TrimSpace(line)
 		// `}` from nested balanced bodies can leak in here.
 		if trimmed == "" || strings.HasPrefix(trimmed, "//") || trimmed == "}" {

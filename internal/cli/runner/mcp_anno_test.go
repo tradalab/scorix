@@ -84,6 +84,17 @@ func TestAnnotationInsideProseIsNotAnAnnotation(t *testing.T) {
 	}
 }
 
+// Accepted until `@mcp destructive` widened the guard for a misplaced annotation.
+func TestTrailingProseMentioningAnAnnotationIsAccepted(t *testing.T) {
+	if _, err := parseProto(mcpProtoHead + `
+  rpc Plain (Req) returns (Res); // see @mcp docs
+
+  rpc Other (Req) returns (Res); // uses @event bus
+` + "}\n"); err != nil {
+		t.Fatalf("prose in a trailing comment was refused as a misplaced annotation: %v", err)
+	}
+}
+
 func TestRealAnnotationSpellingsStillParse(t *testing.T) {
 	pf, err := parseProto(mcpProtoHead + "\n    // @event in\n    rpc Ack (Req) returns (Res);\r\n\n  // @broadcast\r\n  rpc Tick (Req) returns (Res);\n" + "}\n")
 	if err != nil {
@@ -124,6 +135,7 @@ func TestMCPOnAStreamIsRefused(t *testing.T) {
 
 func TestSurfaceCarriesTheMCPFlag(t *testing.T) {
 	pf := parseService(t, `
+  // Frees disk space.
   // @mcp
   rpc Clean (Req) returns (Res);
 

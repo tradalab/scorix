@@ -17,6 +17,16 @@ export const {{ .Package }} = {
 };
 {{ end }}
 {{- end }}
+{{- if .HasMCP }}
+// The app's MCP switch, for a settings screen (sys:mcp:*).
+export const scorixMCP = {
+  status: () => scorix.invoke<T.ScorixMCPStatus>("sys:mcp:status"),
+  enable: (enabled: boolean) => scorix.invoke<T.ScorixMCPStatus>("sys:mcp:enable", { enabled }),
+  setTool: (name: string, enabled: boolean) => scorix.invoke<T.ScorixMCPStatus>("sys:mcp:tool", { name, enabled }),
+  revokeClient: (path: string) => scorix.invoke<T.ScorixMCPStatus>("sys:mcp:revoke", { path }),
+  onCall: (cb: (data: T.ScorixMCPCall, error?: string) => void): (() => void) => scorix.on("sys:mcp:call", cb),
+};
+{{ end }}
 {{- if .HasEvents }}
 // Typed events (@event in proto). onX subscribes (returns unsubscribe);
 // emitX sends a one-way frontend event to Go.

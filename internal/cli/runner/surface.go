@@ -112,6 +112,7 @@ func readProto(path string) (protoFile, error) {
 // not by the parser: call this before reading CommandName, EventName or the TS
 // types off an rpc.
 func enrichProto(pf *protoFile) (outEvents, inEvents []protoRPC, err error) {
+	toolOf := map[string]string{}
 	for i := range pf.Services {
 		svc := &pf.Services[i]
 		svc.Package = lowerCamel(svc.Name)
@@ -141,6 +142,25 @@ func enrichProto(pf *protoFile) (outEvents, inEvents []protoRPC, err error) {
 			rpc.ResultGoType = typeRef(rpc.ResponseType)
 			rpc.RequestTSType = tsTypeRef(rpc.RequestType)
 			rpc.ResultTSType = tsTypeRef(rpc.ResponseType)
+			if rpc.MCP {
+				if rpc.Doc == "" {
+					return nil, nil, fmt.Errorf("rpc %s.%s is @mcp with no description; a model decides whether to call a tool from its description alone, so write a comment above the rpc", svc.Name, rpc.Name)
+				}
+				rpc.MCPToolName = strings.ReplaceAll(rpc.CommandName, ":", "_")
+				if !mcpToolNameRe.MatchString(rpc.MCPToolName) {
+					return nil, nil, fmt.Errorf("rpc %s.%s would be the MCP tool %q; tool names are 1-64 of [A-Za-z0-9_-]", svc.Name, rpc.Name, rpc.MCPToolName)
+				}
+				if prev, taken := toolOf[rpc.MCPToolName]; taken {
+					return nil, nil, fmt.Errorf("rpc %s.%s and command %s both become the MCP tool %q; rename one", svc.Name, rpc.Name, prev, rpc.MCPToolName)
+				}
+				toolOf[rpc.MCPToolName] = rpc.CommandName
+				if rpc.MCPSchema, err = mcpSchema(*pf, rpc.RequestType, true); err != nil {
+					return nil, nil, err
+				}
+				if rpc.MCPOutputSchema, err = mcpSchema(*pf, rpc.ResponseType, false); err != nil {
+					return nil, nil, err
+				}
+			}
 			if len(rpc.Middlewares) == 0 {
 				rpc.Middlewares = svc.Middlewares
 			}
@@ -180,12 +200,13 @@ func ipcSurfaceOf(pf protoFile) *IPCSurface {
 		out := IPCService{Name: svc.Name, Wire: svc.Package}
 		for _, rpc := range svc.RPCs {
 			out.Commands = append(out.Commands, IPCCommand{
-				Command:    rpc.CommandName,
-				Request:    rpc.RequestTSType,
-				Reply:      rpc.ResultTSType,
-				Arity:      rpc.Arity,
-				Middleware: rpc.Middlewares,
-				MCP:        rpc.MCP,
+				Command:        rpc.CommandName,
+				Request:        rpc.RequestTSType,
+				Reply:          rpc.ResultTSType,
+				Arity:          rpc.Arity,
+				Middleware:     rpc.Middlewares,
+				MCP:            rpc.MCP,
+				MCPDestructive: rpc.MCPDestructive,
 			})
 		}
 		for _, ev := range svc.Events {

@@ -11,6 +11,10 @@ func fileWriter(cfg Config) io.Writer {
 	if cfg.Output == "stdout" {
 		return os.Stdout
 	}
+	// For a process whose stdout is a protocol stream, such as an MCP relay.
+	if cfg.Output == "stderr" {
+		return os.Stderr
+	}
 	if cfg.Output == "file" || cfg.Output == "both" {
 		maxBackups := cfg.MaxBackups
 		if maxBackups <= 0 {

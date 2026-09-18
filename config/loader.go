@@ -150,7 +150,10 @@ func ApplyOverlays(cfg *Config, file map[string]any) error {
 	// security is sealed; surface (don't apply) a runtime attempt to change it.
 	if file != nil {
 		if _, ok := file["security"]; ok {
-			warn("config: ignoring runtime overlay of `security` (sealed — rebuild with a new manifest to change CSP/allowlist)")
+			warn("config: ignoring runtime overlay of `security` (sealed - rebuild with a new manifest to change CSP/allowlist)")
+		}
+		if _, ok := file["mcp"]; ok {
+			warn("config: ignoring runtime overlay of `mcp` (sealed - an overlay must not offer tools the build did not)")
 		}
 	}
 	return nil
