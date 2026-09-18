@@ -78,7 +78,7 @@ func NewDispatcher(reg *Registry, send func([]byte) error) *Dispatcher {
 	}
 }
 
-// begin reserves a wg slot under d.mu, refusing once closing — so no wg.Add can
+// begin reserves a wg slot under d.mu, refusing once closing - so no wg.Add can
 // race Close's wg.Wait at a zero counter.
 func (d *Dispatcher) begin() bool {
 	d.mu.Lock()
@@ -354,7 +354,7 @@ func (d *Dispatcher) dispatchCommand(msg webview.Message) {
 			d.mu.Unlock()
 		}
 		// ctx-aware acquire so a cancel while the sem is full doesn't park this
-		// goroutine unobservably — else Close's drain stalls under load.
+		// goroutine unobservably - else Close's drain stalls under load.
 		select {
 		case d.sem <- struct{}{}:
 		case <-ctx.Done():

@@ -92,7 +92,7 @@ func TestCheckForUpdate_RefusesBelowFloor(t *testing.T) {
 	m := newFloorModule(t, "1.0.0")
 	m.writeFloor("2.0.0")
 
-	// Provider advertises 1.5.0 — newer than the stale CurrentVersion (1.0.0)
+	// Provider advertises 1.5.0 - newer than the stale CurrentVersion (1.0.0)
 	// but <= the persisted floor (2.0.0). Must be refused.
 	fp := &fakeProvider{res: &Result{HasUpdate: true, NewVersion: "1.5.0"}}
 	m.provider = fp

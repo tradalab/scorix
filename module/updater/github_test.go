@@ -17,7 +17,7 @@ func TestAssetMatchesPlatform(t *testing.T) {
 		{"linux x86_64 alias", "RedisHub-1.11.0-linux-x86_64.AppImage", "linux-amd64", true},
 		{"linux vs darwin", "RedisHub-1.11.0-linux-amd64.AppImage", "darwin-amd64", false},
 
-		// macOS — the packager names dmgs "macos", updater key is "darwin"
+		// macOS - the packager names dmgs "macos", updater key is "darwin"
 		{"macos universal -> darwin-arm64", "RedisHub-1.11.0-macos-universal.dmg", "darwin-arm64", true},
 		{"macos universal -> darwin-amd64", "RedisHub-1.11.0-macos-universal.dmg", "darwin-amd64", true},
 		{"macos universal sig", "RedisHub-1.11.0-macos-universal.dmg.sig", "darwin-arm64", true},

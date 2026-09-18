@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// sameOrigin gates the /ipc WebSocket upgrade — a CSRF defense. Verify the
+// sameOrigin gates the /ipc WebSocket upgrade - a CSRF defense. Verify the
 // matrix directly (the function is the security boundary for web mode).
 func TestSameOrigin(t *testing.T) {
 	cases := []struct {

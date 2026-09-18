@@ -85,10 +85,10 @@ type BuildContext struct {
 	Ldflags []string
 	Tags    []string
 
-	DistDir      string // <root>/.scorix/dist — embedded into the binary
+	DistDir      string // <root>/.scorix/dist - embedded into the binary
 	ShellDir     string // <root>/shell
-	ShellDistSrc string // <root>/shell/dist — frontend build output
-	ArtifactDir  string // <root>/artifacts — final installers land here
+	ShellDistSrc string // <root>/shell/dist - frontend build output
+	ArtifactDir  string // <root>/artifacts - final installers land here
 	TempDir      string // <root>/.scorix/<name>-<ver>-<os>-<arch>
 	BinaryName   string // ProductName(.exe on windows)
 
@@ -306,7 +306,7 @@ func (bc *BuildContext) upgradeCode() string {
 
 func buildFrontend(ctx context.Context, bc *BuildContext) error {
 	if _, err := os.Stat(filepath.Join(bc.ShellDir, "package.json")); err != nil {
-		fmt.Println("==> No shell/package.json — skipping frontend build")
+		fmt.Println("==> No shell/package.json - skipping frontend build")
 		return nil
 	}
 	fmt.Println("==> Building frontend (pnpm build)...")
@@ -389,7 +389,7 @@ func ensureEmbedDir(distDir string) error {
 		return err
 	}
 	if len(entries) == 0 {
-		fmt.Printf("warning: %s is empty — using a placeholder (no bundled frontend)\n", distDir)
+		fmt.Printf("warning: %s is empty - using a placeholder (no bundled frontend)\n", distDir)
 		return os.WriteFile(filepath.Join(distDir, ".keep"), nil, 0o644)
 	}
 	return nil
@@ -466,7 +466,7 @@ func goBuildArch(ctx context.Context, bc *BuildContext, goarch, out string) erro
 func goBuildDarwinUniversal(ctx context.Context, bc *BuildContext, out string) error {
 	lipo, err := exec.LookPath("lipo")
 	if err != nil {
-		return fmt.Errorf("lipo not found in PATH — universal darwin builds require macOS / Xcode command line tools")
+		return fmt.Errorf("lipo not found in PATH - universal darwin builds require macOS / Xcode command line tools")
 	}
 	amd := out + "-amd64"
 	arm := out + "-arm64"

@@ -51,7 +51,7 @@ type Sink[Out any] struct {
 
 // Send pushes one message. On the web (WebSocket) transport it returns the write
 // error once the client has gone, so a producer can stop feeding a dead consumer;
-// native PostMessage is fire-and-forget — prefer Context() cancellation there.
+// native PostMessage is fire-and-forget - prefer Context() cancellation there.
 func (s Sink[Out]) Send(v *Out) error        { return s.raw.Send(v) }
 func (s Sink[Out]) Context() context.Context { return s.raw.Context() }
 func (s Sink[Out]) Client() (ClientID, bool) { return s.raw.Client() }

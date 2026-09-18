@@ -19,7 +19,7 @@ func TestOpenCreatesAndReusesMasterKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Second Open must load the SAME key — tokens stay readable.
+	// Second Open must load the SAME key - tokens stay readable.
 	s2, err := Open("com.example.test")
 	if err != nil {
 		t.Fatalf("Open (reuse): %v", err)

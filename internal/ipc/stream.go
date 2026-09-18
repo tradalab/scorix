@@ -149,7 +149,7 @@ func (s *rawStream) Recv() (json.RawMessage, error) {
 
 func (s *rawStream) Send(v any) error {
 	// Fence: finishRPC cancels ctx before the terminal frame, so a handler that
-	// outlives its return can't emit a msg frame after done — it gets the error.
+	// outlives its return can't emit a msg frame after done - it gets the error.
 	if err := s.ctx.Err(); err != nil {
 		return err
 	}

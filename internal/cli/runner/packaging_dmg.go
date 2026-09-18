@@ -63,7 +63,7 @@ func (darwinPackager) Package(ctx context.Context, bc *BuildContext) (string, er
 	// Use the app's Info.plist if present, else scaffold; patch version to track scorix.yaml.
 	plistSrc := filepath.Join(bc.Root, "installer", "mac", "Info.plist")
 	if _, err := os.Stat(plistSrc); err != nil {
-		fmt.Println("==> Info.plist not found — scaffolding installer/mac/")
+		fmt.Println("==> Info.plist not found - scaffolding installer/mac/")
 		if err := scaffoldDarwinInstaller(bc); err != nil {
 			return "", fmt.Errorf("scaffold installer: %w", err)
 		}
@@ -142,7 +142,7 @@ func (darwinPackager) Package(ctx context.Context, bc *BuildContext) (string, er
 		created = true
 	}
 	if !created {
-		return "", fmt.Errorf("no DMG tool found (need hdiutil on macOS, or dmgbuild). The app bundle is ready at %s — re-run with --target app to keep just the bundle", appBundle)
+		return "", fmt.Errorf("no DMG tool found (need hdiutil on macOS, or dmgbuild). The app bundle is ready at %s - re-run with --target app to keep just the bundle", appBundle)
 	}
 
 	// Sign the disk image, then notarize + staple it (no-ops if not configured).

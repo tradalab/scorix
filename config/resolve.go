@@ -17,7 +17,7 @@ const (
 	SourceFile    Source = "runtime_file" // overridden by the runtime overlay file
 	SourceEnv     Source = "env"          // overridden by an environment variable
 	SourceEnvFile Source = "env_file"     // env held a path; value read from that file (K8s secret)
-	SourceSealed  Source = "sealed"       // no `env` tag — never overridable (override attempts ignored)
+	SourceSealed  Source = "sealed"       // no `env` tag - never overridable (override attempts ignored)
 )
 
 // Callers MUST mask Value when Secret is true before display/logging.
@@ -35,7 +35,7 @@ type ResolveOptions struct {
 	// Auto env-name prefix for empty `env` tags, e.g. "SCORIX_MODULE_SQLX_".
 	Prefix string
 	// Runtime-file section keyed by json name. Only `env`-tagged fields consult it;
-	// sealed fields never do — this is what makes "no tag = not overridable" hold.
+	// sealed fields never do - this is what makes "no tag = not overridable" hold.
 	FileOverlay map[string]any
 	LookupEnv   func(string) (string, bool) // nil → real os funcs (injectable for tests)
 	ReadFile    func(string) ([]byte, error)
@@ -106,7 +106,7 @@ func ResolveOverrides(out any, opts ResolveOptions) error {
 		// and skip nested struct/ptr/map rather than failing the whole load.
 		if !assignable(fv) {
 			if opts.Warnf != nil {
-				opts.Warnf("config: env tag on field %q of unsupported kind %s — only scalar/[]string/Duration leaves are overridable; ignoring", jsonKey, fv.Kind())
+				opts.Warnf("config: env tag on field %q of unsupported kind %s - only scalar/[]string/Duration leaves are overridable; ignoring", jsonKey, fv.Kind())
 			}
 			continue
 		}
@@ -126,7 +126,7 @@ func ResolveOverrides(out any, opts ResolveOptions) error {
 				rawVal, source = ev, SourceEnv
 			}
 		} else if !secret && opts.FileOverlay != nil {
-			// Secrets never come from the (committable) file — only env / mounted path.
+			// Secrets never come from the (committable) file - only env / mounted path.
 			if v, ok := opts.FileOverlay[jsonKey]; ok {
 				rawVal, source = v, SourceFile
 			}

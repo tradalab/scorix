@@ -23,7 +23,7 @@ import (
 )
 
 // SEALED (no `env` tags): the update source, signing key and platform key decide
-// what code we download and trust — env/runtime-file override would be an RCE
+// what code we download and trust - env/runtime-file override would be an RCE
 // vector, so changing them needs a rebuild with a new embedded manifest.
 type Config struct {
 	Provider        string   `json:"provider"`    // "appcast" or "github"
@@ -229,11 +229,11 @@ func (m *UpdaterModule) readFloor() string {
 	return strings.TrimSpace(string(b))
 }
 
-// Best-effort: a write failure is logged, never fatal — must not abort an update.
+// Best-effort: a write failure is logged, never fatal - must not abort an update.
 func (m *UpdaterModule) writeFloor(version string) {
 	p := m.floorPath()
 	if p == "" {
-		logger.Info("[updater] anti-rollback: no data dir available — skipping floor persist")
+		logger.Info("[updater] anti-rollback: no data dir available - skipping floor persist")
 		return
 	}
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
@@ -246,7 +246,17 @@ func (m *UpdaterModule) writeFloor(version string) {
 	}
 }
 
-// max(CurrentVersion, persistedFloor) — the version an update must EXCEED to be accepted.
+func (m *UpdaterModule) restoreFloor(prev string) {
+	if prev != "" {
+		m.writeFloor(prev)
+		return
+	}
+	if p := m.floorPath(); p != "" {
+		_ = os.Remove(p)
+	}
+}
+
+// max(CurrentVersion, persistedFloor) - the version an update must EXCEED to be accepted.
 func (m *UpdaterModule) rollbackFloor() string {
 	floor := m.cfg.CurrentVersion
 	if persisted := m.readFloor(); isNewer(persisted, floor) {
@@ -254,6 +264,8 @@ func (m *UpdaterModule) rollbackFloor() string {
 	}
 	return floor
 }
+
+var progressLog = func(msg string) { logger.Info(msg) }
 
 func (m *UpdaterModule) Download(ctx context.Context, c *http.Client, url string) (string, error) {
 	if err := checkSecureURL(url); err != nil {
@@ -290,7 +302,8 @@ func (m *UpdaterModule) Download(ctx context.Context, c *http.Client, url string
 	defer tmpFile.Close()
 
 	buf := make([]byte, 32*1024)
-	var downloaded int64
+	var downloaded, loggedAt int64
+	var loggedPct float64
 
 	for {
 		n, err := resp.Body.Read(buf)
@@ -300,11 +313,17 @@ func (m *UpdaterModule) Download(ctx context.Context, c *http.Client, url string
 			}
 			downloaded += int64(n)
 
+			// Every 32 KiB chunk was a line: 3,200 of them for a 100 MB installer, into a
+			// rotating log file. Steps instead, so the line count does not follow the size.
 			if total > 0 {
 				percent := float64(downloaded) / float64(total) * 100
-				logger.Info(fmt.Sprintf("[updater] Downloading... %.2f%%", percent))
-			} else {
-				logger.Info(fmt.Sprintf("[updater] Downloading... %d bytes", downloaded))
+				if percent-loggedPct >= 2 || downloaded == total {
+					loggedPct = percent
+					progressLog(fmt.Sprintf("[updater] Downloading... %.0f%%", percent))
+				}
+			} else if downloaded-loggedAt >= 8<<20 {
+				loggedAt = downloaded
+				progressLog(fmt.Sprintf("[updater] Downloading... %d bytes", downloaded))
 			}
 		}
 		if err != nil {
@@ -314,7 +333,7 @@ func (m *UpdaterModule) Download(ctx context.Context, c *http.Client, url string
 			return "", fmt.Errorf("read body: %w", err)
 		}
 	}
-	logger.Info("[updater] Download completed!")
+	progressLog("[updater] Download completed!")
 
 	return tmpFile.Name(), nil
 }
@@ -362,7 +381,10 @@ func verifyEd25519(publicKeyB64, signatureB64 string, payload []byte) error {
 	return nil
 }
 
-// On darwin/linux this self-replaces and os.Exit()s after scheduling a relaunch — does NOT return on success.
+// Test seam. On darwin/linux the real one self-replaces and os.Exit()s after scheduling a
+// relaunch - it does NOT return on success.
+var runInstaller = RunInstaller
+
 func RunInstaller(ctx context.Context, path string, elevate bool) error {
 	switch runtime.GOOS {
 	case "windows":
@@ -377,22 +399,72 @@ func RunInstaller(ctx context.Context, path string, elevate bool) error {
 }
 
 func runInstallerWindows(ctx context.Context, path string, elevate bool) error {
-	args := []string{"/i", path, "/norestart"}
 	if !elevate {
-		cmd := exec.CommandContext(ctx, "msiexec.exe", args...)
+		cmd := exec.CommandContext(ctx, "msiexec.exe", msiexecArgs(path)...)
 		cmd.Dir = filepath.Dir(path)
-		return cmd.Run()
+		return msiInstallResult(cmd.Run())
 	}
 	// Path is interpolated into a PowerShell string; refuse chars that break quoting and inject commands.
 	if strings.ContainsAny(path, "'\"`\r\n") {
 		return fmt.Errorf("refusing to elevate-install: unsafe characters in installer path %q", path)
 	}
-	ps := fmt.Sprintf(`Start-Process -FilePath "msiexec.exe" -ArgumentList '%s' -Verb RunAs -Wait`,
-		`/i "`+path+`" /norestart`,
-	)
-	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps)
-	cmd.Dir = filepath.Dir(path)
-	return cmd.Run()
+	return runElevatedInstall(ctx, filepath.Dir(path),
+		elevatedScript("msiexec.exe", strings.Join(msiexecArgs(`"`+path+`"`), " "), "RunAs"))
+}
+
+func runElevatedInstall(ctx context.Context, dir, script string) error {
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
+	cmd.Dir = dir
+	return msiInstallResult(cmd.Run())
+}
+
+// /passive, not the full wizard: msiexec's error boxes are modal and nothing here can
+// dismiss them, so a failed install hangs this call until a human finds the window.
+// Measured on a corrupt package: the default UI and /qb blocked, /passive answered 1620.
+func msiexecArgs(path string) []string {
+	return []string{"/i", path, "/passive", "/norestart"}
+}
+
+// Without -PassThru, Start-Process exits 0 whatever it ran, so every failed elevated
+// install reported success. A refused prompt leaves $p unset, hence the guard.
+func elevatedScript(exe, args, verb string) string {
+	return fmt.Sprintf(`$p = Start-Process -FilePath "%s" -ArgumentList '%s' -Verb %s -Wait -PassThru; `+
+		`if ($null -eq $p) { exit 1601 }; exit $p.ExitCode`, exe, args, verb)
+}
+
+// 3010 is what /norestart asks msiexec to answer instead of rebooting, and 1641 is the
+// reboot it started: both mean the files are installed.
+func msiInstallResult(err error) error {
+	if err == nil {
+		return nil
+	}
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) {
+		return err
+	}
+	switch exit.ExitCode() {
+	case 3010, 1641:
+		logger.Info("[updater] installed; the machine needs a reboot to finish")
+		return nil
+	}
+	return fmt.Errorf("installer failed with exit code %d%s", exit.ExitCode(), msiExitMeaning(exit.ExitCode()))
+}
+
+// A bare number sends the user to a search engine; these are the codes they can act on.
+func msiExitMeaning(code int) string {
+	switch code {
+	case 1601:
+		return " (the installer could not be started)"
+	case 1602:
+		return " (cancelled)"
+	case 1618:
+		return " (another installation is already running - finish it and retry)"
+	case 1619, 1620:
+		return " (the downloaded package could not be opened)"
+	case 1638:
+		return " (another version of this app is already installed)"
+	}
+	return ""
 }
 
 func runInstallerDarwin(ctx context.Context, dmgPath string) error {
@@ -479,7 +551,7 @@ func currentMacAppBundle() (string, error) {
 	if i := strings.Index(exe, marker); i >= 0 {
 		return exe[:i+len(".app")], nil
 	}
-	return "", fmt.Errorf("not running from a .app bundle — cannot self-update (path: %s)", exe)
+	return "", fmt.Errorf("not running from a .app bundle - cannot self-update (path: %s)", exe)
 }
 
 func currentLinuxAppImage() string {
@@ -534,6 +606,11 @@ func copyFileTo(src, dst string) error {
 		out.Close()
 		return err
 	}
+	// The backup is removed right after this returns, so the bytes must be on disk first.
+	if err := out.Sync(); err != nil {
+		out.Close()
+		return err
+	}
 	return out.Close()
 }
 
@@ -556,12 +633,17 @@ func (m *UpdaterModule) CheckForUpdate(ctx context.Context) (*Result, error) {
 	// Check against the floor, not CurrentVersion: a replayed old manifest, its artifact
 	// still validly signed, must not downgrade us even if the binary reports a stale CurrentVersion.
 	floor := m.rollbackFloor()
+	// app.version has no validation rule, so it can arrive empty or unparseable; every
+	// comparison then answers "no update", which reads as up to date, not as broken.
+	if !semver.IsValid(ensureV(floor)) {
+		return nil, fmt.Errorf("updater: version %q is not a semver, so no update can ever compare newer: set app.version", floor)
+	}
 	res, err := m.provider.CheckForUpdate(ctx, floor, m.cfg.PlatformKey)
 	if err != nil {
 		return res, err
 	}
 
-	// Defence in depth: FAIL CLOSED — re-check the floor even if the provider said HasUpdate.
+	// Defence in depth: FAIL CLOSED - re-check the floor even if the provider said HasUpdate.
 	if res != nil && res.HasUpdate && !isNewer(res.NewVersion, floor) {
 		return &Result{HasUpdate: false}, ErrNoUpdate
 	}
@@ -596,11 +678,12 @@ func (m *UpdaterModule) FullUpdate(ctx context.Context) (*Result, error) {
 	defer func() {
 		if !installing {
 			_ = os.RemoveAll(tmpDir)
+			res.LocalPath = "" // a path this call deleted must not travel back to the UI
 		}
 	}()
 
 	if m.cfg.PublicKeyBase64 == "" {
-		return res, fmt.Errorf("updater: refusing to run an unverified update — set modules.updater.public_key_base_64 and sign releases with `scorix appcast`")
+		return res, fmt.Errorf("updater: refusing to run an unverified update - set modules.updater.public_key_base_64 and sign releases with `scorix appcast`")
 	}
 	data, err := os.ReadFile(localPath)
 	if err != nil {
@@ -614,10 +697,15 @@ func (m *UpdaterModule) FullUpdate(ctx context.Context) (*Result, error) {
 
 	// Raise the floor BEFORE the installer: RunInstaller may never return, so
 	// persisting afterwards is unreliable. Signatures already passed, so committing now is safe.
+	prevFloor := m.readFloor()
 	m.writeFloor(res.NewVersion)
 
 	logger.Info(fmt.Sprintf("[updater] Running installer at: %s", localPath))
-	if err := RunInstaller(ctx, localPath, res.Elevate); err != nil {
+	if err := runInstaller(ctx, localPath, res.Elevate); err != nil {
+		// It came back and said no, so this version was never installed: leaving the floor
+		// up would retire it, and a UAC prompt the user closes lands here.
+		m.restoreFloor(prevFloor)
+		installing = false // it owns no file either; on success an .exe may still be detaching
 		return res, err
 	}
 	return res, nil

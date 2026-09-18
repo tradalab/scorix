@@ -16,7 +16,7 @@ func TestCodeOfThroughChain(t *testing.T) {
 		t.Fatalf("CodeOf(plain) = %q, want empty", got)
 	}
 	if base.Error() != "over the limit" {
-		t.Fatalf("Error() = %q — must be the message only, code travels separately", base.Error())
+		t.Fatalf("Error() = %q - must be the message only, code travels separately", base.Error())
 	}
 }
 

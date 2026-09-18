@@ -43,7 +43,7 @@ func (m *Manager) Register(mod Module) {
 	m.order = append(m.order, mod.Name())
 }
 
-// Reads the EMBEDDED config only — sealed against the runtime overlay: letting an
+// Reads the EMBEDDED config only - sealed against the runtime overlay: letting an
 // untrusted overlay enable a capability-bearing module is privilege escalation.
 func (m *Manager) IsEnabled(name string) bool {
 	if m.cfg == nil || m.cfg.Modules == nil {
@@ -90,7 +90,7 @@ func (m *Manager) moduleFileCfg(name string) map[string]any {
 	return entry
 }
 
-// Raw, pre-allowlist overlay section — the sealed/overridable split is enforced later in Context.ApplyOverrides.
+// Raw, pre-allowlist overlay section - the sealed/overridable split is enforced later in Context.ApplyOverrides.
 func (m *Manager) RuntimeModuleSection(name string) map[string]any {
 	return m.moduleFileCfg(name)
 }
@@ -137,7 +137,7 @@ func (m *Manager) Load(name string) error {
 		if m.cfg != nil && m.cfg.Security.StrictModules {
 			return fmt.Errorf("module %s declares no capability (implement module.Capable); refused under security.strict_modules", name)
 		}
-		logger.Warn(fmt.Sprintf("[module] %s declares no capability (implement module.Capable) — its mod:%s:* commands are UNGATED", name, name))
+		logger.Warn(fmt.Sprintf("[module] %s declares no capability (implement module.Capable) - its mod:%s:* commands are UNGATED", name, name))
 	}
 
 	appName := m.cfg.App.Name

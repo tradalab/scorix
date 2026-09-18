@@ -7,5 +7,5 @@ import (
 	"github.com/tradalab/scorix/window"
 )
 
-// No native backend on these platforms (BSDs, …) — web mode and tests only.
+// No native backend on these platforms (BSDs, …) - web mode and tests only.
 func defaultDriver() window.Driver { return headless.New() }

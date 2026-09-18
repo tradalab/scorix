@@ -55,23 +55,14 @@ func (p *GitHubProvider) CheckForUpdate(ctx context.Context, currentVersion, pla
 		return &Result{HasUpdate: false}, ErrNoUpdate
 	}
 
-	// Sig must be the exact "<artifact>.sig" asset — pairing a different asset's sig could verify the wrong file.
-	var artifactName, artifactURL, sigURL string
-	for _, asset := range release.Assets {
-		if strings.HasSuffix(asset.Name, ".sig") {
-			continue
-		}
-		if assetMatchesPlatform(asset.Name, platformKey) {
-			artifactName = asset.Name
-			artifactURL = asset.BrowserDownloadURL
-			break
-		}
+	artifact, err := chooseAsset(release.Assets, platformKey, release.TagName)
+	if err != nil {
+		return nil, err
 	}
+	artifactName, artifactURL := artifact.Name, artifact.BrowserDownloadURL
 
-	if artifactURL == "" {
-		return nil, fmt.Errorf("no asset found matching platform %s in release %s", platformKey, release.TagName)
-	}
-
+	// Sig must be the exact "<artifact>.sig" asset - pairing a different asset's sig could verify the wrong file.
+	var sigURL string
 	for _, asset := range release.Assets {
 		if asset.Name == artifactName+".sig" {
 			sigURL = asset.BrowserDownloadURL
@@ -95,6 +86,29 @@ func (p *GitHubProvider) CheckForUpdate(ctx context.Context, currentVersion, pla
 	}
 
 	return res, nil
+}
+
+// An asset whose name does not claim the tag's version installs an older build while the
+// floor moves up to the new number, leaving the machine below its own floor. Same rule
+// `advertisedIn` applies to appcast urls.
+func chooseAsset(assets []githubAsset, platformKey, version string) (githubAsset, error) {
+	v := strings.TrimPrefix(strings.TrimSpace(version), "v")
+	var wrongVersion string
+	for _, a := range assets {
+		if strings.HasSuffix(a.Name, ".sig") || !assetMatchesPlatform(a.Name, platformKey) {
+			continue
+		}
+		if advertisedIn(a.Name, v) {
+			return a, nil
+		}
+		if wrongVersion == "" {
+			wrongVersion = a.Name
+		}
+	}
+	if wrongVersion != "" {
+		return githubAsset{}, fmt.Errorf("release %s offers %q, which does not name version %s: refusing", version, wrongVersion, v)
+	}
+	return githubAsset{}, fmt.Errorf("no asset found matching platform %s in release %s", platformKey, version)
 }
 
 // Matches an asset filename to platformKey ({GOOS}-{GOARCH}), tolerating packager

@@ -37,11 +37,11 @@ func resolveManifestPath(explicit string) (string, error) {
 			return c, nil
 		}
 	}
-	return "", fmt.Errorf("no manifest found (looked for scorix.yaml, etc/app.yaml) — pass --manifest")
+	return "", fmt.Errorf("no manifest found (looked for scorix.yaml, etc/app.yaml) - pass --manifest")
 }
 
 // ConfigResolved prints effective config (env + optional overlay), annotating each
-// key with its source and masking secrets. Module sections are dumped as embedded —
+// key with its source and masking secrets. Module sections are dumped as embedded -
 // their env surface (SCORIX_MODULE_<NAME>_<KEY>) is resolved in-process at load time.
 func ConfigResolved(manifestPath, overlayPath string) error {
 	cfg, overlay, mpath, err := loadForInspect(manifestPath, overlayPath)
@@ -80,7 +80,7 @@ func ConfigResolved(manifestPath, overlayPath string) error {
 		}
 	}
 
-	fmt.Printf("\n[security] (sealed — rebuild to change)\n")
+	fmt.Printf("\n[security] (sealed - rebuild to change)\n")
 	fmt.Printf("  csp                    = %s\n", cfg.Security.CSP)
 
 	if len(cfg.Modules) > 0 {
@@ -139,7 +139,7 @@ func ConfigEnv(manifestPath string) error {
 		}
 		sort.Strings(names)
 		for _, n := range names {
-			// Can't reflect the module's Go Config struct from YAML — only state the convention.
+			// Can't reflect the module's Go Config struct from YAML - only state the convention.
 			fmt.Printf("  %-12s SCORIX_MODULE_%s_<KEY>  (see the module's Config tags for which KEYs are overridable)\n",
 				n, strings.ToUpper(n))
 		}

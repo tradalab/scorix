@@ -12,7 +12,7 @@ import (
 )
 
 // SignConfig is the optional `package.sign` block. Secrets are never stored
-// here — fields ending in *_env name the environment variable that carries the
+// here - fields ending in *_env name the environment variable that carries the
 // secret at build time.
 type SignConfig struct {
 	Windows *WindowsSign `yaml:"windows"`
@@ -52,7 +52,7 @@ func (bc *BuildContext) gracefulSkip(platform string, haveCreds bool) bool {
 		return false
 	}
 	unsignedWarn.Do(func() {
-		fmt.Printf("==> warning: %s code signing is enabled but no credentials found — producing an UNSIGNED build.\n"+
+		fmt.Printf("==> warning: %s code signing is enabled but no credentials found - producing an UNSIGNED build.\n"+
 			"    Set the signing secrets to sign, or pass --skip-sign to silence this (--sign would make it a hard error).\n", platform)
 	})
 	return true
@@ -274,7 +274,7 @@ func hasTool(bin string) bool {
 }
 
 // runTool executes an external tool. It intentionally does NOT print args, which
-// may carry passwords/identities — only the provided message.
+// may carry passwords/identities - only the provided message.
 func runTool(ctx context.Context, bc *BuildContext, bin string, args []string, msg string) error {
 	path, err := exec.LookPath(bin)
 	if err != nil {

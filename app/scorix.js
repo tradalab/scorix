@@ -1,6 +1,6 @@
-// Scorix frontend bridge — injected in both modes (app: InitScript over the native
+// Scorix frontend bridge - injected in both modes (app: InitScript over the native
 // channel; web: inlined HTML over WebSocket /ipc). Speaks internal/ipc's
-// {id,kind,name,state,data,error} envelope. The only bridge — apps ship none.
+// {id,kind,name,state,data,error} envelope. The only bridge - apps ship none.
 (function () {
   if (window.scorix) return; // idempotent guard (InitScript + HTML inject both run)
 
@@ -93,7 +93,7 @@
     }
     if (msg.kind === "rpc") {
       const st = streams.get(msg.id);
-      if (!st) return; // unknown/closed call — drop (never resolve a foreign frame)
+      if (!st) return; // unknown/closed call - drop (never resolve a foreign frame)
       if (msg.state === "msg") { st.pushMsg(msg.data); return; }
       if (msg.state === "done") { streams.delete(msg.id); st.finish(null); return; }
       if (msg.state === "error") { streams.delete(msg.id); st.finish(wireError(msg, "scorix: stream failed")); return; }
@@ -104,7 +104,7 @@
       const st = streams.get(msg.id);
       if (st) {
         streams.delete(msg.id);
-        st.finish(wireError(msg, "scorix: protocol mismatch — rebuild/restart the app (backend is on an older protocol)"));
+        st.finish(wireError(msg, "scorix: protocol mismatch - rebuild/restart the app (backend is on an older protocol)"));
       }
       return;
     }
@@ -242,7 +242,7 @@
         }
       });
     },
-    // serverStream(name, data) — 1->N rpc; async-iterable with .cancel(), ends on
+    // serverStream(name, data) - 1->N rpc; async-iterable with .cancel(), ends on
     // the server's `done`, throws on `error`.
     serverStream(name, data) {
       const id = nextId();
@@ -257,7 +257,7 @@
       return st.iterable;
     },
 
-    // duplex(name) — N<->N rpc; async-iterable of server msgs plus send/end/cancel.
+    // duplex(name) - N<->N rpc; async-iterable of server msgs plus send/end/cancel.
     duplex(name) {
       const id = nextId();
       const st = makeStream(id, name);
@@ -299,11 +299,11 @@
       send({ id, state: "cancel" });
     },
 
-    // init() — web mode: force an immediate reconnect (resets backoff), resolves on
+    // init() - web mode: force an immediate reconnect (resets backoff), resolves on
     // next open. Auto-initialized on injection otherwise.
     init() { return reconnectNow ? reconnectNow() : Promise.resolve(); },
 
-    // resolve(name, handler) — register a Go->JS handler. Stored for ScorixAPI compat;
+    // resolve(name, handler) - register a Go->JS handler. Stored for ScorixAPI compat;
     // reverse-RPC dispatch is wired when a backend uses it.
     resolve(name, handler) {
       let set = listeners.get("__resolve__:" + name);

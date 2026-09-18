@@ -98,7 +98,7 @@ func appcast(ctx context.Context, opt AppcastOptions, res *AppcastResult) error 
 		return err
 	}
 	if len(files) == 0 {
-		return fmt.Errorf("no installer artifacts (.msi/.dmg/.AppImage) found in %s — run `scorix package` first", artDir)
+		return fmt.Errorf("no installer artifacts (.msi/.dmg/.AppImage) found in %s - run `scorix package` first", artDir)
 	}
 
 	priv, err := loadUpdatePrivateKey(upd.SignKeyEnv)
@@ -107,7 +107,7 @@ func appcast(ctx context.Context, opt AppcastOptions, res *AppcastResult) error 
 	}
 	res.Signed = priv != nil
 	if priv == nil {
-		fmt.Println("note: no signing key (package.update.sign_key_env unset/empty) — appcast entries will be UNSIGNED")
+		fmt.Println("note: no signing key (package.update.sign_key_env unset/empty) - appcast entries will be UNSIGNED")
 	}
 
 	var sums []string
@@ -134,12 +134,12 @@ func appcast(ctx context.Context, opt AppcastOptions, res *AppcastResult) error 
 
 		keys := platformKeysForArtifact(base)
 		if len(keys) == 0 {
-			fmt.Printf("warning: could not derive platform key for %s — skipping appcast entry\n", base)
+			fmt.Printf("warning: could not derive platform key for %s - skipping appcast entry\n", base)
 			continue
 		}
 		for _, k := range keys {
 			if _, dup := platforms[k]; dup {
-				fmt.Printf("warning: two artifacts map to platform %q — overwriting with %s (remove stale artifacts so the appcast points at one build)\n", k, base)
+				fmt.Printf("warning: two artifacts map to platform %q - overwriting with %s (remove stale artifacts so the appcast points at one build)\n", k, base)
 			}
 			platforms[k] = platformArtifact{
 				URLs:             joinAll(baseURLs, base),
@@ -203,7 +203,7 @@ func loadUpdatePrivateKey(env string) (ed25519.PrivateKey, error) {
 		return nil, fmt.Errorf("update sign key (env %s) is not valid base64: %w", env, err)
 	}
 	if len(raw) != ed25519.PrivateKeySize {
-		return nil, fmt.Errorf("update sign key (env %s) has wrong size %d (want %d) — generate with `scorix keygen`", env, len(raw), ed25519.PrivateKeySize)
+		return nil, fmt.Errorf("update sign key (env %s) has wrong size %d (want %d) - generate with `scorix keygen`", env, len(raw), ed25519.PrivateKeySize)
 	}
 	return ed25519.PrivateKey(raw), nil
 }

@@ -29,7 +29,7 @@ var iconCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(iconCmd)
-	iconCmd.Flags().StringP("source", "s", "", "source icon (.svg or .png) — required")
+	iconCmd.Flags().StringP("source", "s", "", "source icon (.svg or .png) - required")
 	iconCmd.Flags().StringP("out", "o", "", "output directory (default: source's directory)")
 	iconCmd.Flags().IntSlice("sizes", nil, "PNG sizes to emit (default: 16,32,48,128,256,512,1024)")
 	iconCmd.Flags().IntSlice("ico", nil, "sizes to bundle into icon.ico (default: 16,32,48,128,256; pass empty to skip)")

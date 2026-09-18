@@ -24,7 +24,7 @@ func (windowsPackager) Package(ctx context.Context, bc *BuildContext) (string, e
 
 	wixPath, err := exec.LookPath("wix")
 	if err != nil {
-		return "", fmt.Errorf("wix CLI not found in PATH — install WiX Toolset v6 (`dotnet tool install --global wix`), then verify with `scorix doctor`")
+		return "", fmt.Errorf("wix CLI not found in PATH - install WiX Toolset v6 (`dotnet tool install --global wix`), then verify with `scorix doctor`")
 	}
 
 	// WiX sources reference the icon beside the binary, so stage a copy named <ProductName>.ico.
@@ -44,7 +44,7 @@ func (windowsPackager) Package(ctx context.Context, bc *BuildContext) (string, e
 
 	wxs := bc.windowsWxsFiles()
 	if missing := firstMissing(wxs); missing != "" {
-		fmt.Printf("==> WiX sources not found (%s) — scaffolding installer/windows/\n", missing)
+		fmt.Printf("==> WiX sources not found (%s) - scaffolding installer/windows/\n", missing)
 		if err := scaffoldWindowsInstaller(bc); err != nil {
 			return "", fmt.Errorf("scaffold installer: %w", err)
 		}

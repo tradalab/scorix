@@ -60,7 +60,7 @@ func loadOrCreateKey(service string) ([]byte, error) {
 	if enc, err := keyring.Get(service, keyAccount); err == nil {
 		key, decErr := base64.StdEncoding.DecodeString(enc)
 		if decErr != nil || len(key) != keySize {
-			return nil, fmt.Errorf("secrets: keychain entry for %s is corrupt — refusing to overwrite; delete it manually to re-key (existing tokens become unreadable)", service)
+			return nil, fmt.Errorf("secrets: keychain entry for %s is corrupt - refusing to overwrite; delete it manually to re-key (existing tokens become unreadable)", service)
 		}
 		return key, nil
 	} else if !errors.Is(err, keyring.ErrNotFound) {
