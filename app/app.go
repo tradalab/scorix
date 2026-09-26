@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -93,6 +94,13 @@ type App struct {
 	fileDropFns []func(*AppWindow, []string)
 	launchURLs  []string // everything this process was asked to open, for sys:launch
 	launchFiles []string
+
+	// What each granted name in security.allowlist stands for, and what each
+	// handler asked for. Guarded because ipc.Registry.Command locks: a module
+	// may register a handler from any goroutine, at any time.
+	permMu   sync.RWMutex
+	permSets map[module.Permission][]module.Permission
+	gated    []gatedHandler
 
 	blobs map[string]blobEntry
 	calls map[string]pendingCall // in-flight reverse RPCs, keyed by frame id
@@ -261,11 +269,37 @@ func loadRuntimeOverlay(path string) (map[string]any, error) {
 }
 
 // nil Options.Security allows every capability (back-compat).
-func (a *App) allowed(capability string) bool {
+// An entry naming the permission exactly decides, true or false, so an app can
+// grant a set and take one atom back out of it; otherwise any granted name that
+// expands to it is enough. An allowlist nobody wrote grants nothing.
+func (a *App) permitted(p module.Permission) bool {
 	if a.opts.Security == nil {
 		return true
 	}
-	return a.cfg.Security.Allowlist[capability]
+	if p == "" {
+		return true // a module that declares no capability is ungated; Load says so
+	}
+	if v, ok := a.cfg.Security.Allowlist[string(p)]; ok {
+		return v
+	}
+	a.permMu.RLock()
+	defer a.permMu.RUnlock()
+	for name, granted := range a.cfg.Security.Allowlist {
+		if !granted {
+			continue
+		}
+		if slices.Contains(a.permSets[module.Permission(name)], p) {
+			return true
+		}
+	}
+	return false
+}
+
+// Kept so startup can name the handlers the manifest leaves denied: a missing
+// allowlist line is otherwise silent until someone clicks the button.
+type gatedHandler struct {
+	topic string
+	needs module.Permission
 }
 
 // cspValue maps a symbolic security.csp to a header value; unrecognized = literal

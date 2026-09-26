@@ -16,7 +16,10 @@ var (
 
 // Expose binds Method([ctx context.Context][, arg T]) (R, error) at "mod:<module>:<Method>" via reflection.
 // JS: scorix.invoke("mod:<module>:<Method>", payload).
-func Expose(mod Module, method string, mipc *ModuleIPC) {
+//
+// Without Needs the method asks for the module's whole capability, which is what
+// every handler needed before permissions existed.
+func Expose(mod Module, method string, mipc *ModuleIPC, opts ...ExposeOption) {
 	v := reflect.ValueOf(mod)
 	m := v.MethodByName(method)
 	if !m.IsValid() {
@@ -26,8 +29,38 @@ func Expose(mod Module, method string, mipc *ModuleIPC) {
 	mt := m.Type()
 	validateReturnSignature(method, mt)
 
+	cfg := exposeCfg{needs: defaultPermission(mod)}
+	for _, o := range opts {
+		o(&cfg)
+	}
+	// A typo nothing downstream can catch: the app grants the set it knows
+	// about and this one handler stays denied, both halves looking right.
+	if pm, ok := mod.(Permissioned); ok && cfg.needs != "" {
+		if set := pm.Permissions(); len(set.Atoms) > 0 && set.Expand(cfg.needs) == nil {
+			panic(fmt.Sprintf("module expose: %q needs permission %q, which %q does not declare", method, cfg.needs, mod.Name()))
+		}
+	}
+
 	handler := buildHandler(m, mt)
-	mipc.Handle(method, handler)
+	mipc.Handle(method, cfg.needs, handler)
+}
+
+type exposeCfg struct{ needs Permission }
+
+type ExposeOption func(*exposeCfg)
+
+// Needs names the permission a handler asks for; it must be one its module
+// declares in Permissions.
+func Needs(p Permission) ExposeOption {
+	return func(c *exposeCfg) { c.needs = p }
+}
+
+// A module that declares no capability at all is ungated; Manager.Load says so.
+func defaultPermission(mod Module) Permission {
+	if c, ok := mod.(Capable); ok {
+		return Permission(c.Capability())
+	}
+	return ""
 }
 
 func validateReturnSignature(method string, mt reflect.Type) {

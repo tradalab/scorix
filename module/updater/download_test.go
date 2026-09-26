@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // One line per 32 KiB chunk is 3,200 lines for a 100 MB installer and ten times that
@@ -58,6 +59,56 @@ func TestDownloadDoesNotFloodTheLog(t *testing.T) {
 				t.Errorf("downloaded file = %v (%v), want %d bytes", fi, err, len(payload))
 			}
 		})
+	}
+}
+
+func cutAfter(n int, payload []byte, cuts *int) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if *cuts > 0 {
+			*cuts--
+			w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+			_, _ = w.Write(payload[:n])
+			w.(http.Flusher).Flush()
+			panic(http.ErrAbortHandler)
+		}
+		http.ServeContent(w, r, "app.msi", time.Time{}, bytes.NewReader(payload))
+	}
+}
+
+// A dropped connection 90 MB into an installer used to throw the 90 MB away.
+func TestABrokenDownloadResumesInsteadOfFailing(t *testing.T) {
+	payload := bytes.Repeat([]byte("installer"), 200_000)
+	cuts := 1
+	srv := httptest.NewServer(cutAfter(700_000, payload, &cuts))
+	defer srv.Close()
+	// .exe, not .msi: .msi is what a lost extension falls back to on Windows,
+	// so it could not show the extension being kept.
+	path, err := (&UpdaterModule{}).Download(context.Background(), defaultClient(), srv.URL+"/app.exe")
+	if err != nil {
+		t.Fatalf("one dropped connection failed the update: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(filepath.Dir(path)) })
+	if got, _ := os.ReadFile(path); !bytes.Equal(got, payload) {
+		t.Errorf("got %d bytes, want the %d-byte installer", len(got), len(payload))
+	}
+	if filepath.Ext(path) != ".exe" {
+		t.Errorf("installer extension lost: %s", path)
+	}
+}
+
+func TestAFailedDownloadLeavesNoTempDir(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMP", tmp)
+	t.Setenv("TEMP", tmp)
+	t.Setenv("TMPDIR", tmp)
+	cuts := 100
+	srv := httptest.NewServer(cutAfter(1000, bytes.Repeat([]byte("x"), 5000), &cuts))
+	defer srv.Close()
+	if _, err := (&UpdaterModule{}).Download(context.Background(), defaultClient(), srv.URL+"/app.msi"); err == nil {
+		t.Fatal("a download that never completed succeeded")
+	}
+	if left, _ := filepath.Glob(filepath.Join(tmp, "scorix-update-*")); len(left) != 0 {
+		t.Errorf("left behind: %v", left)
 	}
 }
 

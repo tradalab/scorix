@@ -112,10 +112,26 @@ func (p *Process) launch(ctx context.Context) (chan error, error) {
 
 	deadline := time.Now().Add(p.spec.ReadyTimeout)
 	for {
+		// Asked before the health check is believed, and again after it: a
+		// child that has exited cannot be what answered. On a port something
+		// else is listening on - another llama-server, a leftover from a crash
+		// - a healthy answer would otherwise hand back a Process whose child is
+		// dead, pointing at a stranger's model, and the launch error is also the
+		// only one carrying the log tail that says "couldn't bind".
+		select {
+		case werr := <-exited:
+			return nil, fmt.Errorf("proc: %s exited before becoming healthy (%v)\n%s", p.spec.Path, werr, p.logsTail())
+		default:
+		}
 		hctx, cancel := context.WithTimeout(ctx, p.spec.PollInterval*4)
 		herr := p.spec.Health(hctx)
 		cancel()
 		if herr == nil {
+			select {
+			case werr := <-exited:
+				return nil, fmt.Errorf("proc: %s exited before becoming healthy (%v)\n%s", p.spec.Path, werr, p.logsTail())
+			default:
+			}
 			return exited, nil
 		}
 		select {
@@ -314,4 +330,23 @@ func drainToRing(pipe io.Reader, r *ring) {
 	for sc.Scan() {
 		r.add(sc.Text())
 	}
+}
+
+// PortTaken reports whether a child said it could not have the port it was
+// given. There is no code to read - it is a line of the child's own output,
+// which Start puts in its error - so this is the wording of the three systems
+// it runs on. A caller that picked the port itself can pick another and try
+// again; the race is unavoidable, because the listener that proved the port
+// free has to be closed before the child can bind it.
+func PortTaken(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	for _, s := range []string{"couldn't bind", "could not bind", "address already in use", "address in use", "only one usage of each socket address"} {
+		if strings.Contains(msg, s) {
+			return true
+		}
+	}
+	return false
 }

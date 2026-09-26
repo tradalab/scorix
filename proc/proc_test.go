@@ -30,6 +30,15 @@ func TestHelperProcess(t *testing.T) {
 	case "crash":
 		fmt.Println("helper: crashing")
 		os.Exit(1)
+	case "bindfail":
+		// llama-server's own wording when the port went to someone else
+		// between the pick and the bind. The file is written first so a test
+		// can wait for the failure rather than race it.
+		fmt.Fprintln(os.Stderr, "error: couldn't bind to 127.0.0.1:8080 (address already in use)")
+		if f := os.Getenv("PROC_HELPER_READY_FILE"); f != "" {
+			_ = os.WriteFile(f, []byte("dying"), 0o600)
+		}
+		os.Exit(1)
 	case "heartbeat":
 		// Counts up in a file so a test can tell alive from dead without asking
 		// the OS about a pid, which has no portable answer.
@@ -120,6 +129,39 @@ func TestHealthyStartAndStop(t *testing.T) {
 	logs := strings.Join(p.Logs(), "\n")
 	if !strings.Contains(logs, "helper: starting") || !strings.Contains(logs, "helper: stderr line") {
 		t.Fatalf("logs missing stdout/stderr capture:\n%s", logs)
+	}
+}
+
+// A stranger on the port answers health while our own child is already dead.
+// Believing the answer hands back a Process whose child has exited, pointing at
+// somebody else's server, and hides the one message that says what happened.
+func TestAHealthyStrangerIsNotOurChild(t *testing.T) {
+	gone := filepath.Join(t.TempDir(), "gone")
+	spec := helperSpec(t, "bindfail", "PROC_HELPER_READY_FILE="+gone)
+	// Answers only once our own child is on its way out, which is the state
+	// this is about: something else is listening on the port, so health says
+	// yes while the process that was supposed to be behind it is dead.
+	spec.Health = func(context.Context) error {
+		if _, err := os.Stat(gone); err != nil {
+			return err
+		}
+		time.Sleep(300 * time.Millisecond) // the exit lands after the last line
+		return nil
+	}
+	spec.ReadyTimeout = 10 * time.Second
+	spec.PollInterval = 20 * time.Millisecond
+
+	_, err := Start(context.Background(), spec)
+	if err == nil {
+		t.Fatal("Start succeeded with a dead child")
+	}
+	if !strings.Contains(err.Error(), "exited before becoming healthy") {
+		t.Errorf("err = %v", err)
+	}
+	// The log tail travels with it, which is what tells a caller to pick
+	// another port rather than to give up.
+	if !PortTaken(err) {
+		t.Errorf("PortTaken said no to: %v", err)
 	}
 }
 

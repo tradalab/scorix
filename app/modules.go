@@ -3,8 +3,9 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"slices"
 	"strconv"
-	"strings"
 
 	"github.com/tradalab/scorix/config"
 	"github.com/tradalab/scorix/fault"
@@ -21,23 +22,6 @@ func (c *appController) Close() { c.a.Quit() }
 
 func (c *appController) OnOpenURL(fn func(string)) { c.a.OnOpenURL(fn) }
 
-func (a *App) capabilityOf(name string) string {
-	rest, ok := strings.CutPrefix(name, "mod:")
-	if !ok {
-		return ""
-	}
-	modName := rest
-	if i := strings.IndexByte(rest, ':'); i >= 0 {
-		modName = rest[:i]
-	}
-	if mod, ok := a.mods.Get(modName); ok {
-		if c, ok := mod.(module.Capable); ok {
-			return c.Capability()
-		}
-	}
-	return ""
-}
-
 // Module registers a Scorix module (enabled by default). MUST be called before
 // Run/RunWeb/Handler - modules load+start once at startup; later calls no-op (warned).
 func (a *App) Module(m module.Module) {
@@ -45,6 +29,38 @@ func (a *App) Module(m module.Module) {
 	a.mods.Register(m)
 	if _, ok := a.cfg.Modules[m.Name()]; !ok {
 		a.cfg.Modules[m.Name()] = map[string]any{"enabled": true}
+	}
+	a.collectPermissions(m)
+}
+
+// What the names in security.allowlist mean for this module. One that does not
+// split its surface gets a single set named after its capability, so an older
+// allowlist keeps granting exactly what it granted.
+func (a *App) collectPermissions(m module.Module) {
+	a.permMu.Lock()
+	defer a.permMu.Unlock()
+	if a.permSets == nil {
+		a.permSets = map[module.Permission][]module.Permission{}
+	}
+	pm, ok := m.(module.Permissioned)
+	if !ok {
+		if c, ok := m.(module.Capable); ok {
+			cap := module.Permission(c.Capability())
+			a.permSets[cap] = append(a.permSets[cap], cap)
+		}
+		return
+	}
+	set := pm.Permissions()
+	if err := set.Validate(); err != nil {
+		// A wiring mistake, like Expose naming a method that is not there.
+		panic(fmt.Sprintf("module %s: %v", m.Name(), err))
+	}
+	for _, name := range set.Names() {
+		for _, atom := range set.Expand(name) {
+			if !slices.Contains(a.permSets[name], atom) {
+				a.permSets[name] = append(a.permSets[name], atom)
+			}
+		}
 	}
 }
 
@@ -110,12 +126,25 @@ func (a *App) auditAllowlist() {
 		if c, ok := mod.(module.Capable); ok {
 			capability := c.Capability()
 			declared[capability] = true
-			logger.Info("app: module gate", "module", mod.Name(), "capability", capability, "allowed", a.allowed(capability))
+			logger.Info("app: module gate", "module", mod.Name(), "capability", capability, "allowed", a.permitted(module.Permission(capability)))
 		}
 	}
+	a.permMu.RLock()
+	for name := range a.permSets {
+		declared[string(name)] = true
+	}
+	gated := slices.Clone(a.gated)
+	a.permMu.RUnlock()
 	for capability, on := range a.cfg.Security.Allowlist {
 		if on && !declared[capability] {
 			logger.Warn("app: security.allowlist enables a capability no registered module declares (typo?)", "capability", capability)
+		}
+	}
+	// Every handler the manifest leaves shut, by name: otherwise the app starts,
+	// the screen draws, and only the click comes back denied.
+	for _, g := range gated {
+		if !a.permitted(g.needs) {
+			logger.Warn("app: handler denied by security.allowlist", "topic", g.topic, "permission", string(g.needs))
 		}
 	}
 }
@@ -139,12 +168,16 @@ type moduleCore struct {
 
 var _ module.Core = (*moduleCore)(nil)
 
-func (c *moduleCore) Register(name string, exec func(ctx context.Context, data json.RawMessage) (any, error)) {
-	capability := c.app.capabilityOf(name)
+func (c *moduleCore) Register(name string, needs module.Permission, exec func(ctx context.Context, data json.RawMessage) (any, error)) {
+	c.app.permMu.Lock()
+	c.app.gated = append(c.app.gated, gatedHandler{topic: name, needs: needs})
+	c.app.permMu.Unlock()
 	c.reg.Command(name, func(ctx context.Context, data json.RawMessage, _ ipc.Stream) (any, error) {
-		if capability != "" && !c.app.allowed(capability) {
-			return nil, fault.Errorf(fault.CodeDenied, "capability %q denied by security.allowlist", capability).
-				With("capability", capability)
+		// Asked every time: a handler registered before the manifest is applied
+		// would otherwise cache a decision made too early.
+		if !c.app.permitted(needs) {
+			return nil, fault.Errorf(fault.CodeDenied, "permission %q denied by security.allowlist", needs).
+				With("permission", string(needs))
 		}
 		return exec(ctx, data)
 	})

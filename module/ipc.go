@@ -6,9 +6,12 @@ import (
 	"fmt"
 )
 
-// Core is the IPC backend a module talks to; plain types keep it transport-agnostic.
+// Core is the IPC backend a module talks to; plain types keep it
+// transport-agnostic. needs is the handler's permission, empty meaning ungated:
+// passed in rather than parsed out of name, because a topic says which module
+// answers, not what the answer does.
 type Core interface {
-	Register(name string, exec func(ctx context.Context, data json.RawMessage) (any, error))
+	Register(name string, needs Permission, exec func(ctx context.Context, data json.RawMessage) (any, error))
 	Invoke(ctx context.Context, name string, data json.RawMessage) (json.RawMessage, error)
 	Emit(ctx context.Context, name string, data json.RawMessage) error
 }
@@ -27,8 +30,8 @@ func (m *ModuleIPC) topic(name string) string {
 	return fmt.Sprintf("mod:%s:%s", m.moduleName, name)
 }
 
-func (m *ModuleIPC) Handle(name string, exec func(context.Context, json.RawMessage) (any, error)) {
-	m.core.Register(m.topic(name), exec)
+func (m *ModuleIPC) Handle(name string, needs Permission, exec func(context.Context, json.RawMessage) (any, error)) {
+	m.core.Register(m.topic(name), needs, exec)
 }
 
 func (m *ModuleIPC) Invoke(ctx context.Context, name string, payload any) (json.RawMessage, error) {

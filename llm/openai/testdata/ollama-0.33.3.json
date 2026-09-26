@@ -1,0 +1,232 @@
+{
+  "interactions": [
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": 200,
+      "content_type": "application/json",
+      "response": "{\"object\":\"list\",\"data\":[{\"id\":\"smollm2:1.7b\",\"object\":\"model\",\"created\":1788977879,\"owned_by\":\"library\"},{\"id\":\"all-minilm:latest\",\"object\":\"model\",\"created\":1788974268,\"owned_by\":\"library\"}]}\n"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "body": {
+        "max_tokens": 40,
+        "messages": [
+          {
+            "content": "Count from one to five.",
+            "role": "user"
+          }
+        ],
+        "model": "smollm2:1.7b",
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "status": 200,
+      "content_type": "text/event-stream",
+      "response": "data: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"1\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\".\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" Number\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" one\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\".\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\\n\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"2\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\".\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" Number\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" two\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\".\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\\n\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"3\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\".\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" Number\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" three\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\".\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\\n\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"4\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\".\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" Number\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" four\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\".\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\\n\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"5\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\".\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" Number\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" five\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\".\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: {\"id\":\"chatcmpl-108\",\"object\":\"chat.completion.chunk\",\"created\":1789812176,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[],\"usage\":{\"prompt_tokens\":35,\"prompt_tokens_details\":{\"cached_tokens\":34},\"completion_tokens\":30,\"total_tokens\":65}}\n\ndata: [DONE]\n\n"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "body": {
+        "messages": [
+          {
+            "content": "Write a long story about the sea.",
+            "role": "user"
+          }
+        ],
+        "model": "smollm2:1.7b",
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "status": 200,
+      "content_type": "text/event-stream",
+      "response": "data: {\"id\":\"chatcmpl-278\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Once\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-278\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" upon\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-278\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" a\"},\"finish_reason\":null}]}\n\n"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/embeddings",
+      "body": {
+        "input": [
+          "a red apple",
+          "a green pear"
+        ],
+        "model": "all-minilm"
+      },
+      "status": 200,
+      "content_type": "application/json",
+      "response": "{\"object\":\"list\",\"data\":[{\"object\":\"embedding\",\"embedding\":[0.0040030666,0.013631616,-0.042845774,0.06302556,-0.04451098,0.006684125,0.11320312,-0.02561444,0.065350644,-0.004400024,0.039019004,-0.03182397,-0.028190942,-0.025569092,0.015791425,0.006857096,-0.0059638103,-0.027332129,-0.07047286,-0.060328014,-0.012391124,0.044941973,-0.03070327,-0.010239475,-0.045435093,0.037853453,0.03125856,0.0044261552,-0.11319998,-0.07876496,-0.039184913,-0.04102371,0.07179453,0.026954485,-0.06244464,0.003809995,0.070255905,-0.05632855,0.02221058,0.005222931,-0.028760862,0.03069221,0.07152966,0.08170328,0.0018310073,0.073121905,0.00030174607,0.054346133,0.051144563,0.0019320244,-0.0050516417,-0.04433698,-0.074145384,-0.00675834,0.044241644,0.054529276,0.057264883,-0.025537966,0.091413,0.025289167,0.05566339,-0.07645215,-0.017963272,0.015286807,0.0007534034,-0.06422862,-0.032487135,-0.07131888,-0.019398948,-0.02351213,0.05705795,-0.011501683,0.088303305,0.019037718,0.016132576,-0.085756786,0.089218274,0.000055775658,-0.040647425,0.065279365,-0.030948075,0.029040879,-0.017890986,0.08625619,0.03504717,0.018369343,-0.0059134536,-0.035895538,-0.08472904,0.022473352,-0.05870181,0.06314655,0.016951138,0.0048652,-0.005813138,-0.014710783,-0.009414033,-0.051146474,-0.04285558,0.13373348,0.040350564,0.041329987,0.030657982,0.012288493,0.045279983,-0.04795473,-0.09370134,-0.0029497778,0.017727863,0.0954161,0.07836949,-0.06973245,-0.07235417,0.02023561,-0.00405468,-0.011607009,-0.01338775,-0.013253856,-0.058980428,-0.023408053,0.026986007,0.0528914,-0.026289465,-0.024480095,-0.029307105,-0.0874532,-0.022007372,-4.4273063e-33,-0.04499564,-0.019908812,0.040452432,0.015488992,0.035109337,-0.023653815,-0.0412668,0.07937085,0.050310906,-0.0096165,-0.016616957,-0.003691349,-0.08269174,-0.015505436,0.045747936,-0.03353238,0.0067277513,-0.005271051,-0.06744747,-0.00022642458,-0.07563564,-0.003989761,-0.03194794,-0.038551155,-0.10489714,-0.03550357,0.006980377,-0.08647116,0.05597897,-0.018407734,0.020455912,0.025341833,0.023004547,-0.007499425,-0.08140582,-0.069414064,0.016028162,-0.018811554,0.029082429,0.007798536,-0.06627013,0.06832206,0.032321956,0.066068925,0.083380915,-0.022533096,-0.017638007,0.028088227,-0.02038706,0.038077075,-0.032041587,-0.0575289,0.12245217,0.030303888,-0.102505796,0.04596991,-0.009516642,0.05785265,-0.030408392,0.0319937,0.027941393,0.06437734,-0.010391556,0.08857637,-0.060192678,0.09818203,-0.01262847,-0.057594605,0.009073581,0.07426077,-0.0041884664,0.012651143,0.10202273,-0.058778368,-0.10557171,-0.070443414,0.013489929,-0.0095197,-0.03704696,-0.02620643,-0.068195306,-0.023765823,0.00074712397,0.07772556,-0.057037327,0.072214216,-0.04164292,0.03370842,0.055188127,0.023307893,0.011480434,0.010790162,-0.063196726,-0.11672581,0.024981547,2.1507993e-33,0.04318564,-0.03205931,-0.06581132,0.05189224,0.050353914,-0.03999344,-0.037908025,0.069341555,-0.13606133,-0.024881532,0.012106838,0.020902392,0.01879671,0.022991221,0.025374515,0.09358526,0.0112140775,0.07806485,0.035464644,0.055833187,-0.06521382,0.0073965765,0.03418412,-0.014263808,-0.06490392,-0.0069459304,0.03686555,0.014248587,-0.06562916,-0.07341187,0.017661382,-0.110396355,-0.016621158,-0.016042605,0.013165896,0.055165477,-0.021427661,-0.08442453,-0.0248926,0.06510724,0.081211686,0.0035592203,-0.006505954,0.09220415,0.037465304,0.07305612,-0.080895245,0.14245605,0.073279195,-0.022018267,0.0027919484,-0.009361921,-0.025892014,0.021243852,-0.07194055,0.0053931884,-0.045908604,0.0060048113,0.03428931,0.076344445,-0.045174655,-0.01648755,-0.018657181,0.017366605,-0.035956383,-0.05413527,-0.020352371,0.026346423,-0.042496417,0.08340329,0.1056478,0.06483815,-0.04715073,-0.029922985,-0.035759993,-0.06032109,0.037068654,-0.02180876,-0.055946812,0.06873803,-0.008223704,0.08635435,0.03380226,0.0869918,0.07172923,-0.022037348,0.04898924,0.013371774,-0.06648843,0.00785769,0.018351585,0.005213731,-0.016743982,-0.004493587,-0.076779924,-1.3645142e-8,0.04198739,-0.0034521548,0.008964243,-0.056186467,0.059775766,0.060795184,0.004882667,-0.04559219,0.0006114632,-0.02408482,-0.06879713,0.006022787,-0.094182715,0.062141,0.008841309,0.030257553,-0.054445527,0.04329119,0.006186578,0.027771376,-0.008986048,0.052774675,-0.060027644,0.02099528,-0.02878859,0.014665474,-0.019596992,-0.020021638,0.024051448,0.053960808,0.021335097,0.056255043,-0.020352986,-0.0038684257,-0.05956358,-0.05882914,-0.036233258,0.038230713,-0.024113901,-0.10214783,-0.057377245,-0.032045286,-0.05882439,-0.017902954,-0.07695072,-0.022121737,-0.065498866,-0.09499662,0.01408484,0.0951373,0.033699304,-0.0031341824,0.11122059,0.050067637,-0.055870958,-0.054803077,0.039274827,-0.07191314,-0.042218614,0.0940306,0.09603379,-0.049939495,0.041796442,0.098312445],\"index\":0},{\"object\":\"embedding\",\"embedding\":[0.04005297,0.066923894,-0.00925212,0.0013753786,0.0021783842,-0.0069369986,0.116027825,-0.07456093,0.08594237,0.0630026,0.02734558,-0.04094606,0.033377137,-0.025857603,0.034827456,0.013542408,-0.055677634,-0.066602856,-0.046216037,-0.041781716,-0.027702529,0.06890775,0.03225513,0.016032355,-0.1092497,-0.0183374,-0.028734729,0.02457368,-0.029491069,-0.07995641,-0.033968262,0.096859835,0.04716355,0.02043886,-0.08142749,0.004882944,0.07709648,-0.05900217,0.006476119,0.060992874,-0.034318715,0.025455123,0.021655666,0.03813102,-0.08274751,0.05086055,-0.004212819,0.0016181332,0.026866904,-0.06664454,-0.027703509,-0.016854305,-0.04143859,-0.036517747,0.052931502,-0.013612329,0.016422518,-0.037872482,0.01907877,-0.026354821,0.044686794,-0.01926236,0.034530304,0.034127407,-0.043351,-0.00056062324,-0.021178124,-0.042134,0.01358726,-0.0762427,-0.037378173,0.047282603,0.018418372,0.0024045873,-0.011760902,-0.032148495,0.055526543,-0.07909414,-0.11335381,0.051666733,-0.038633518,0.093474686,-0.04186985,-0.013909503,0.033270817,0.014681321,0.03338999,0.046073116,-0.07140265,-0.0021033138,0.033417292,0.03326202,0.004305927,-0.0058861775,-0.026610933,-0.02543796,0.0018289357,-0.20713255,-0.015364808,0.11679691,0.043625776,0.008965592,0.04844613,-0.024605867,-0.07158672,-0.018605622,-0.041472178,-0.024268074,-0.008477269,0.045363642,-0.009722164,-0.0037135344,-0.080113836,0.045562726,-0.04461888,0.06596082,0.0017547368,-0.0015880195,0.0033432508,-0.01773398,-0.0011386344,0.0039060179,-0.022418596,0.06450591,-0.11488529,-0.016786417,-0.050966498,-5.005121e-33,-0.035452954,0.054925736,0.07684562,-0.05144289,0.082774214,-0.014000363,0.034438852,0.07040874,-0.017565677,-0.013874721,0.016302096,-0.035521604,0.0065972623,0.05587954,0.05106766,-0.008009847,-0.077641524,0.06400575,-0.02948313,-0.038163844,-0.04133581,0.035095744,-0.058877096,-0.0476952,-0.027932046,-0.038665507,0.06707952,-0.00402741,0.1310503,-0.021552684,0.0664175,-0.02637701,0.07534085,-0.029323617,-0.0094110705,-0.07991026,-0.06291386,-0.023779565,0.0263002,0.07170688,0.008570059,-0.026300803,0.100308865,0.08979465,-0.029014809,0.0049638944,-0.0029782206,0.029032638,-0.051282503,0.014498707,-0.04085347,0.050175134,0.017334856,0.0057001887,-0.11924073,-0.011974451,-0.022526866,-0.03425018,-0.102527976,-0.06420583,0.076860614,-0.011860478,-0.0645516,-0.03631788,-0.03706516,0.046303574,-0.07018349,-0.025883377,0.06678044,0.045616318,-0.006156541,-0.06391928,0.03475641,-0.04154736,0.005327054,-0.0076224776,0.0016379844,-0.014497508,-0.02889484,0.096204296,-0.0646483,0.061593067,0.01885403,-0.021401403,-0.06956233,0.065347075,-0.016496582,0.0181785,0.02257994,0.0086605735,-0.020251293,-0.027116427,-0.0020616192,-0.06419524,0.0024211386,1.9546702e-33,-0.011756657,0.0017602271,0.016718086,0.04288076,0.09772719,-0.083973005,-0.011952006,0.013156233,-0.09690474,-0.060223207,0.004198205,0.0065894355,0.017721755,0.0026243585,0.09234856,0.066666745,0.013114877,0.030079046,-0.010899981,0.0807688,-0.10356969,-0.0323926,0.054657936,-0.020065015,-0.025820227,0.020570274,0.085708626,-0.008900999,-0.044788636,-0.048277922,0.0143935485,-0.07573765,-0.09816016,0.07609234,-0.012036255,0.0021342256,-0.06586364,-0.18703547,-0.033163004,0.146311,0.0549972,0.018847302,0.06457404,0.101332895,-0.03836708,0.003038955,-0.029342875,0.093952976,0.081858635,0.027557177,0.018718075,0.107162036,-0.026108095,-0.0024322446,0.09755239,0.002229562,-0.07681762,0.028825153,-0.056438338,0.008989091,-0.01602103,-0.01886614,0.0027034732,0.017024796,0.006893208,-0.022706835,0.013732687,-0.00078805356,-0.038502432,0.0021185132,0.029557416,0.06306492,-0.051522568,-0.04515948,-0.030270003,0.03167265,-0.014815313,-0.063070014,-0.07067604,0.038723063,-0.042175934,-0.033400398,-0.012901534,-0.0056599826,0.027539622,-0.010252525,0.011836998,-0.0038053982,-0.0006076794,0.0013376427,-0.0028111574,0.05728052,-0.036109425,0.047162313,-0.017875742,-1.3565228e-8,0.03142021,-0.071455784,-0.034242883,0.021882292,-0.005046746,0.03066574,0.06589783,-0.047886156,-0.06510443,-0.0009898382,-0.027193202,-0.019343344,-0.005993409,0.092315234,-0.0065607093,-0.05364347,-0.02284763,0.038026087,0.042628016,0.007832353,-0.077553704,-0.008291872,-0.058663696,0.053334594,-0.054810535,0.07568301,0.04189692,-0.005946256,-0.00009044271,0.050545335,0.07300204,0.04109363,-0.089316405,-0.016447969,0.005116217,0.010765495,-0.023710182,0.083146304,-0.09026747,-0.051545735,0.064947814,0.044100698,-0.03470105,0.037140194,-0.004474463,-0.058488432,-0.044544145,0.0011105927,-0.017139362,0.07420169,0.07692017,0.04973528,0.06464833,0.09065651,0.016287291,-0.095958605,-0.0024440258,-0.047137976,-0.06781861,0.11043237,0.004550694,-0.022797279,0.07951666,0.05366777],\"index\":1}],\"model\":\"all-minilm\",\"usage\":{\"prompt_tokens\":10,\"total_tokens\":10}}\n"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "body": {
+        "messages": [
+          {
+            "content": "Extract the person: Lan is 30 years old.",
+            "role": "user"
+          }
+        ],
+        "model": "smollm2:1.7b",
+        "response_format": {
+          "json_schema": {
+            "name": "person",
+            "schema": {
+              "additionalProperties": false,
+              "properties": {
+                "age": {
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "age"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "json_schema"
+        },
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "status": 200,
+      "content_type": "text/event-stream",
+      "response": "data: {\"id\":\"chatcmpl-119\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"{\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-119\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" \\\"\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-119\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"name\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-119\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\\\"\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-119\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" :\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-119\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" \\\"\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-119\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"L\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-119\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"an\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-119\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\\\"\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-119\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\",\\\"\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-119\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"age\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-119\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\\\"\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-119\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" :\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-119\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" \"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-119\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"3\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-119\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"0\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-119\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"}\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-119\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: {\"id\":\"chatcmpl-119\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[],\"usage\":{\"prompt_tokens\":41,\"prompt_tokens_details\":{\"cached_tokens\":23},\"completion_tokens\":18,\"total_tokens\":59}}\n\ndata: [DONE]\n\n"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "body": {
+        "messages": [
+          {
+            "content": "What is the weather in Hue right now?",
+            "role": "user"
+          }
+        ],
+        "model": "smollm2:1.7b",
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        },
+        "tool_choice": "required",
+        "tools": [
+          {
+            "function": {
+              "description": "Current weather in a city",
+              "name": "get_weather",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "city": {
+                    "description": "City to get the weather for",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "function"
+          }
+        ]
+      },
+      "status": 200,
+      "content_type": "text/event-stream",
+      "response": "data: {\"id\":\"chatcmpl-106\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"id\":\"call_w78e9b18\",\"index\":0,\"type\":\"function\",\"function\":{\"name\":\"get_weather\",\"arguments\":\"{\\\"city\\\":\\\"Hue\\\"}\"}}]},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-106\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: {\"id\":\"chatcmpl-106\",\"object\":\"chat.completion.chunk\",\"created\":1789812177,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[],\"usage\":{\"prompt_tokens\":287,\"prompt_tokens_details\":{\"cached_tokens\":286},\"completion_tokens\":32,\"total_tokens\":319}}\n\ndata: [DONE]\n\n"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "body": {
+        "messages": [
+          {
+            "content": "What is the weather in Hue right now?",
+            "role": "user"
+          },
+          {
+            "content": null,
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"city\":\"Hue\"}",
+                  "name": "get_weather"
+                },
+                "id": "call_w78e9b18",
+                "type": "function"
+              }
+            ]
+          },
+          {
+            "content": "{\"city\":\"Hue\",\"sky\":\"rain\",\"celsius\":24}",
+            "role": "tool",
+            "tool_call_id": "call_w78e9b18"
+          }
+        ],
+        "model": "smollm2:1.7b",
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        },
+        "tools": [
+          {
+            "function": {
+              "description": "Current weather in a city",
+              "name": "get_weather",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "city": {
+                    "description": "City to get the weather for",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "function"
+          }
+        ]
+      },
+      "status": 200,
+      "content_type": "text/event-stream",
+      "response": "data: {\"id\":\"chatcmpl-290\",\"object\":\"chat.completion.chunk\",\"created\":1789812178,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"id\":\"call_en6gj2sl\",\"index\":0,\"type\":\"function\",\"function\":{\"name\":\"get_weather\",\"arguments\":\"{\\\"city\\\":\\\"Hue\\\"}\"}}]},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-290\",\"object\":\"chat.completion.chunk\",\"created\":1789812178,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: {\"id\":\"chatcmpl-290\",\"object\":\"chat.completion.chunk\",\"created\":1789812178,\"model\":\"smollm2:1.7b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[],\"usage\":{\"prompt_tokens\":358,\"prompt_tokens_details\":{\"cached_tokens\":293},\"completion_tokens\":31,\"total_tokens\":389}}\n\ndata: [DONE]\n\n"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "body": {
+        "messages": [
+          {
+            "content": "hi",
+            "role": "user"
+          }
+        ],
+        "model": "no-such-model-xyz",
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "status": 404,
+      "content_type": "application/json",
+      "response": "{\"error\":{\"message\":\"model 'no-such-model-xyz' not found\",\"type\":\"not_found_error\",\"param\":null,\"code\":null}}\n"
+    }
+  ]
+}

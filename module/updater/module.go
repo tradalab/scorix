@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tradalab/scorix/fetch"
 	"github.com/tradalab/scorix/module"
 	"golang.org/x/mod/semver"
 )
@@ -267,26 +268,14 @@ func (m *UpdaterModule) rollbackFloor() string {
 
 var progressLog = func(msg string) { logger.Info(msg) }
 
-func (m *UpdaterModule) Download(ctx context.Context, c *http.Client, url string) (string, error) {
-	if err := checkSecureURL(url); err != nil {
+func (m *UpdaterModule) Download(ctx context.Context, c *http.Client, rawurl string) (string, error) {
+	if err := checkSecureURL(rawurl); err != nil {
 		return "", err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	u, err := url.Parse(rawurl)
 	if err != nil {
-		return "", fmt.Errorf("create request: %w", err)
+		return "", fmt.Errorf("parse url: %w", err)
 	}
-
-	resp, err := c.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("do request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("download status %d", resp.StatusCode)
-	}
-
-	total := resp.ContentLength
 	// Private 0700 dir so no other local process can swap the artifact between verify
 	// and install (TOCTOU); extension constrained to a known installer type so a
 	// hostile URL can't pick a suffix that flows into the installer.
@@ -294,48 +283,34 @@ func (m *UpdaterModule) Download(ctx context.Context, c *http.Client, url string
 	if err != nil {
 		return "", fmt.Errorf("create update dir: %w", err)
 	}
-	ext := safeInstallerExt(filepath.Ext(filepath.Base(req.URL.Path)))
-	tmpFile, err := os.OpenFile(filepath.Join(dir, "installer"+ext), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if err != nil {
-		return "", fmt.Errorf("create temp file: %w", err)
-	}
-	defer tmpFile.Close()
+	dst := filepath.Join(dir, "installer"+safeInstallerExt(filepath.Ext(filepath.Base(u.Path))))
 
-	buf := make([]byte, 32*1024)
-	var downloaded, loggedAt int64
+	var loggedAt int64
 	var loggedPct float64
-
-	for {
-		n, err := resp.Body.Read(buf)
-		if n > 0 {
-			if _, werr := tmpFile.Write(buf[:n]); werr != nil {
-				return "", fmt.Errorf("write file: %w", werr)
+	progress := func(p fetch.Progress) {
+		// Every 32 KiB chunk was a line: 3,200 of them for a 100 MB installer, into a
+		// rotating log file. Steps instead, so the line count does not follow the size.
+		if p.Total > 0 {
+			percent := float64(p.Done) / float64(p.Total) * 100
+			if percent-loggedPct >= 2 || p.Done == p.Total {
+				loggedPct = percent
+				progressLog(fmt.Sprintf("[updater] Downloading... %.0f%%", percent))
 			}
-			downloaded += int64(n)
-
-			// Every 32 KiB chunk was a line: 3,200 of them for a 100 MB installer, into a
-			// rotating log file. Steps instead, so the line count does not follow the size.
-			if total > 0 {
-				percent := float64(downloaded) / float64(total) * 100
-				if percent-loggedPct >= 2 || downloaded == total {
-					loggedPct = percent
-					progressLog(fmt.Sprintf("[updater] Downloading... %.0f%%", percent))
-				}
-			} else if downloaded-loggedAt >= 8<<20 {
-				loggedAt = downloaded
-				progressLog(fmt.Sprintf("[updater] Downloading... %d bytes", downloaded))
-			}
+		} else if p.Done-loggedAt >= 8<<20 {
+			loggedAt = p.Done
+			progressLog(fmt.Sprintf("[updater] Downloading... %d bytes", p.Done))
 		}
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return "", fmt.Errorf("read body: %w", err)
-		}
+	}
+	// No digest: the signature check after this is what vouches for the bytes.
+	open := fetch.HTTP(c, func(ctx context.Context) (*http.Request, error) {
+		return http.NewRequestWithContext(ctx, http.MethodGet, rawurl, nil)
+	})
+	if err := fetch.Fetch(ctx, dst, fetch.File{Size: -1}, open, fetch.Options{Progress: progress}); err != nil {
+		_ = os.RemoveAll(dir)
+		return "", fmt.Errorf("download: %w", err)
 	}
 	progressLog("[updater] Download completed!")
-
-	return tmpFile.Name(), nil
+	return dst, nil
 }
 
 // Restricts the file extension to a known installer type (per-OS default) so a hostile

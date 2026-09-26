@@ -119,6 +119,16 @@ type mcpSettings struct {
 	Enabled         bool                `json:"enabled"`
 	DisabledTools   []string            `json:"disabled_tools,omitempty"`
 	ApprovedClients []mcpApprovedClient `json:"approved_clients,omitempty"`
+	// The file is there and unreadable, so what the user switched off cannot
+	// be known.
+	broken bool
+}
+
+// An unreadable file leaves no list of what was switched off, and an empty
+// list means everything is on; every tool stays off until it is readable
+// again.
+func (s mcpSettings) toolOff(name string) bool {
+	return s.broken || slices.Contains(s.DisabledTools, name)
 }
 
 type mcpApprovedClient struct {
@@ -349,10 +359,10 @@ func (a *App) mcpcoreTools(s *mcpSession) []mcpcore.Tool {
 	a.mu.Lock()
 	tools := append([]MCPTool(nil), a.mcpTools...)
 	a.mu.Unlock()
-	off := loadMCPSettings(a.appDataName()).DisabledTools
+	settings := loadMCPSettings(a.appDataName())
 	out := make([]mcpcore.Tool, 0, len(tools))
 	for _, t := range tools {
-		if slices.Contains(off, t.Name) {
+		if settings.toolOff(t.Name) {
 			continue
 		}
 		schema := schemaMap(t.InputSchema)
@@ -395,7 +405,7 @@ func (a *App) mcpRun(t MCPTool, s *mcpSession) func(context.Context, mcpcore.Arg
 		}
 		shown := redactArgs(payload)
 		start := time.Now()
-		if slices.Contains(loadMCPSettings(a.appDataName()).DisabledTools, t.Name) {
+		if loadMCPSettings(a.appDataName()).toolOff(t.Name) {
 			err := fault.Errorf(fault.CodeDenied, "the user turned %s off in the app", t.Name)
 			a.mcpRecord(call, shown, start, "denied", err)
 			return writeMCPError(out, err)
@@ -645,13 +655,20 @@ func clip(b []byte, n int) string {
 	return string(b[:n]) + "..."
 }
 
-// A missing or unreadable file reads as everything off.
+// No file means a fresh app: MCP is not being served, and no tool has been
+// switched off. A file that is there and will not parse is a different thing -
+// it is the record of what the user allowed and switched off - so nothing is
+// served from a guess at it.
 func loadMCPSettings(appName string) mcpSettings {
 	var s mcpSettings
-	if b, err := os.ReadFile(filepath.Join(mcpDirOf(appName), mcpSettingsFile)); err == nil {
-		if json.Unmarshal(b, &s) != nil {
-			return mcpSettings{}
-		}
+	path := filepath.Join(mcpDirOf(appName), mcpSettingsFile)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return s
+	}
+	if json.Unmarshal(b, &s) != nil {
+		logger.Warn("app: the MCP settings cannot be read, so no tool is served until the file is fixed or removed", "path", path)
+		return mcpSettings{broken: true}
 	}
 	return s
 }
@@ -665,6 +682,11 @@ func (a *App) updateMCPSettings(change func(*mcpSettings)) error {
 	mcpSettingsMu.Lock()
 	defer mcpSettingsMu.Unlock()
 	s := loadMCPSettings(a.appDataName())
+	if s.broken {
+		// Writing would replace what could not be read with defaults, which is
+		// how a switched-off tool comes back on for good.
+		return fault.Errorf(fault.CodeInternal, "the MCP settings file cannot be read; fix or remove %s", filepath.Join(mcpDirOf(a.appDataName()), mcpSettingsFile))
+	}
 	change(&s)
 	return writeJSON0600(filepath.Join(mcpDirOf(a.appDataName()), mcpSettingsFile), s)
 }
@@ -677,8 +699,32 @@ func writeJSON0600(path string, v any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	// 0600: the endpoint holds the token, and mcp.json says which programs are allowed.
-	return os.WriteFile(path, b, 0o600)
+	// Written beside the file and moved over it: a crash or a full disk during
+	// a plain write leaves a truncated file, and this one says which programs
+	// are allowed. A name of its own per write, because the rename is atomic
+	// and writing into a shared .tmp is not: a second window of the same app
+	// can write through this one's file and publish half of it.
+	// CreateTemp makes it 0600, which is what the endpoint's token needs.
+	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer func() { _ = os.Remove(tmp) }() // already gone once the rename lands
+	if _, err := f.Write(b); err != nil {
+		f.Close()
+		return err
+	}
+	// Without this the rename can land before the bytes do, and a machine that
+	// loses power mid-write comes back to a file that will not parse.
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 type mcpToolInfo struct {
@@ -713,7 +759,7 @@ func (a *App) mcpStatus() mcpStatus {
 	s.Tools = make([]mcpToolInfo, 0, len(a.mcpTools))
 	for _, t := range a.mcpTools {
 		s.Tools = append(s.Tools, mcpToolInfo{Name: t.Name, Description: t.Description, Destructive: t.Destructive,
-			Enabled: !slices.Contains(settings.DisabledTools, t.Name)})
+			Enabled: !settings.toolOff(t.Name)})
 	}
 	a.mu.Unlock()
 	s.Clients = append([]mcpApprovedClient{}, settings.ApprovedClients...)
