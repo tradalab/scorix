@@ -130,6 +130,8 @@ func TestMaximizeReachesTheWindowManager(t *testing.T) {
 }
 
 // The height stays open on purpose: only an open axis shows a zero read as a cap.
+// It is not read exactly, because macOS keeps a window inside the screen it is on
+// and gave back 677 of the 700 asked for on a CI display.
 func TestMaxSizeCapsAResize(t *testing.T) {
 	a := harness(t)
 	w := a.MainWindow()
@@ -137,8 +139,8 @@ func TestMaxSizeCapsAResize(t *testing.T) {
 	t.Cleanup(func() { w.SetMaxSize(0, 0); w.SetSize(ow, oh) })
 
 	w.SetMaxSize(600, 0)
-	resizeUntil(t, w, 900, 700, "SetSize(900,700) to stop at the 600px max width and keep its uncapped height",
-		func(gw, gh int) bool { return gw == 600 && gh == 700 })
+	resizeUntil(t, w, 900, 700, "SetSize(900,700) to stop at the 600px max width and leave the height above it",
+		func(gw, gh int) bool { return gw == 600 && gh > 600 })
 	// Polled: webview2 reflows the page after reporting the native size (706px read).
 	eventually(t, "the page to reflow inside the 600px cap", func() bool {
 		return askInt(t, "window.innerWidth") <= 600
