@@ -89,6 +89,7 @@ const (
 
 	dxgiNotFound        = 0x887A0002
 	adapterFlagSoftware = 2
+	vendorMicrosoft     = 0x1414
 )
 
 // Every vendor's card, which NVML cannot see, and how much memory each has.
@@ -120,9 +121,7 @@ func dxgiGPUs() ([]GPU, error) {
 		var d adapterDesc1
 		hr = comCall(adapter, slotGetDesc1, uintptr(unsafe.Pointer(&d)))
 		comCall(adapter, slotRelease)
-		// The Basic Render Driver: software, and a model run on it is a CPU run
-		// that looks like a GPU one.
-		if hr != 0 || d.Flags&adapterFlagSoftware != 0 {
+		if hr != 0 || !offloadable(d) {
 			continue
 		}
 		out = append(out, GPU{
@@ -134,6 +133,13 @@ func dxgiGPUs() ([]GPU, error) {
 		})
 	}
 	return out, nil
+}
+
+// The SOFTWARE flag is not enough: measured on a windows runner, the Basic
+// Render Driver comes back with Flags 0. Microsoft's vendor id is what its three
+// non-GPUs share. Not VRAM: an integrated GPU reports zero and runs fine.
+func offloadable(d adapterDesc1) bool {
+	return d.Flags&adapterFlagSoftware == 0 && d.VendorID != vendorMicrosoft
 }
 
 // The object stays an unsafe.Pointer from the moment COM hands it over, so

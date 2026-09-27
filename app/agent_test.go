@@ -199,7 +199,7 @@ func TestAgentCallsAreAnnouncedToTheFrontend(t *testing.T) {
 		if ev["tool"] != "broken" || ev["client"] != agentClient || ev["outcome"] != "error" || !strings.Contains(ev["error"].(string), "disk full") {
 			t.Errorf("sys:mcp:call = %v", ev)
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(replyWait):
 		t.Fatal("no sys:mcp:call reached the frontend")
 	}
 }
@@ -314,7 +314,7 @@ func TestARefusedCallIsAuditedAndAnnounced(t *testing.T) {
 		if ev["tool"] != "wipe" || ev["outcome"] != "denied" {
 			t.Errorf("sys:mcp:call = %v", ev)
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(replyWait):
 		t.Fatal("no sys:mcp:call reached the frontend")
 	}
 }

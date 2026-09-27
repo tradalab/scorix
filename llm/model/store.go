@@ -81,12 +81,22 @@ func (s *Store) sweepParts() {
 func (s *Store) Path(snap *Snapshot, f File) (string, error) {
 	parts := []string{snap.Source, snap.Repo, snap.Revision, f.Path}
 	for _, p := range parts {
-		if p == "" || !filepath.IsLocal(filepath.FromSlash(p)) {
+		if !insideStore(p) {
 			return "", fmt.Errorf("model: %q is not a path inside the store", p)
 		}
 	}
 	return filepath.Join(append([]string{s.Root}, mapSlash(parts)...)...), nil
 }
+
+// The strictest rule of any OS, not the host's: filepath.IsLocal refuses
+// "C:/Windows/evil.dll" on Windows and takes it on Linux as a directory named
+// "C:". No source produces either character - oci.go and sources.go replace it.
+func insideStore(p string) bool {
+	return p != "" && portableName(p) && filepath.IsLocal(filepath.FromSlash(p))
+}
+
+// Apart from insideStore so a test can fail anywhere, not only on Linux.
+func portableName(p string) bool { return !strings.ContainsAny(p, `:\`) }
 
 func mapSlash(ps []string) []string {
 	out := make([]string, len(ps))

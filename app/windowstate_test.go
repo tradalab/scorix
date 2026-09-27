@@ -219,7 +219,7 @@ func TestWindowStateSavedWhenQuitRacesReady(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Run: %v", err)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(replyWait):
 		t.Fatal("Run never returned after quitting from OnReady")
 	}
 

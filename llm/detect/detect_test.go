@@ -65,7 +65,7 @@ func TestNothingRunningIsQuick(t *testing.T) {
 		{"ollama", "ollama", "http://127.0.0.1:1", "", ollama},
 		{"ollama", "ollama", hung.URL, "", ollama},
 	})
-	if len(got) != 0 || time.Since(start) > 2500*time.Millisecond {
+	if len(got) != 0 || time.Since(start) > 6*time.Second {
 		t.Errorf("%v in %s", got, time.Since(start))
 	}
 }

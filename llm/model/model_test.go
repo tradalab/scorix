@@ -167,7 +167,11 @@ func TestTheStoreKeepsRemoteNamesInsideIt(t *testing.T) {
 	}{
 		{*good, "../../outside.gguf"},
 		{*good, "/etc/passwd"},
+		// Taken on Linux as a directory named "C:".
 		{*good, "C:/Windows/evil.dll"},
+		{*good, "c:evil.gguf"},
+		{*good, `dir\..\..\evil.gguf`},
+		{Snapshot{Source: "huggingface", Repo: "owner/repo", Revision: "sha256:abc"}, "m.gguf"},
 		{Snapshot{Source: "huggingface", Repo: "../..", Revision: "abc"}, "m.gguf"},
 		{Snapshot{Source: "huggingface", Repo: "owner/repo", Revision: ""}, "m.gguf"},
 		{Snapshot{Source: "huggingface", Repo: "owner/repo", Revision: "../x"}, "m.gguf"},
@@ -645,5 +649,20 @@ func TestGetHoldsThePartItIsWriting(t *testing.T) {
 	liveMu.Unlock()
 	if n != 0 {
 		t.Errorf("%d parts still registered", n)
+	}
+}
+
+// On portableName, not through Path: Windows refuses these via IsLocal anyway,
+// so a test going through it would say nothing about Linux.
+func TestANameIsHeldToTheStrictestRule(t *testing.T) {
+	for _, p := range []string{"C:/Windows/evil.dll", "c:evil", "sha256:abc", `a\b`, `..\x`} {
+		if portableName(p) {
+			t.Errorf("%q passed as a portable name", p)
+		}
+	}
+	for _, p := range []string{"model.gguf", "dir/model.gguf", "owner/repo", "abc123", "mmproj-model-f16.gguf"} {
+		if !portableName(p) {
+			t.Errorf("%q was refused", p)
+		}
 	}
 }

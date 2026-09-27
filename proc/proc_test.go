@@ -145,7 +145,8 @@ func TestAHealthyStrangerIsNotOurChild(t *testing.T) {
 		if _, err := os.Stat(gone); err != nil {
 			return err
 		}
-		time.Sleep(300 * time.Millisecond) // the exit lands after the last line
+		// A settle window, not an assertion: 300ms was a coin flip under -race.
+		time.Sleep(3 * time.Second)
 		return nil
 	}
 	spec.ReadyTimeout = 10 * time.Second

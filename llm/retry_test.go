@@ -106,7 +106,8 @@ func TestRetryStopsWhenTheCallerGivesUp(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v", err)
 	}
-	if tries != 1 || time.Since(start) > 5*time.Second {
+	// Base is an hour, so anything short of that proves the wait was cut.
+	if tries != 1 || time.Since(start) > 30*time.Second {
 		t.Errorf("sent %d times in %v", tries, time.Since(start))
 	}
 }
@@ -200,7 +201,8 @@ func TestAWaitLongerThanThePolicyGoesToTheCaller(t *testing.T) {
 	if tries != 1 || resp == nil || resp.StatusCode != http.StatusTooManyRequests {
 		t.Errorf("sent %d times, resp = %v", tries, resp)
 	}
-	if d := time.Since(start); d > time.Second {
+	// Well under the minute the server asked for, which is the whole claim.
+	if d := time.Since(start); d > 10*time.Second {
 		t.Errorf("waited %v for a minute-long Retry-After", d)
 	}
 }

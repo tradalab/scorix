@@ -76,8 +76,13 @@ func TestEnsureInstallsOnceAndFindsItOffline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := os.ReadFile(exe); string(got) != "server" || !strings.Contains(filepath.ToSlash(exe), "/llama.cpp/b9934/vulkan/") {
-		t.Errorf("exe = %s", exe)
+	b, err := Choose(m, []string{asset}, in.Options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "/llama.cpp/b9934/" + b.Backend + "/"
+	if got, _ := os.ReadFile(exe); string(got) != "server" || !strings.Contains(filepath.ToSlash(exe), want) {
+		t.Errorf("exe = %s, want a path under %s", exe, want)
 	}
 	if left, _ := filepath.Glob(filepath.Join(store.Root, "github", "*", "*", "*", asset)); len(left) != 0 {
 		t.Errorf("the archive was kept after unpacking: %v", left)

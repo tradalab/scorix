@@ -108,6 +108,9 @@ func relay(t *testing.T, cfg *config.Config) *mcpClient {
 	return c
 }
 
+// Bounds a hang, not a stopwatch: at 5s a round trip crossed it under `go test ./...`.
+const replyWait = 30 * time.Second
+
 func (c *mcpClient) call(method string, params any) map[string]any {
 	c.t.Helper()
 	c.seq++
@@ -136,8 +139,8 @@ func (c *mcpClient) call(method string, params any) map[string]any {
 			c.t.Fatalf("%s: answered with non-JSON %q", method, ans.line)
 		}
 		return res
-	case <-time.After(5 * time.Second):
-		c.t.Fatalf("%s: no answer in 5s", method)
+	case <-time.After(replyWait):
+		c.t.Fatalf("%s: no answer in %s", method, replyWait)
 	}
 	return nil
 }
@@ -225,11 +228,11 @@ func TestMCPRefusesAWrongToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, token := range map[string]string{"wrong": ep.Token + "x", "empty": ""} {
-		conn, err := net.DialTimeout("unix", ep.Addr, time.Second)
+		conn, err := net.DialTimeout("unix", ep.Addr, replyWait)
 		if err != nil {
 			t.Fatal(err)
 		}
-		_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(replyWait))
 		hello, _ := json.Marshal(map[string]string{"token": token})
 		_, _ = conn.Write(append(hello, '\n'))
 		_, _ = conn.Write([]byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}` + "\n"))
@@ -330,7 +333,7 @@ func TestMCPCallIsAnnouncedToTheFrontend(t *testing.T) {
 		if ev["tool"] != "sum" || ev["client"] != "claude-ai" || ev["client_path"] != testClientPath || ev["outcome"] != "ok" {
 			t.Errorf("sys:mcp:call = %v", ev)
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(replyWait):
 		t.Fatal("no sys:mcp:call reached the frontend")
 	}
 }
@@ -509,7 +512,7 @@ func TestMCPCloseWaitsForACallInFlight(t *testing.T) {
 	go func() { _, _ = c.in.Write(append(b, '\n')) }()
 	select {
 	case <-entered:
-	case <-time.After(5 * time.Second):
+	case <-time.After(replyWait):
 		t.Fatal("the call never reached the command")
 	}
 	closed := make(chan struct{})
@@ -523,7 +526,7 @@ func TestMCPCloseWaitsForACallInFlight(t *testing.T) {
 	close(release)
 	select {
 	case <-closed:
-	case <-time.After(5 * time.Second):
+	case <-time.After(replyWait):
 		t.Fatal("closeMCP did not return after the call finished")
 	}
 }
@@ -536,7 +539,7 @@ func TestMCPHandshakeRefusesAnOverlongLineAtOnce(t *testing.T) {
 	if err := json.Unmarshal(b, &ep); err != nil {
 		t.Fatal(err)
 	}
-	conn, err := net.DialTimeout("unix", ep.Addr, time.Second)
+	conn, err := net.DialTimeout("unix", ep.Addr, replyWait)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -579,13 +582,13 @@ func TestMCPConfirmationEndsWhenTheAgentLeaves(t *testing.T) {
 	go func() { _, _ = c.in.Write(append(b, '\n')) }()
 	select {
 	case <-asked:
-	case <-time.After(5 * time.Second):
+	case <-time.After(replyWait):
 		t.Fatal("the dialog was never raised")
 	}
 	_ = c.in.Close()
 	select {
 	case <-closed:
-	case <-time.After(3 * time.Second):
+	case <-time.After(replyWait):
 		t.Fatal("the dialog stayed up after the agent that asked had gone")
 	}
 	time.Sleep(100 * time.Millisecond)
@@ -620,7 +623,7 @@ func TestMCPSwitchStartsAndStopsTheSocket(t *testing.T) {
 	}
 	select {
 	case <-c.done:
-	case <-time.After(5 * time.Second):
+	case <-time.After(replyWait):
 		t.Fatal("an open relay kept running after the user switched MCP off")
 	}
 }
@@ -814,7 +817,7 @@ func TestMCPAsksOncePerProgramAtATime(t *testing.T) {
 			if !strings.Contains(line, `\"sum\":2`) {
 				t.Errorf("a call that waited on the same question = %s", line)
 			}
-		case <-time.After(5 * time.Second):
+		case <-time.After(replyWait):
 			t.Fatal("a call waiting on the question never finished")
 		}
 	}
@@ -841,14 +844,14 @@ func TestMCPQuestionNobodyAnsweredIsNotADenial(t *testing.T) {
 	c.send(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": "sum"}})
 	select {
 	case <-asked:
-	case <-time.After(5 * time.Second):
+	case <-time.After(replyWait):
 		t.Fatal("the call never asked")
 	}
 	_ = c.in.Close()
 	go func() { _, _ = io.Copy(io.Discard, c.out) }() // a pipe nobody reads blocks the relay
 	select {
 	case <-c.done:
-	case <-time.After(5 * time.Second):
+	case <-time.After(replyWait):
 		t.Fatal("the relay did not end after its client left")
 	}
 	fresh := relay(t, a.cfg)
@@ -874,7 +877,7 @@ func TestMCPRevokeEndsTheProgramsConnections(t *testing.T) {
 	}
 	select {
 	case <-c.done:
-	case <-time.After(5 * time.Second):
+	case <-time.After(replyWait):
 		t.Fatal("a revoked program kept its open connection")
 	}
 	if clients := a.mcpStatus().Clients; len(clients) != 0 {
