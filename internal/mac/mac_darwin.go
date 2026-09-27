@@ -9,6 +9,7 @@
 package mac
 
 import (
+	"runtime"
 	"sync"
 	"unsafe"
 
@@ -139,11 +140,15 @@ func Recover(where string) {
 // withPool runs fn inside an autorelease pool. A Go goroutine is not an AppKit
 // thread and carries no pool of its own, so any autoreleased object created off
 // the main queue leaks and the runtime logs about it.
+// The thread is pinned because a pool belongs to the thread that pushed it, and
+// objc_autoreleasePoolPop on a token from another thread is a SIGSEGV.
 func withPool(fn func()) {
 	if poolPush == nil || poolPop == nil {
 		fn()
 		return
 	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	p := poolPush()
 	defer poolPop(p)
 	fn()

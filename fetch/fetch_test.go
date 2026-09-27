@@ -227,11 +227,15 @@ func TestAPartFromAnEarlierRunIsResumedAndVerifiedWhole(t *testing.T) {
 }
 
 func TestCancellingKeepsThePartForNextTime(t *testing.T) {
-	srv, _ := fileServer(t, content, 0)
+	// Cut the first transfer: buffering let a whole 1 MiB arrive before the
+	// cancel landed. Progress is the one place that runs after a write.
+	srv, _ := fileServer(t, content, 4096)
 	dst := filepath.Join(t.TempDir(), "f")
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	err := Fetch(ctx, dst, File{Size: int64(len(content)), Digest: sum(content)}, get(srv.URL), Options{Progress: func(p Progress) {
-		if p.Done > 200_000 {
+		if p.Done > 0 {
 			cancel()
 		}
 	}})
