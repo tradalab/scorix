@@ -11,7 +11,7 @@ func TestCloseVeto(t *testing.T) {
 	rt, _ := driver{}.NewRuntime(window.RuntimeConfig{})
 	mgr := rt.Windows()
 
-	// 1. A handler that vetoes → window not closed.
+	// 1. A handler that vetoes -> window not closed.
 	wv, _ := mgr.New(window.Options{})
 	veto := true
 	wv.On(window.EventClose, func(d window.EventData) {
@@ -24,7 +24,7 @@ func TestCloseVeto(t *testing.T) {
 		t.Fatal("Close was vetoed via PreventDefault but window reports closed")
 	}
 
-	// 2. Same window, no veto this time → closes.
+	// 2. Same window, no veto this time -> closes.
 	veto = false
 	wv.Close()
 	if !wv.(*win).Closed() {

@@ -63,8 +63,53 @@ func RegisterHandlers(a *app.App, svcCtx *svc.ServiceContext) {
 	})
 {{- end }}
 {{- end }}
+{{- if .CLI }}
+	a.CLICommand(app.CLICommand{
+		Command: {{ printf "%q" .CommandName }},
+		Service: {{ printf "%q" (kebab $svc.Package) }},
+		Doc:     {{ printf "%q" .Doc }},
+		Schema:  json.RawMessage({{ printf "%q" .CLISchema }}),
+{{- if .CLIArg }}
+		Arg: {{ printf "%q" .CLIArg }},
+{{- end }}
+{{- if .CLIRest }}
+		Rest: {{ printf "%q" .CLIRest }},
+{{- end }}
+{{- if .CLISecret }}
+		Secret: {{ printf "%q" .CLISecret }},
+{{- end }}
+{{- if .CLIDestructive }}
+		Destructive: true,
+{{- end }}
+{{- if .CLIHeadless }}
+		Headless: true,
+{{- end }}
+{{- if .CLIExec }}
+		Exec: true,
+{{- end }}
+{{- if .IsServerStream }}
+		Stream: true,
+{{- end }}
+{{- if .CLITimeout }}
+		Timeout: {{ printf "%d" .CLITimeout }}, // {{ .CLITimeout }}
+{{- end }}
+	})
+{{- end }}
 {{- end }}
 {{- end }}
 }
+{{- if .HasCLI }}
+
+var CLIWords = []string{
+{{- range .Services }}
+{{- $svc := . }}
+{{- $has := false }}
+{{- range .RPCs }}{{ if .CLI }}{{ $has = true }}{{ end }}{{ end }}
+{{- if $has }}
+	{{ printf "%q" (kebab .Package) }},
+{{- end }}
+{{- end }}
+}
+{{- end }}
 
 var _ = types.Empty{}

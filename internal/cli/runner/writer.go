@@ -37,6 +37,7 @@ func renderGeneratedFile(f generatedFile) (stagedFile, error) {
 	var buf bytes.Buffer
 	tpl, err := template.New(filepath.Base(f.Path)).Funcs(template.FuncMap{
 		"lower": strings.ToLower,
+		"kebab": kebabName,
 		"lowerFirst": func(s string) string {
 			if s == "" {
 				return s

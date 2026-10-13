@@ -192,7 +192,7 @@ func TestRestartBudgetThenGiveUp(t *testing.T) {
 }
 
 func TestReadyTimeoutKillsChild(t *testing.T) {
-	spec := helperSpec(t, "serve") // no ready file → health never passes
+	spec := helperSpec(t, "serve") // no ready file -> health never passes
 	spec.Health = func(context.Context) error { return errors.New("not yet") }
 	spec.ReadyTimeout = 300 * time.Millisecond
 	spec.PollInterval = 20 * time.Millisecond

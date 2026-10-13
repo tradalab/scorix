@@ -28,7 +28,7 @@ type GoType struct {
 	NeedsSQL  bool // requires "database/sql" import (sql.NullXxx)
 }
 
-// New accepts common aliases ("pg" → "postgres", "sqlite3" → "sqlite").
+// New accepts common aliases ("pg" -> "postgres", "sqlite3" -> "sqlite").
 func New(name string) (Dialect, error) {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "", "sqlite", "sqlite3":

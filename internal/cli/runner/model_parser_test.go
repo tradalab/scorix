@@ -63,7 +63,7 @@ func TestParseSQLSchema_SQLite(t *testing.T) {
 		t.Error("connection should have time import (has DATETIME cols)")
 	}
 	if !conn.HasNullable {
-		t.Error("connection should have nullable import (deleted_at is nullable DATETIME → sql.NullTime)")
+		t.Error("connection should have nullable import (deleted_at is nullable DATETIME -> sql.NullTime)")
 	}
 	if !conn.HasDeletedAt {
 		t.Error("connection should have soft-delete flag")

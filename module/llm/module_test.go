@@ -1214,3 +1214,24 @@ func TestWhatIsDestroyedIsConfirmedByAPerson(t *testing.T) {
 		})
 	}
 }
+
+func TestSecretIsForGoOnly(t *testing.T) {
+	r := newRig(t)
+	srv, _ := openaiServer(t)
+	r.must("SaveProvider", ProviderInput{ID: "work", Driver: "openai", Values: map[string]string{"base_url": srv.URL}, Secrets: map[string]string{"api_key": "sk-secret-1"}}, nil)
+	if got, err := r.mod.Secret("work", "api_key"); err != nil || got != "sk-secret-1" {
+		t.Errorf("Secret = %q, %v", got, err)
+	}
+	if _, err := r.mod.Secret("nope", "api_key"); err == nil {
+		t.Error("a provider that was never saved returned a key")
+	}
+	again := load(t, r.path)
+	if got, _ := again.mod.Secret("work", "api_key"); got != "sk-secret-1" {
+		t.Errorf("after a restart Secret = %q", got)
+	}
+	for name := range r.core.handlers {
+		if strings.Contains(strings.ToLower(name), "secret") {
+			t.Errorf("%s exposes secrets to the page", name)
+		}
+	}
+}

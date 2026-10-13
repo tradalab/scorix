@@ -113,7 +113,7 @@ func TestBuildSQL_Postgres(t *testing.T) {
 
 func TestBuildSQL_MySQL_HardDelete(t *testing.T) {
 	d := dialect.MustNew("mysql")
-	// Table without deleted_at → hard DELETE.
+	// Table without deleted_at -> hard DELETE.
 	tables := parseInline(t, `
 CREATE TABLE IF NOT EXISTS account (
     id     INTEGER PRIMARY KEY,

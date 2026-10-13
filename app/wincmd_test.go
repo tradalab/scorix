@@ -76,7 +76,7 @@ func TestWindowCommands(t *testing.T) {
 	}
 	_ = json.Unmarshal(r.Data, &tm)
 	if !tm.Maximized || w.State() != window.StateMaximized {
-		t.Fatalf("toggleMaximize → maximized=%v state=%v", tm.Maximized, w.State())
+		t.Fatalf("toggleMaximize -> maximized=%v state=%v", tm.Maximized, w.State())
 	}
 
 	if r := invokeWin(t, w, "w3", "win:startDrag", ""); r.State != "done" {

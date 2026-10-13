@@ -205,7 +205,7 @@ func createEnvironment(hwnd windows.Handle, userDataFolder string, schemes []str
 	return nil
 }
 
-// ── webview2View: webview.View backed by an ICoreWebView2 (set async) ─────────
+// webview2View: webview.View backed by an ICoreWebView2 (set async)
 
 type webview2View struct {
 	dispatch func(func()) // marshal a func onto the UI thread

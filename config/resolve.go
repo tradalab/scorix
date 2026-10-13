@@ -37,7 +37,7 @@ type ResolveOptions struct {
 	// Runtime-file section keyed by json name. Only `env`-tagged fields consult it;
 	// sealed fields never do - this is what makes "no tag = not overridable" hold.
 	FileOverlay map[string]any
-	LookupEnv   func(string) (string, bool) // nil → real os funcs (injectable for tests)
+	LookupEnv   func(string) (string, bool) // nil -> real os funcs (injectable for tests)
 	ReadFile    func(string) ([]byte, error)
 	Warnf       func(string, ...any)  // gets a message when an overlay key hits a sealed field (override dropped)
 	Report      func(FieldResolution) // called once per field with how it resolved
@@ -46,13 +46,13 @@ type ResolveOptions struct {
 // ResolveOverrides uses `env` struct tags as a secure-by-default allowlist; only
 // tagged fields of out (pointer to struct) are ever touched, in place.
 //
-//   - no `env` tag → SEALED: never overridable (embedded/default only).
-//   - `env:""`     → overridable; auto env name = Prefix + UPPER(jsonKey).
-//   - `env:"NAME"` → overridable via env var NAME.
+//   - no `env` tag -> SEALED: never overridable (embedded/default only).
+//   - `env:""`     -> overridable; auto env name = Prefix + UPPER(jsonKey).
+//   - `env:"NAME"` -> overridable via env var NAME.
 //   - options after the name (comma-separated):
-//     secret   → env-only (never the runtime file) + caller masks it.
-//     required → error if still zero after resolution.
-//     file     → env var holds a path; file contents are the value.
+//     secret   -> env-only (never the runtime file) + caller masks it.
+//     required -> error if still zero after resolution.
+//     file     -> env var holds a path; file contents are the value.
 //
 // Per-field precedence: env > runtime_file > in-struct (embedded > default, since
 // callers run defaults() first).

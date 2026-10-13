@@ -21,7 +21,7 @@ type SystemTrayModule struct {
 	ctx  *module.Context
 	cfg  Config
 	icon []byte
-	menu menu.Menu // nil → default Open/Quit menu
+	menu menu.Menu // nil -> default Open/Quit menu
 }
 
 type Option func(*SystemTrayModule)

@@ -33,10 +33,16 @@ type ProjectConfig struct {
 	Check   *CheckConfig   `yaml:"check"`
 	App     *AppManifest   `yaml:"app"`
 	MCP     *MCPManifest   `yaml:"mcp"`
+	CLI     *CLIManifest   `yaml:"cli"`
 }
 
 // Read only to warn when the switch and the proto disagree; the app decides.
 type MCPManifest struct {
+	Enabled bool `yaml:"enabled"`
+}
+
+// Read only to warn, as for mcp.
+type CLIManifest struct {
 	Enabled bool `yaml:"enabled"`
 }
 
@@ -225,7 +231,7 @@ func generateModel(ctx context.Context, opt GenerateModelOptions, res *GenerateR
 		schemaAbs = filepath.Join(root, schemaPath)
 	}
 
-	// --dialect flag overrides scorix.yaml; both empty → sqlite.
+	// --dialect flag overrides scorix.yaml; both empty -> sqlite.
 	dialectName := opt.Dialect
 	if dialectName == "" && cfg.Model != nil {
 		dialectName = cfg.Model.Dialect

@@ -56,13 +56,13 @@ func TestGenerateProto_Check(t *testing.T) {
 	dir := newCheckProject(t)
 	ctx := context.Background()
 
-	// 1. Check on a never-generated project: everything is missing → drift.
+	// 1. Check on a never-generated project: everything is missing -> drift.
 	err := GenerateProto(ctx, GenerateProtoOptions{Dir: dir, Check: true})
 	if err == nil {
 		t.Fatal("check on ungenerated project must report drift")
 	}
 
-	// 2. Generate, then check → clean. Nothing may be written by check itself.
+	// 2. Generate, then check -> clean. Nothing may be written by check itself.
 	if err := GenerateProto(ctx, GenerateProtoOptions{Dir: dir}); err != nil {
 		t.Fatalf("generate: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestGenerateProto_Check(t *testing.T) {
 		t.Fatalf("check after generate must be clean: %v", err)
 	}
 
-	// 3. Hand-edit a force-regenerated file → drift naming that file.
+	// 3. Hand-edit a force-regenerated file -> drift naming that file.
 	handler := filepath.Join(dir, "internal", "handler", "handler.go")
 	orig, err := os.ReadFile(handler)
 	if err != nil {
@@ -92,7 +92,7 @@ func TestGenerateProto_Check(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 4. Hand-edit a write-once file (app-owned) → check stays clean.
+	// 4. Hand-edit a write-once file (app-owned) -> check stays clean.
 	mainGo := filepath.Join(dir, "main.go")
 	if err := os.WriteFile(mainGo, []byte("package main\n\nfunc main() {} // app-owned edit\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -101,7 +101,7 @@ func TestGenerateProto_Check(t *testing.T) {
 		t.Fatalf("write-once edits must not drift: %v", err)
 	}
 
-	// 5. Edit the proto without regenerating → drift.
+	// 5. Edit the proto without regenerating -> drift.
 	protoPath := filepath.Join(dir, "idl", "app.proto")
 	updated := strings.Replace(checkProto, "rpc Ping (PingReq) returns (PingRes);",
 		"rpc Ping (PingReq) returns (PingRes);\n  rpc Pong (PingReq) returns (PingRes);", 1)
@@ -154,7 +154,7 @@ func TestGenerateProto_HonorsManifestProtoPath(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	// No .Proto set → flag default → must resolve via scorix.yaml's proto: api/app.proto.
+	// No .Proto set -> flag default -> must resolve via scorix.yaml's proto: api/app.proto.
 	if err := GenerateProto(ctx, GenerateProtoOptions{Dir: dir}); err != nil {
 		t.Fatalf("generate must read proto path from scorix.yaml: %v", err)
 	}
@@ -162,7 +162,7 @@ func TestGenerateProto_HonorsManifestProtoPath(t *testing.T) {
 		t.Fatalf("expected handler generated from api/ proto: %v", err)
 	}
 
-	// An explicit --proto still wins over the manifest (here it points nowhere → fail).
+	// An explicit --proto still wins over the manifest (here it points nowhere -> fail).
 	if err := GenerateProto(ctx, GenerateProtoOptions{Dir: dir, Proto: "nope/app.proto"}); err == nil {
 		t.Fatal("explicit --proto must override manifest and fail on the missing file")
 	}
@@ -183,7 +183,7 @@ func TestGenerateModel_Check(t *testing.T) {
 		t.Fatalf("check after generate must be clean: %v", err)
 	}
 
-	// Tamper the always-regenerated CRUD file → drift.
+	// Tamper the always-regenerated CRUD file -> drift.
 	gen := filepath.Join(dir, "internal", "model", "users_model_gen.go")
 	b, err := os.ReadFile(gen)
 	if err != nil {
@@ -199,7 +199,7 @@ func TestGenerateModel_Check(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Schema edited without regen (new column) → drift.
+	// Schema edited without regen (new column) -> drift.
 	schema := filepath.Join(dir, "idl", "schema.sql")
 	updated := strings.Replace(checkSchema, "username TEXT NOT NULL UNIQUE,",
 		"username TEXT NOT NULL UNIQUE,\n  email TEXT,", 1)

@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -13,12 +14,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"path"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -108,9 +111,19 @@ type App struct {
 	devctl *devControl // dev-time control socket; nil unless SCORIX_DEV_CONTROL asked for it
 
 	mcpTools []MCPTool
+	cliCmds  []CLICommand
+	cli      *cliServer
 	mcpHost  bool // Run only; web mode never serves MCP
 	mcp      *mcpServer
 	mcpMu    sync.Mutex // one start or stop at a time, so the endpoint on disk names the live socket
+
+	// Shutdown leaves hijacked /ipc connections alone; RunWeb closes and drains them.
+	wsMu     sync.Mutex
+	wsConns  map[*websocket.Conn]struct{}
+	wsWG     sync.WaitGroup
+	wsClosed bool
+
+	cliStop chan struct{}
 }
 
 func (a *App) OnSystemEvent(evt window.RuntimeEvent, fn func()) {
@@ -176,6 +189,7 @@ func New(opts Options) (*App, error) {
 	a.registerWindowCommands()
 	a.registerLaunchCommand()
 	a.registerMCPCommands()
+	a.registerCLIInstallCommands()
 	if a.cfg.App.Name == "" {
 		a.cfg.App.Name = opts.Identifier
 	}
@@ -474,6 +488,8 @@ func (a *App) Run() error {
 	// Before the modules stop: a tool call must not land on a torn-down database.
 	a.openMCP()
 	defer a.closeMCP()
+	a.openCLI()
+	defer a.closeCLI()
 
 	a.mu.Lock()
 	a.rt = rt
@@ -661,6 +677,8 @@ func (a *App) RunWeb(addr string) error {
 	}
 	h := a.Handler()
 	defer a.stopModules()
+	a.openCLI()
+	defer a.closeCLI()
 	for _, fn := range a.ready {
 		fn(a)
 	}
@@ -672,7 +690,47 @@ func (a *App) RunWeb(addr string) error {
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
-	return srv.ListenAndServe()
+	// Without this a kill skips every defer and leaves the endpoint behind.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	srv.RegisterOnShutdown(a.closeWebSockets)
+	shutDone := make(chan struct{})
+	go func() {
+		defer close(shutDone)
+		<-ctx.Done()
+		// So a second Ctrl-C during the drain kills the process.
+		stop()
+		shut, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shut)
+	}()
+	err := srv.ListenAndServe()
+	if !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	// ListenAndServe returns as Shutdown starts, not when it ends.
+	<-shutDone
+	a.waitWebSockets(5 * time.Second)
+	return nil
+}
+
+func (a *App) closeWebSockets() {
+	a.wsMu.Lock()
+	defer a.wsMu.Unlock()
+	a.wsClosed = true
+	for c := range a.wsConns {
+		_ = c.Close()
+	}
+}
+
+func (a *App) waitWebSockets(limit time.Duration) {
+	done := make(chan struct{})
+	go func() { a.wsWG.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(limit):
+		logger.Warn("app: an IPC call was still running when web mode stopped waiting for it")
+	}
 }
 
 const webTokenCookie = "scorix_token"
@@ -722,6 +780,25 @@ func (a *App) Handler() http.Handler {
 			return
 		}
 		defer c.Close()
+		a.wsMu.Lock()
+		// After shutdown began: untracked, it would outlive the modules, and
+		// wsWG must not grow while RunWeb waits on it.
+		if a.wsClosed {
+			a.wsMu.Unlock()
+			return
+		}
+		if a.wsConns == nil {
+			a.wsConns = map[*websocket.Conn]struct{}{}
+		}
+		a.wsConns[c] = struct{}{}
+		a.wsWG.Add(1)
+		a.wsMu.Unlock()
+		defer func() {
+			a.wsMu.Lock()
+			delete(a.wsConns, c)
+			a.wsMu.Unlock()
+			a.wsWG.Done()
+		}()
 
 		var wmu sync.Mutex
 		send := func(b []byte) error {
@@ -785,7 +862,7 @@ func (a *App) assetHandler(fsys fs.FS) http.Handler {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		// First ?token= visit → session cookie so later requests carry it.
+		// First ?token= visit -> session cookie so later requests carry it.
 		if a.opts.WebToken != "" && r.URL.Query().Get("token") != "" {
 			http.SetCookie(w, &http.Cookie{
 				Name:     webTokenCookie,

@@ -46,7 +46,7 @@ func newView(r *rt, opts window.Options) (*view, error) {
 		addUserScript(ucc, opts.InitScript)
 	}
 
-	// In-process custom schemes (scorix:// …) - must be configured before the
+	// In-process custom schemes (scorix:// ...) - must be configured before the
 	// web view is created.
 	r.mu.Lock()
 	for scheme := range r.schemes {

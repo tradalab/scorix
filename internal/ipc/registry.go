@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"sort"
 	"sync"
 )
@@ -27,6 +28,8 @@ type Registry struct {
 	cmds map[string]CmdFunc
 	evts map[string]EvtFunc
 	rpcs map[string]rpcEntry
+
+	guards map[string]func(CmdFunc) CmdFunc
 }
 
 func NewRegistry() *Registry {
@@ -39,6 +42,9 @@ func NewRegistry() *Registry {
 
 func (r *Registry) Command(name string, fn CmdFunc) {
 	r.mu.Lock()
+	if g := r.guards[name]; g != nil {
+		fn = g(fn)
+	}
 	r.cmds[name] = fn
 	r.mu.Unlock()
 }
@@ -76,6 +82,32 @@ func (r *Registry) Names() []string {
 	return names
 }
 
+// Has covers rpcs too, unlike Names.
+func (r *Registry) Has(name string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	_, cmd := r.cmds[name]
+	_, rpc := r.rpcs[name]
+	return cmd || rpc
+}
+
+// Guard also wraps every later registration of name: a guard that a later
+// Command replaced, or that came first, would guard nothing.
+func (r *Registry) Guard(name string, wrap func(CmdFunc) CmdFunc) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.guards == nil {
+		r.guards = map[string]func(CmdFunc) CmdFunc{}
+	}
+	if r.guards[name] != nil {
+		return
+	}
+	r.guards[name] = wrap
+	if fn, ok := r.cmds[name]; ok {
+		r.cmds[name] = wrap(fn)
+	}
+}
+
 func (r *Registry) command(name string) (CmdFunc, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -109,3 +141,32 @@ func (r *Registry) event(name string) (EvtFunc, bool) {
 	fn, ok := r.evts[name]
 	return fn, ok
 }
+
+// InvokeStream is for a caller with no dispatcher (the command line); ok is false
+// when name is not a server-stream rpc.
+func (r *Registry) InvokeStream(ctx context.Context, name string, req json.RawMessage, send func(v any) error) (ok bool, err error) {
+	e, found := r.rpc(name)
+	if !found || e.arity != ServerStream {
+		return false, nil
+	}
+	return true, e.fn(ctx, &callStream{ctx: ctx, req: req, send: send})
+}
+
+type callStream struct {
+	ctx  context.Context
+	req  json.RawMessage
+	sent bool
+	send func(v any) error
+}
+
+func (s *callStream) Recv() (json.RawMessage, error) {
+	if s.sent {
+		return nil, io.EOF
+	}
+	s.sent = true
+	return s.req, nil
+}
+
+func (s *callStream) Send(v any) error         { return s.send(v) }
+func (s *callStream) Context() context.Context { return s.ctx }
+func (s *callStream) Client() (ClientID, bool) { return 0, false }

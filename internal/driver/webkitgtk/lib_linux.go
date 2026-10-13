@@ -1,7 +1,7 @@
 //go:build linux
 
 // Package webkitgtk is the Linux native driver: GTK3 window + WebKitGTK via
-// dlopen/purego, with runtime soname probing (4.1 → 4.0).
+// dlopen/purego, with runtime soname probing (4.1 -> 4.0).
 //
 // EXPERIMENTAL: container-validated (make linuxcheck), not yet proven on real
 // desktops (Wayland, GPU). Needs libgtk-3 + libwebkit2gtk-4.1 (or 4.0) at runtime.
@@ -273,7 +273,7 @@ func initLibs() error {
 			gFreeAddr = addr
 		}
 		purego.RegisterLibFunc(&gFree, glib, "g_free")
-		// g_memdup2 (glib ≥ 2.68) with g_memdup fallback for older distros.
+		// g_memdup2 (glib >= 2.68) with g_memdup fallback for older distros.
 		if err := registerMemdup(glib); err != nil {
 			libErr = err
 			return

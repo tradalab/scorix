@@ -95,6 +95,8 @@ type BuildContext struct {
 	cfg *ProjectConfig
 	pkg *PackageConfig
 
+	console bool // the <App>.com of a CLI build
+
 	// diag non-nil switches the compiler to `go build -json` and collects its
 	// messages; nil keeps the plain output a human reads.
 	diag *[]BuildDiagnostic
@@ -178,7 +180,21 @@ func buildBinary(ctx context.Context, bc *BuildContext, skipFrontend bool, outpu
 	if err := goBuild(ctx, bc, out); err != nil {
 		return "", err
 	}
+	// A GUI-linked exe has no console: no output, no y/N, nothing for a TUI.
+	if bc.OS == "windows" && cliEnabled(bc.cfg) {
+		con := *bc
+		con.console = true
+		if err := goBuild(ctx, &con, consolePath(out)); err != nil {
+			return "", err
+		}
+	}
 	return out, nil
+}
+
+func cliEnabled(cfg *ProjectConfig) bool { return cfg != nil && cfg.CLI != nil && cfg.CLI.Enabled }
+
+func consolePath(exe string) string {
+	return strings.TrimSuffix(exe, filepath.Ext(exe)) + ".com"
 }
 
 func resolveBuildContext(dir, goos, goarch string) (*BuildContext, error) {
@@ -489,7 +505,7 @@ func goBuildDarwinUniversal(ctx context.Context, bc *BuildContext, out string) e
 
 func buildLdflags(bc *BuildContext) string {
 	var f []string
-	if bc.OS == "windows" {
+	if bc.OS == "windows" && !bc.console {
 		f = append(f, "-H=windowsgui")
 	}
 	f = append(f, bc.Ldflags...)

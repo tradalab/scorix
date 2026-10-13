@@ -155,6 +155,9 @@ func ApplyOverlays(cfg *Config, file map[string]any) error {
 		if _, ok := file["mcp"]; ok {
 			warn("config: ignoring runtime overlay of `mcp` (sealed - an overlay must not offer tools the build did not)")
 		}
+		if _, ok := file["cli"]; ok {
+			warn("config: ignoring runtime overlay of `cli` (sealed - an overlay must not give the build a command line)")
+		}
 	}
 	return nil
 }

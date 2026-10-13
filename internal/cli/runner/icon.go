@@ -22,7 +22,7 @@ type IconOptions struct {
 	OutDir string
 	// PNG sizes to emit (default: 16,32,48,128,256,512,1024).
 	Sizes []int
-	// ICO bundles the listed sizes (≤256) into one Windows .ico. Empty → skip.
+	// ICO bundles the listed sizes (<=256) into one Windows .ico. Empty -> skip.
 	ICOSizes []int
 }
 
@@ -153,7 +153,7 @@ func writeICO(path string, master image.Image, sizes []int) error {
 		frames = append(frames, frame{s, buf.Bytes()})
 	}
 	if len(frames) == 0 {
-		return fmt.Errorf("no ICO frames ≤256px to write")
+		return fmt.Errorf("no ICO frames <=256px to write")
 	}
 
 	out, err := os.Create(path)

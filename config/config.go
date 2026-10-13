@@ -41,6 +41,8 @@ type Config struct {
 
 	// SEALED like security: a runtime overlay must not open what the build kept shut.
 	MCP MCPConfig `yaml:"mcp" json:"mcp"`
+	// Sealed, like MCP.
+	CLI CLIConfig `yaml:"cli" json:"cli"`
 
 	// Values are free-form so each module package defines its own shape.
 	Modules map[string]any `yaml:"modules" json:"modules"`
@@ -74,6 +76,11 @@ type WindowConfig struct {
 type MCPConfig struct {
 	// The user must still turn MCP on inside the app.
 	Enabled bool `yaml:"enabled" json:"enabled"`
+}
+
+type CLIConfig struct {
+	Enabled bool   `yaml:"enabled" json:"enabled"`
+	Name    string `yaml:"name" json:"name"`
 }
 
 type LoggerConfig struct {

@@ -10,7 +10,7 @@
   let seq = 0;
   const nextId = () => "c-" + (++seq);
 
-  // rpc wire: open{state:"open"}+request → server msg{state:"msg"}* → done|error.
+  // rpc wire: open{state:"open"}+request -> server msg{state:"msg"}* -> done|error.
   // Returns an async-iterable, cancelable consumer.
   function makeStream(id, name) {
     const buffer = []; // msgs awaiting a consumer

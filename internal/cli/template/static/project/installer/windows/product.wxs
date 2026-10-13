@@ -113,10 +113,23 @@
         KeyPath="yes"/>
     </Component>
 
+    <!-- The command line: <App>.com is the same program linked for the console,
+         found before <App>.exe because .COM precedes .EXE in PATHEXT. The exe is
+         linked for the GUI and prints nothing to a terminal. -->
+    <?if $(var.HasCLI) = 1 ?>
+    <Component Id="CommandLine" Directory="INSTALLFOLDER" Guid="*">
+      <File Id="AppCom" Source="$(var.BinPath)\$(var.ProductName).com" KeyPath="yes"/>
+      <Environment Id="PathEntry" Name="PATH" Value="[INSTALLFOLDER]" Part="last" Action="set" System="yes" Permanent="no"/>
+    </Component>
+    <?endif?>
+
     <ComponentGroup Id="ProductComponents">
       <ComponentRef Id="MainExecutable"/>
       <ComponentRef Id="StartMenuShortcut"/>
       <ComponentRef Id="DesktopShortcut"/>
+      <?if $(var.HasCLI) = 1 ?>
+      <ComponentRef Id="CommandLine"/>
+      <?endif?>
     </ComponentGroup>
 
     <Feature Id="MainFeature" Title="$(var.ProductName)" Level="1">

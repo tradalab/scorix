@@ -137,6 +137,15 @@ func enrichProto(pf *protoFile) (outEvents, inEvents []protoRPC, err error) {
 			if rpc.MCP && rpc.Arity != "unary" {
 				return nil, nil, fmt.Errorf("rpc %s.%s is @mcp with the %s arity; an MCP tool call answers once, so only a unary rpc can be exposed", svc.Name, rpc.Name, rpc.Arity)
 			}
+			if rpc.CLI {
+				if err := checkCLI(*pf, svc.Name, rpc); err != nil {
+					return nil, nil, err
+				}
+				if rpc.CLISchema, err = mcpSchema(*pf, rpc.RequestType, true); err != nil {
+					return nil, nil, err
+				}
+				cliJSONNames(*pf, &rpc)
+			}
 			rpc.LogicName = exportedName(rpc.Name) + "Logic"
 			rpc.MethodName = exportedName(rpc.Name)
 			rpc.FileName = snakeName(rpc.Name) + "_logic.go"
@@ -210,6 +219,13 @@ func ipcSurfaceOf(pf protoFile) *IPCSurface {
 				Middleware:     rpc.Middlewares,
 				MCP:            rpc.MCP,
 				MCPDestructive: rpc.MCPDestructive,
+				CLI:            rpc.CLI,
+				CLIDestructive: rpc.CLIDestructive,
+				CLIHeadless:    rpc.CLIHeadless,
+				CLIExec:        rpc.CLIExec,
+				CLIArg:         rpc.CLIArg,
+				CLIRest:        rpc.CLIRest,
+				CLISecret:      rpc.CLISecret,
 			})
 		}
 		for _, ev := range svc.Events {

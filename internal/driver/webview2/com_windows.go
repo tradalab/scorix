@@ -62,7 +62,7 @@ func comCallStr(this unsafe.Pointer, index int, s string, extra ...uintptr) uint
 	return r
 }
 
-// ── COM callback object ──────────────────────────────────────────────────────
+// COM callback object
 //
 // Every WebView2 handler we use exposes Invoke(this, a, b), so one shared vtable
 // backs the environment-completed, controller-completed and web-message handlers.

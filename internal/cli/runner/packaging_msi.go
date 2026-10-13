@@ -74,6 +74,7 @@ func (windowsPackager) Package(ctx context.Context, bc *BuildContext) (string, e
 		"-d", "ProductDesc="+bc.Description,
 		"-d", "ProductVersion="+wixVersion(bc.Version),
 		"-d", "UpgradeCode="+bc.upgradeCode(),
+		"-d", "HasCLI="+map[bool]string{true: "1", false: "0"}[cliEnabled(bc.cfg)],
 		// The shortcut carries this as System.AppUserModelID; the app passes the
 		// same string to CreateToastNotifier, and that pair is what makes a toast
 		// show the app's own name instead of PowerShell.

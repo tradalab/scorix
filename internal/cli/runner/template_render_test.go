@@ -12,7 +12,7 @@ import (
 	"github.com/tradalab/scorix/internal/cli/template"
 )
 
-// renderModelGen runs GenerateModel's full template→go-format pipeline for one
+// renderModelGen runs GenerateModel's full template -> go-format pipeline for one
 // table; a go/format.Source failure (inside writeGeneratedFile) surfaces as a
 // test error, proving the template emits valid Go.
 func renderModelGen(t *testing.T, schema string, d dialect.Dialect) string {

@@ -7,6 +7,9 @@ import (
 	"flag"
 	"io/fs"
 	"log"
+{{- if .HasCLI }}
+	"os"
+{{- end }}
 
 	"{{ .Module }}/internal/handler"
 	"{{ .Module }}/internal/svc"
@@ -24,6 +27,11 @@ var manifest []byte
 
 func main() {
 	log.SetFlags(log.Ltime)
+{{- if .HasCLI }}
+	if app.IsCLI(os.Args[1:], handler.CLIWords) {
+		os.Exit(app.RunCLI(manifest, os.Args[1:], setup))
+	}
+{{- end }}
 	mode := flag.String("mode", "app", "run mode: app | web")
 	addr := flag.String("addr", "", "web listen address override (default: manifest web.host:port / SCORIX_WEB_*)")
 	mcp := flag.Bool("mcp", false, "relay MCP over stdin/stdout to the running app, starting it if needed (what an MCP client launches)")
@@ -37,11 +45,6 @@ func main() {
 		return
 	}
 
-	site, err := fs.Sub(embeddedPublic, ".scorix/dist")
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	a, err := app.New(app.Options{
 		URL:      "scorix://app/index.html",
 		Manifest: manifest,
@@ -49,10 +52,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	a.Serve("scorix", site) // in-process assets via scorix:// (no localhost)
-
-	sc := svc.NewServiceContext(a)
-	handler.RegisterHandlers(a, sc)
+	if err := setup(a); err != nil {
+		log.Fatal(err)
+	}
 
 	if *mode == "web" {
 		listen := *addr
@@ -72,4 +74,17 @@ func main() {
 		}
 		log.Fatal(err)
 	}
+}
+
+// setup is shared with app.RunCLI once the app has @cli rpcs.
+func setup(a *app.App) error {
+	site, err := fs.Sub(embeddedPublic, ".scorix/dist")
+	if err != nil {
+		return err
+	}
+	a.Serve("scorix", site) // in-process assets via scorix:// (no localhost)
+
+	sc := svc.NewServiceContext(a)
+	handler.RegisterHandlers(a, sc)
+	return nil
 }

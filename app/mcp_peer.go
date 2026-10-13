@@ -136,10 +136,12 @@ func mcpPathKey(path string) string {
 
 // Random, not per pid: two instances must not share one, and in a shared temp dir
 // a predictable name is one another user can take first.
-func mcpSocketPath(dir string) string {
+func mcpSocketPath(dir string) string { return socketPath(dir, "mcp-") }
+
+func socketPath(dir, prefix string) string {
 	raw := make([]byte, 8)
 	_, _ = rand.Read(raw)
-	name := "mcp-" + hex.EncodeToString(raw) + ".sock"
+	name := prefix + hex.EncodeToString(raw) + ".sock"
 	// sun_path holds 104 bytes on macOS; the temp dir is the short place left.
 	if p := filepath.Join(dir, name); len(p) < 104 {
 		return p

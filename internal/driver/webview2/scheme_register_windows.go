@@ -60,7 +60,7 @@ func coTaskMemDupUTF16(s string) uintptr {
 	return p
 }
 
-// ── vtable layouts (field order == COM method ordinals) ──────────────────────
+// vtable layouts (field order == COM method ordinals)
 
 type envOptionsBaseVtblT struct {
 	queryInterface uintptr
@@ -174,7 +174,7 @@ func buildEnvOptions(schemes []string) (unsafe.Pointer, []any) {
 	return unsafe.Pointer(owner.baseHead), keep
 }
 
-// ── trampolines (C boundary: uintptr args; see com_windows.go note) ──────────
+// trampolines (C boundary: uintptr args; see com_windows.go note)
 
 func optStringGetter(_, out uintptr) uintptr {
 	if out != 0 {

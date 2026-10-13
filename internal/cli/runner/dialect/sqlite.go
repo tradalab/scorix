@@ -39,7 +39,7 @@ func (SQLite) MapType(sqlType string, nullable bool) GoType {
 		}
 		return GoType{Name: "time.Time", NeedsTime: true}
 	default:
-		// SQLite is dynamically typed - TEXT/VARCHAR/CHAR/CLOB/unknowns → string.
+		// SQLite is dynamically typed - TEXT/VARCHAR/CHAR/CLOB/unknowns -> string.
 		return GoType{Name: "string"}
 	}
 }

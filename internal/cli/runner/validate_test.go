@@ -188,3 +188,103 @@ func TestValidateReportsEachBrokenInput(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateWarnsWhenCLIIsHalfWired(t *testing.T) {
+	cliProto := strings.Replace(okProto, "  rpc Ping", "  // Reports whether the app is up.\n  // @cli headless\n  rpc Ping", 1)
+	cases := []struct{ name, want, dir string }{
+		{"commands declared, switch off", "cli.enabled is off", project(t, manifest, cliProto, okSchema)},
+		{"switch on, no command", "no rpc is @cli", project(t, manifest+"cli:\n  enabled: true\n", okProto, okSchema)},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			res, err := validate(t, c.dir)
+			if err != nil {
+				t.Fatalf("a half-wired CLI must warn, not fail: %v", err)
+			}
+			var hit bool
+			for _, f := range only(t, res, "warn") {
+				hit = hit || (f.Source == "cli" && strings.Contains(f.Message, c.want))
+			}
+			if !hit {
+				t.Fatalf("no cli warning mentioning %q; got %+v", c.want, res.Findings)
+			}
+		})
+	}
+	wired := project(t, manifest+"cli:\n  enabled: true\n", cliProto, okSchema)
+	if err := os.WriteFile(filepath.Join(wired, "main.go"), []byte("package main\n\nfunc main() { app.RunCLI(manifest, nil, setup) }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ok, err := validate(t, wired)
+	if err != nil || len(only(t, ok, "warn")) != 0 {
+		t.Fatalf("a fully wired CLI setup still warned: %v %+v", err, ok.Findings)
+	}
+	// The first scaffold named RunCLI in a comment, and validate stayed quiet.
+	if err := os.WriteFile(filepath.Join(wired, "main.go"), []byte("package main\n\n// setup is shared with app.RunCLI.\nfunc main() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, _ := validate(t, wired)
+	var hit bool
+	for _, f := range only(t, res, "warn") {
+		hit = hit || (f.Source == "cli" && strings.Contains(f.Message, "RunCLI"))
+	}
+	if !hit {
+		t.Fatalf("main.go without RunCLI did not warn: %+v", res.Findings)
+	}
+}
+
+func TestValidateReportsWhatGenerateWouldRefuse(t *testing.T) {
+	for name, proto := range map[string]string{
+		"@cli without a description": strings.Replace(okProto, "  rpc Ping", "  // @cli\n  rpc Ping", 1),
+		"@mcp on a stream":           strings.Replace(okProto, "  rpc Ping (PingRequest) returns (PingReply);", "  // Pings.\n  // @mcp\n  rpc Ping (PingRequest) returns (stream PingReply);", 1),
+	} {
+		res, _ := validate(t, project(t, manifest, proto, okSchema))
+		if len(only(t, res, "error")) == 0 {
+			t.Errorf("%s: validate passed what generate refuses: %+v", name, res.Findings)
+		}
+	}
+}
+
+func TestValidateWarnsWhenTheMSIPredatesTheCLI(t *testing.T) {
+	cliProto := strings.Replace(okProto, "  rpc Ping", "  // Reports whether the app is up.\n  // @cli headless\n  rpc Ping", 1)
+	dir := project(t, manifest+"cli:\n  enabled: true\n", cliProto, okSchema)
+	wxs := filepath.Join(dir, "installer", "windows", "product.wxs")
+	if err := os.MkdirAll(filepath.Dir(wxs), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(wxs, []byte("<Wix/>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nfunc main() { app.RunCLI(manifest, nil, setup) }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, _ := validate(t, dir)
+	var hit bool
+	for _, f := range only(t, res, "warn") {
+		hit = hit || (f.Source == "cli" && strings.Contains(f.Message, "product.wxs"))
+	}
+	if !hit {
+		t.Fatalf("an old product.wxs did not warn: %+v", res.Findings)
+	}
+	if err := os.WriteFile(wxs, []byte("<?if $(var.HasCLI) = 1 ?><?endif?>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if res, _ := validate(t, dir); len(only(t, res, "warn")) != 0 {
+		t.Fatalf("an up to date product.wxs still warned: %+v", res.Findings)
+	}
+}
+
+func TestValidateWarnsWhenMainOutlivesTheLastCLIRpc(t *testing.T) {
+	dir := project(t, manifest, okProto, okSchema)
+	main := "package main\n\nfunc main() { if app.IsCLI(os.Args[1:], handler.CLIWords) { app.RunCLI(manifest, nil, setup) } }\n"
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(main), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, _ := validate(t, dir)
+	var hit bool
+	for _, f := range only(t, res, "warn") {
+		hit = hit || (f.Source == "cli" && strings.Contains(f.Message, "CLIWords"))
+	}
+	if !hit {
+		t.Fatalf("no warning for a main.go naming CLIWords with no @cli left: %+v", res.Findings)
+	}
+}

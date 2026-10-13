@@ -33,13 +33,14 @@ func parseProto(src string) (protoFile, error) {
 	broadcastRe := regexp.MustCompile(`(?m)^[ \t]*//[ \t]*@broadcast[ \t]*\r?$`)
 	// Modifiers are captured whatever they say, so a misspelt one is refused below.
 	mcpRe := regexp.MustCompile(`(?m)^[ \t]*//[ \t]*@mcp(?:[ \t]+([^\r\n]*?))?[ \t]*\r?$`)
+	cliRe := regexp.MustCompile(`(?m)^[ \t]*//[ \t]*@cli(?:[ \t]+([^\r\n]*?))?[ \t]*\r?$`)
 
 	// A trailing same-line annotation would be captured as the NEXT rpc's leading
 	// comment. The line anchors above already refuse to read it, so without this
 	// guard it would be dropped in silence; reject it loudly instead.
-	trailingAnno := regexp.MustCompile(`returns\s*\(\s*(?:stream\s+)?[A-Za-z_][A-Za-z0-9_.]*\s*\)[ \t]*;?[ \t]*//[^\n]*@(?:event|broadcast|mcp)(?:[ \t]+(?:in|out|destructive|timeout=\S+))*[ \t]*(?:\r?\n|$)`)
+	trailingAnno := regexp.MustCompile(`returns\s*\(\s*(?:stream\s+)?[A-Za-z_][A-Za-z0-9_.]*\s*\)[ \t]*;?[ \t]*//[^\n]*@(?:event|broadcast|mcp|cli)(?:[ \t]+(?:in|out|destructive|headless|exec|timeout=\S+|arg=\S+|rest=\S+|secret=\S+))*[ \t]*(?:\r?\n|$)`)
 	if m := trailingAnno.FindString(src); m != "" {
-		return pf, fmt.Errorf("proto: @event/@broadcast/@mcp must be on its own comment line above the rpc, not a trailing comment: %q", strings.TrimSpace(m))
+		return pf, fmt.Errorf("proto: @event/@broadcast/@mcp/@cli must be on its own comment line above the rpc, not a trailing comment: %q", strings.TrimSpace(m))
 	}
 
 	// Collect @middleware only from service-header/rpc scopes (below), not a global
@@ -129,7 +130,7 @@ func parseProto(src string) (protoFile, error) {
 				Arity:          arity,
 				IsServerStream: arity == "server-stream",
 			}
-			// bare @event/@broadcast → Go->JS push (out); @event in → JS->Go.
+			// bare @event/@broadcast -> Go->JS push (out); @event in -> JS->Go.
 			if m := eventRe.FindStringSubmatch(commentBlock); m != nil {
 				rpc.IsEvent = true
 				rpc.EventDir = "out"
@@ -156,6 +157,42 @@ func parseProto(src string) (protoFile, error) {
 					}
 				}
 				rpc.MCP = true
+			}
+			if m := cliRe.FindStringSubmatch(commentBlock); m != nil {
+				for _, mod := range strings.Fields(m[1]) {
+					switch {
+					case mod == "destructive":
+						rpc.CLIDestructive = true
+					case mod == "headless":
+						rpc.CLIHeadless = true
+					case mod == "exec":
+						rpc.CLIExec = true
+					case strings.HasPrefix(mod, "timeout="):
+						d, err := time.ParseDuration(strings.TrimPrefix(mod, "timeout="))
+						if err != nil || d <= 0 {
+							return protoFile{}, fmt.Errorf("proto: rpc %s.%s has `@cli %s`; timeout takes a positive Go duration such as 10m", svc.Name, rpcName, mod)
+						}
+						rpc.CLITimeout = d
+					case strings.HasPrefix(mod, "secret="):
+						rpc.CLISecret = strings.TrimPrefix(mod, "secret=")
+						if rpc.CLISecret == "" {
+							return protoFile{}, fmt.Errorf("proto: rpc %s.%s has `@cli secret=`; name the string field to read from stdin", svc.Name, rpcName)
+						}
+					case strings.HasPrefix(mod, "rest="):
+						rpc.CLIRest = strings.TrimPrefix(mod, "rest=")
+						if rpc.CLIRest == "" {
+							return protoFile{}, fmt.Errorf("proto: rpc %s.%s has `@cli rest=`; name the repeated string field that takes the words after --", svc.Name, rpcName)
+						}
+					case strings.HasPrefix(mod, "arg="):
+						rpc.CLIArg = strings.TrimPrefix(mod, "arg=")
+						if rpc.CLIArg == "" {
+							return protoFile{}, fmt.Errorf("proto: rpc %s.%s has `@cli arg=`; name the request field to take positionally", svc.Name, rpcName)
+						}
+					default:
+						return protoFile{}, fmt.Errorf("proto: rpc %s.%s has `@cli %s`; the modifiers are `destructive`, `headless`, `exec`, `timeout=<duration>`, `arg=<field>`, `rest=<field>` and `secret=<field>`", svc.Name, rpcName, mod)
+					}
+				}
+				rpc.CLI = true
 			}
 			rpc.Doc = rpcDoc(commentBlock)
 			svc.RPCs = append(svc.RPCs, rpc)

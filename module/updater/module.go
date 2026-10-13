@@ -60,7 +60,7 @@ var (
 type UpdaterModule struct {
 	cfg      Config
 	provider UpdateProvider
-	dataDir  string // holds the anti-rollback floor file; empty → fallback under os.UserConfigDir()
+	dataDir  string // holds the anti-rollback floor file; empty -> fallback under os.UserConfigDir()
 }
 
 func New() *UpdaterModule {

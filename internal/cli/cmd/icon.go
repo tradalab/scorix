@@ -17,7 +17,7 @@ var iconCmd = &cobra.Command{
 		}
 		out, _ := cmd.Flags().GetString("out")
 		opts := runner.IconOptions{Source: src, OutDir: out}
-		// Changed() distinguishes "flag absent → default" from "flag passed → honor exactly".
+		// Changed() distinguishes "flag absent -> default" from "flag passed -> honor exactly".
 		if cmd.Flags().Changed("sizes") {
 			opts.Sizes, _ = cmd.Flags().GetIntSlice("sizes")
 		}

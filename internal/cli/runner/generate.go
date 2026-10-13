@@ -74,6 +74,7 @@ func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateR
 	for _, svc := range pf.Services {
 		for _, rpc := range svc.RPCs {
 			gen.HasMCP = gen.HasMCP || rpc.MCP
+			gen.HasCLI = gen.HasCLI || rpc.CLI
 		}
 	}
 

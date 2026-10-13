@@ -3,16 +3,17 @@
 
 Generated from `{{ .Proto.Package }}` by `scorix generate proto`. Every name here is
 wire contract; types are the TypeScript names from `@/types`. MCP marks a command
-opted in as a domain tool with `@mcp`.
+opted in as a domain tool with `@mcp`.{{ if .HasCLI }} CLI marks one on the app's command
+line with `@cli`.{{ end }}
 {{ range .Services }}
 ## {{ .Name }}
 {{ if .RPCs }}
 ### Commands
 
-| Command | Request | Reply | Arity | Middleware | MCP |
-|---|---|---|---|---|---|
+| Command | Request | Reply | Arity | Middleware | MCP |{{ if $.HasCLI }} CLI |{{ end }}
+|---|---|---|---|---|---|{{ if $.HasCLI }}---|{{ end }}
 {{- range .RPCs }}
-| `{{ .CommandName }}` | `{{ .RequestTSType }}` | `{{ .ResultTSType }}` | {{ .Arity }} | {{ if .Middlewares }}{{ range $i, $m := .Middlewares }}{{ if $i }}, {{ end }}`{{ $m }}`{{ end }}{{ else }}-{{ end }} | {{ if .MCP }}{{ if .MCPDestructive }}destructive{{ else }}yes{{ end }}{{ else }}-{{ end }} |
+| `{{ .CommandName }}` | `{{ .RequestTSType }}` | `{{ .ResultTSType }}` | {{ .Arity }} | {{ if .Middlewares }}{{ range $i, $m := .Middlewares }}{{ if $i }}, {{ end }}`{{ $m }}`{{ end }}{{ else }}-{{ end }} | {{ if .MCP }}{{ if .MCPDestructive }}destructive{{ else }}yes{{ end }}{{ else }}-{{ end }} |{{ if $.HasCLI }} {{ if .CLI }}{{ if .CLIExec }}exec{{ else }}yes{{ end }}{{ if .CLIHeadless }}, headless{{ end }}{{ if .CLIDestructive }}, destructive{{ end }}{{ else }}-{{ end }} |{{ end }}
 {{- end }}
 {{ end }}
 {{- if .Events }}

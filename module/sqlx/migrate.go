@@ -60,7 +60,7 @@ func runGooseUp(ctx context.Context, db *sql.DB, driverName string, fsys fs.FS, 
 
 	after, _ := goose.GetDBVersionContext(ctx, db)
 	if after != current {
-		logger.Info(fmt.Sprintf("[sqlx/migrate] migrated %d → %d", current, after))
+		logger.Info(fmt.Sprintf("[sqlx/migrate] migrated %d -> %d", current, after))
 	} else {
 		logger.Info("[sqlx/migrate] up-to-date")
 	}

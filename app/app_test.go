@@ -170,7 +170,7 @@ func TestWebTokenGate(t *testing.T) {
 	ts := httptest.NewServer(a.Handler())
 	defer ts.Close()
 
-	// 1. No token → 401 for assets and for the /ipc upgrade.
+	// 1. No token -> 401 for assets and for the /ipc upgrade.
 	res, err := ts.Client().Get(ts.URL + "/")
 	if err != nil {
 		t.Fatal(err)
@@ -183,14 +183,14 @@ func TestWebTokenGate(t *testing.T) {
 		t.Fatal("ws without token must fail")
 	}
 
-	// 2. Wrong token → still 401.
+	// 2. Wrong token -> still 401.
 	res2, _ := ts.Client().Get(ts.URL + "/?token=wrong")
 	res2.Body.Close()
 	if res2.StatusCode != 401 {
 		t.Fatalf("asset with wrong token: status=%d, want 401", res2.StatusCode)
 	}
 
-	// 3. Correct token → 200 + session cookie.
+	// 3. Correct token -> 200 + session cookie.
 	res3, err := ts.Client().Get(ts.URL + "/?token=s3cret")
 	if err != nil {
 		t.Fatal(err)
@@ -209,7 +209,7 @@ func TestWebTokenGate(t *testing.T) {
 		t.Fatalf("session cookie not set, got %q", cookie)
 	}
 
-	// 4. /ipc with cookie (and with Bearer header) → upgrade succeeds.
+	// 4. /ipc with cookie (and with Bearer header) -> upgrade succeeds.
 	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ipc"
 	hdr := map[string][]string{"Cookie": {webTokenCookie + "=s3cret"}}
 	c1, _, err := websocket.DefaultDialer.Dial(wsURL, hdr)

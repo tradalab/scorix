@@ -84,7 +84,12 @@ func validateProject(opt ValidateOptions, res *ValidateResult) error {
 			add("warn", "proto", protoRel, "no service declared, so no handler or client is generated",
 				"declare a service, or drop the proto if this app has no IPC")
 		}
+		// Otherwise a proto validates clean and then fails to generate.
+		if _, _, err := enrichProto(&pf); err != nil {
+			add("error", "proto", protoRel, err.Error(), "")
+		}
 		validateMCP(root, protoRel, cfg, pf, add)
+		validateCLI(root, protoRel, cfg, pf, add)
 	}
 
 	schemaRel := DefaultSchemaPath
@@ -170,6 +175,41 @@ func validateMCP(root, protoRel string, cfg *ProjectConfig, pf protoFile, add fu
 	if src, err := os.ReadFile(filepath.Join(root, "main.go")); err == nil && !strings.Contains(string(src), "RunMCPProxy") {
 		add("warn", "mcp", "main.go", "mcp.enabled is on but main.go never calls app.RunMCPProxy, so `<App> --mcp` exits on an unknown flag",
 			"handle -mcp before app.New, as the scaffold's main.go does")
+	}
+}
+
+func validateCLI(root, protoRel string, cfg *ProjectConfig, pf protoFile, add func(sev, source, path, msg, hint string)) {
+	on := cfg.CLI != nil && cfg.CLI.Enabled
+	commands := 0
+	for _, svc := range pf.Services {
+		for _, rpc := range svc.RPCs {
+			if rpc.CLI {
+				commands++
+			}
+		}
+	}
+	switch {
+	case commands > 0 && !on:
+		add("warn", "cli", "scorix.yaml", fmt.Sprintf("%d rpc(s) are @cli but cli.enabled is off, so the app has no command line", commands),
+			"set cli.enabled: true in scorix.yaml when the commands should ship")
+	case on && commands == 0:
+		add("warn", "cli", protoRel, "cli.enabled is on but no rpc is @cli, so the command line offers nothing",
+			"mark each rpc to offer with a // @cli line above it")
+	}
+	if src, err := os.ReadFile(filepath.Join(root, "main.go")); on && err == nil && !strings.Contains(string(src), "RunCLI(") {
+		add("warn", "cli", "main.go", "cli.enabled is on but main.go never calls app.RunCLI, so `<App> <command>` opens a window instead",
+			"before flag.Parse: if app.IsCLI(os.Args[1:], handler.CLIWords) { os.Exit(app.RunCLI(manifest, os.Args[1:], setup)) }")
+	}
+	// main.go is written once, handler.go every time.
+	if src, err := os.ReadFile(filepath.Join(root, "main.go")); err == nil && commands == 0 && strings.Contains(string(src), "handler.CLIWords") {
+		add("warn", "cli", "main.go", "main.go uses handler.CLIWords but no rpc is @cli, so generate leaves it undefined and main.go stops compiling",
+			"remove the app.IsCLI / app.RunCLI lines from main.go, or keep at least one @cli rpc")
+	}
+	// An app's own product.wxs from before the CLI ships no .com, silently.
+	wxs := filepath.Join("installer", "windows", "product.wxs")
+	if src, err := os.ReadFile(filepath.Join(root, wxs)); on && err == nil && !strings.Contains(string(src), "HasCLI") {
+		add("warn", "cli", wxs, "cli.enabled is on but product.wxs predates the command line, so the MSI ships no <App>.com and puts nothing on PATH",
+			"copy the CommandLine component and its ComponentRef from scorix's installer/windows/product.wxs template")
 	}
 }
 

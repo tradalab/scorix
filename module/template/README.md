@@ -9,9 +9,9 @@ cp -r module/template module/mymodule
 ```
 
 Then:
-1. Rename `package template` → `package mymodule`
+1. Rename `package template` -> `package mymodule`
 2. Update module path in `go.mod`
-3. Rename `TemplateModule` → `MyModule`, update `Name()` / `Version()`
+3. Rename `TemplateModule` -> `MyModule`, update `Name()` / `Version()`
 4. Add to `go.work`
 5. Enable in `app.yaml`
 
@@ -47,7 +47,7 @@ func (m *MyModule) Hello(ctx context.Context, req HelloRequest) (*HelloResponse,
 ## Module Lifecycle
 
 ```
-Register → Load → Start → [running] → Stop → Unload
+Register -> Load -> Start -> [running] -> Stop -> Unload
 ```
 | Hook       | Purpose                              |
 |------------|--------------------------------------|

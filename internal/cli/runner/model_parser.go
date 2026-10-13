@@ -52,7 +52,7 @@ func unquoteIdent(s string) string {
 	return s
 }
 
-// goFieldFromColumn applies the *_id → *ID convention.
+// goFieldFromColumn applies the *_id -> *ID convention.
 func goFieldFromColumn(colName string) string {
 	if strings.ToLower(colName) == "id" {
 		return "ID"
@@ -326,7 +326,7 @@ func blankStringLiterals(s string) string {
 // nested in parens (DECIMAL(10,2), composite PK) stay within one def. Splits run over
 // the string-blanked copy; returned slices come from raw body so DEFAULT survives verbatim.
 func splitTopLevelDefs(body string) []string {
-	blanked := blankStringLiterals(body) // length-preserving → byte indices align with body
+	blanked := blankStringLiterals(body) // length-preserving -> byte indices align with body
 	var defs []string
 	depth := 0
 	start := 0

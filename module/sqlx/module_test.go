@@ -294,7 +294,7 @@ func TestWithTx_Rollback(t *testing.T) {
 		if _, err := m.Exec(ctx, SQLRequest{SQL: `CREATE TABLE acct (id INTEGER PRIMARY KEY, balance INTEGER)`}); err != nil {
 			t.Fatal(err)
 		}
-		// fn returns error → rollback. Pre-commit insert must NOT persist.
+		// fn returns error -> rollback. Pre-commit insert must NOT persist.
 		err := m.WithTx(ctx, func(ctx context.Context) error {
 			conn := From(ctx, func() Conn { return m.db })
 			_, _ = conn.ExecContext(ctx, `INSERT INTO acct VALUES (?, ?)`, 1, 100)
@@ -312,7 +312,7 @@ func TestWithTx_Rollback(t *testing.T) {
 
 func TestFromContextFallback(t *testing.T) {
 	withInMemoryDB(t, func(m *Module) {
-		// No tx in ctx → fallback fires.
+		// No tx in ctx -> fallback fires.
 		fallbackCalled := false
 		conn := From(context.Background(), func() Conn {
 			fallbackCalled = true
@@ -322,7 +322,7 @@ func TestFromContextFallback(t *testing.T) {
 			t.Error("From should call fallback when ctx has no tx")
 		}
 
-		// Tx in ctx → fallback NOT called.
+		// Tx in ctx -> fallback NOT called.
 		tx, _ := m.db.BeginTxx(context.Background(), nil)
 		defer tx.Rollback()
 		fallbackCalled = false

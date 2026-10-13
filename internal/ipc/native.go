@@ -1,5 +1,5 @@
 // Package ipc dispatches the wire envelope between a frontend transport and a
-// Registry. The wire protocol (arity model, open/data/end/cancel ↔ msg/done/error
+// Registry. The wire protocol (arity model, open/data/end/cancel <-> msg/done/error
 // frames) is documented inline in stream.go and on the dispatch methods below.
 package ipc
 

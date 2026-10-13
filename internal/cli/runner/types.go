@@ -48,6 +48,13 @@ type IPCCommand struct {
 	Middleware     []string `json:"middleware,omitempty"`
 	MCP            bool     `json:"mcp,omitempty"` // the @mcp opt-in
 	MCPDestructive bool     `json:"mcp_destructive,omitempty"`
+	CLI            bool     `json:"cli,omitempty"` // the @cli opt-in
+	CLIDestructive bool     `json:"cli_destructive,omitempty"`
+	CLIHeadless    bool     `json:"cli_headless,omitempty"`
+	CLIExec        bool     `json:"cli_exec,omitempty"`
+	CLIArg         string   `json:"cli_arg,omitempty"`
+	CLIRest        string   `json:"cli_rest,omitempty"`
+	CLISecret      string   `json:"cli_secret,omitempty"`
 }
 
 type IPCEvent struct {
@@ -135,6 +142,16 @@ type protoRPC struct {
 	MCPSchema       string
 	MCPOutputSchema string
 	MCPTimeout      time.Duration // zero keeps mcpcore's default
+
+	CLI            bool
+	CLIDestructive bool
+	CLIHeadless    bool
+	CLIExec        bool
+	CLITimeout     time.Duration
+	CLIArg         string // request field given positionally, `@cli arg=<field>`
+	CLIRest        string // repeated string field taking every word after `--`, `@cli rest=<field>`
+	CLISecret      string // string field read from stdin, never from a flag, `@cli secret=<field>`
+	CLISchema      string // request JSON schema; the CLI derives its flags from it
 	// Doc is the rpc's leading comment without its annotation lines.
 	Doc string
 }
@@ -147,6 +164,7 @@ type protoTemplateData struct {
 	InEvents  []protoRPC
 	HasEvents bool
 	HasMCP    bool // gates scorixMCP, so an app without @mcp regenerates unchanged
+	HasCLI    bool // gates the CLI column, for the same reason
 	Shell     ShellKind
 }
 

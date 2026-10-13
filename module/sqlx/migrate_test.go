@@ -67,7 +67,7 @@ CREATE TABLE x (id INTEGER);
 }
 
 func TestWithMigrationsOption(t *testing.T) {
-	// Nil fsys → no-op (don't panic, don't register a script).
+	// Nil fsys -> no-op (don't panic, don't register a script).
 	m := New(WithMigrations(nil, "migrations"))
 	if len(m.initScripts) != 0 {
 		t.Errorf("nil fsys should not register an init script, got %d", len(m.initScripts))

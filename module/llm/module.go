@@ -299,6 +299,21 @@ func (m *Module) open(sp savedProvider) error {
 	return m.reg.Register(p)
 }
 
+// Secret is for the app's own Go code, and deliberately not a mod:llm:* command:
+// the page never reads a key back.
+func (m *Module) Secret(id, key string) (string, error) {
+	m.mu.Lock()
+	known := false
+	for _, sp := range m.saved.Providers {
+		known = known || sp.ID == id
+	}
+	m.mu.Unlock()
+	if !known {
+		return "", fmt.Errorf("llm: no saved provider %q", id)
+	}
+	return m.secret(id, key)
+}
+
 // Read on every request, so a key changed in settings takes effect on the
 // next one without reopening anything.
 func (m *Module) secret(id, key string) (string, error) {
