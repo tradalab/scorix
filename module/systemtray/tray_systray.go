@@ -4,6 +4,7 @@ package systemtray
 
 import (
 	"fmt"
+	"runtime"
 
 	"github.com/energye/systray"
 	"github.com/tradalab/scorix/logger"
@@ -15,13 +16,13 @@ func trayStart(m *SystemTrayModule) error {
 }
 
 func trayStop()               { systray.Quit() }
-func traySetIcon(b []byte)    { systray.SetIcon(b) }
+func traySetIcon(b []byte)    { systray.SetIcon(trayImage(b)) }
 func traySetTitle(s string)   { systray.SetTitle(s) }
 func traySetTooltip(s string) { systray.SetTooltip(s) }
 
 func (m *SystemTrayModule) onReady() {
 	if len(m.icon) > 0 {
-		systray.SetIcon(m.icon)
+		systray.SetIcon(trayImage(m.icon))
 	}
 	systray.SetTitle(m.cfg.Title)
 	systray.SetTooltip(m.cfg.Tooltip)
@@ -71,6 +72,13 @@ func addNodes(nodes []node, parent *systray.MenuItem) {
 		}
 		addNodes(n.children, mi)
 	}
+}
+
+func trayImage(b []byte) []byte {
+	if runtime.GOOS == "linux" {
+		return pngIcon(b)
+	}
+	return b
 }
 
 func (m *SystemTrayModule) onExit() {
