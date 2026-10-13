@@ -126,9 +126,9 @@ type cliIO struct {
 }
 
 type cliOpts struct {
-	json, yes, launch bool
-	input             string
-	timeout           time.Duration
+	json, yes, launch, help bool
+	input                   string
+	timeout                 time.Duration
 }
 
 func (a *App) runCLI(args []string, io cliIO) int {
@@ -137,11 +137,11 @@ func (a *App) runCLI(args []string, io cliIO) int {
 		fmt.Fprintln(io.err, "error:", err)
 		return ExitUsage
 	}
-	if len(words) == 0 {
-		return a.cliHelp(io.out, nil)
+	if len(words) == 0 || opts.help {
+		return a.cliHelp(io.out, words)
 	}
 	switch words[0] {
-	case "--help", "help":
+	case "help":
 		return a.cliHelp(io.out, words[1:])
 	case "--version", "version":
 		fmt.Fprintf(io.out, "%s %s\n", a.cfg.App.Name, a.cfg.App.Version)
@@ -371,6 +371,10 @@ func splitCLIArgs(args []string) (cliOpts, []string, []string, error) {
 			o.yes = true
 		case arg == "--launch":
 			o.launch = true
+		// After the command too: `<app> claude run --help` would otherwise be parsed
+		// as a flag of that command and refused.
+		case arg == "--help" || arg == "-h":
+			o.help = true
 		case arg == "--input" || arg == "--timeout":
 			if i+1 >= len(args) {
 				return o, nil, nil, fmt.Errorf("%s needs a value", arg)

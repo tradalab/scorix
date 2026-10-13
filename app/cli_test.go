@@ -255,6 +255,11 @@ func TestHelpAndVersion(t *testing.T) {
 	if !strings.Contains(r.out.String(), "account show <name> [-- <args>...]") || !strings.Contains(r.out.String(), "--limit (integer)") {
 		t.Errorf("help for one command:\n%s", r.out.String())
 	}
+	for _, args := range [][]string{{"account", "show", "--help"}, {"account", "show", "-h"}, {"--help", "account", "show"}} {
+		if code := r.run(false, "", args...); code != ExitOK || !strings.Contains(r.out.String(), "account show <name>") {
+			t.Errorf("%v = %d:\n%s%s", args, code, r.out.String(), r.errs.String())
+		}
+	}
 	r.run(false, "", "--version")
 	if strings.TrimSpace(r.out.String()) != "probe 1.2.3" {
 		t.Errorf("version = %q", r.out.String())
