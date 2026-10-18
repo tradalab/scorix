@@ -146,12 +146,39 @@ func TestFlagsPositionalAndRestBuildTheRequest(t *testing.T) {
 	}
 }
 
+func TestRestTakesWhatTheCommandCannotRead(t *testing.T) {
+	for _, c := range []struct {
+		args []string
+		name any
+		rest []any
+	}{
+		{[]string{"account", "show", "work", "-r"}, "work", []any{"-r"}},
+		{[]string{"account", "show", "work", "--resume", "abc", "--json"}, "work", []any{"--resume", "abc", "--json"}},
+		{[]string{"account", "show", "-r"}, nil, []any{"-r"}},
+		{[]string{"account", "show", "work", "fix the bug"}, "work", []any{"fix the bug"}},
+		{[]string{"account", "show", "--json", "work", "--limit", "5", "-p", "hi"}, "work", []any{"-p", "hi"}},
+		{[]string{"account", "show", "work", "--", "--limit", "5"}, "work", []any{"--limit", "5"}},
+		{[]string{"account", "show", "--name", "work", "fix", "-r"}, "work", []any{"fix", "-r"}},
+		{[]string{"account", "show", "--name=work", "--force", "-r"}, "work", []any{"-r"}},
+	} {
+		r := newCLIRig(t)
+		if code := r.run(false, "", c.args...); code != ExitOK {
+			t.Errorf("%v = %d: %s", c.args, code, r.errs.String())
+			continue
+		}
+		got := r.request(t, "account:show")
+		if rest, _ := got["args"].([]any); got["name"] != c.name || !slices.Equal(rest, c.rest) {
+			t.Errorf("%v: request = %v; want name %v and args %v", c.args, got, c.name, c.rest)
+		}
+	}
+}
+
 func TestBadUsageIsExit2AndCallsNothing(t *testing.T) {
 	for _, args := range [][]string{
-		{"account", "show", "--nope", "x"},
+		{"account", "get", "--nope", "x"},
 		{"account", "show", "--limit", "five"},
-		{"account", "show", "--nested", "{}"},
-		{"account", "show", "a", "b"},
+		{"account", "get", "--nested", "{}"},
+		{"account", "get", "1", "2"},
 		{"account", "list", "extra"},
 		{"account", "list", "--", "x"},
 		{"account", "nothing"},
@@ -252,7 +279,7 @@ func TestHelpAndVersion(t *testing.T) {
 		t.Errorf("help:\n%s", r.out.String())
 	}
 	r.run(false, "", "help", "account", "show")
-	if !strings.Contains(r.out.String(), "account show <name> [-- <args>...]") || !strings.Contains(r.out.String(), "--limit (integer)") {
+	if !strings.Contains(r.out.String(), "account show <name> [<args>...]") || !strings.Contains(r.out.String(), "--limit (integer)") {
 		t.Errorf("help for one command:\n%s", r.out.String())
 	}
 	for _, args := range [][]string{{"account", "show", "--help"}, {"account", "show", "-h"}, {"--help", "account", "show"}} {

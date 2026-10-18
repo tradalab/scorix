@@ -29,7 +29,7 @@ type CLICommand struct {
 	// Request JSON schema; the flags are derived from it at run time.
 	Schema      json.RawMessage
 	Arg         string // field given positionally
-	Rest        string // repeated string field taking every word after --
+	Rest        string // repeated string field taking the words the command does not read itself
 	Secret      string // string field read from stdin when its flag is given as -
 	Destructive bool
 	Headless    bool
@@ -132,7 +132,7 @@ type cliOpts struct {
 }
 
 func (a *App) runCLI(args []string, io cliIO) int {
-	opts, words, rest, err := splitCLIArgs(args)
+	opts, words, rest, err := splitCLIArgs(args, a.cliByWords)
 	if err != nil {
 		fmt.Fprintln(io.err, "error:", err)
 		return ExitUsage
@@ -356,10 +356,22 @@ func methodWord(command string) string {
 }
 
 // Everything after a bare -- passes through untouched, for the program to read.
-func splitCLIArgs(args []string) (cliOpts, []string, []string, error) {
+func splitCLIArgs(args []string, byWords func(service, method string) (CLICommand, bool)) (cliOpts, []string, []string, error) {
 	var o cliOpts
 	var words, rest []string
+	cut := false
 	for i := 0; i < len(args); i++ {
+		if !cut && len(words) == 2 {
+			if cmd, ok := byWords(words[0], words[1]); ok && cmd.Rest != "" {
+				var own []string
+				own, rest = cutRest(cmd, args[i:])
+				args = append(args[:i:i], own...)
+				cut = true
+				if i >= len(args) {
+					break
+				}
+			}
+		}
 		arg := args[i]
 		switch {
 		case arg == "--":
@@ -394,6 +406,47 @@ func splitCLIArgs(args []string) (cliOpts, []string, []string, error) {
 		}
 	}
 	return o, words, rest, nil
+}
+
+// rest= words belong to another program and are typed as for it: `run work -r`
+// needs no --. The first word this command cannot read starts them.
+func cutRest(cmd CLICommand, args []string) (own, rest []string) {
+	flags := flagsOf(cmd.Schema)
+	positional := cmd.Arg == ""
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--":
+			return args[:i:i], args[i+1:]
+		case cliGlobalFlag[arg]:
+			if arg == "--input" || arg == "--timeout" {
+				i++
+			}
+			continue
+		case !strings.HasPrefix(arg, "-"):
+			if positional {
+				return args[:i:i], args[i:]
+			}
+			positional = true
+			continue
+		}
+		name, _, hasValue := strings.Cut(strings.TrimPrefix(arg, "--"), "=")
+		spec, ok := flags[name]
+		if !strings.HasPrefix(arg, "--") || !ok || spec.field == cmd.Rest {
+			return args[:i:i], args[i:]
+		}
+		if spec.field == cmd.Arg {
+			positional = true
+		}
+		if spec.typ != "boolean" && !hasValue {
+			i++
+		}
+	}
+	return args, nil
+}
+
+var cliGlobalFlag = map[string]bool{
+	"--json": true, "--yes": true, "-y": true, "--launch": true, "--help": true, "-h": true, "--input": true, "--timeout": true,
 }
 
 func callBody(args []string, in io.Reader) (map[string]any, error) {
@@ -566,7 +619,7 @@ func (a *App) cliHelp(w io.Writer, words []string) int {
 				fmt.Fprintf(w, " <%s>", c.Arg)
 			}
 			if c.Rest != "" {
-				fmt.Fprint(w, " [-- <args>...]")
+				fmt.Fprint(w, " [<args>...]")
 			}
 			fmt.Fprintf(w, "\n\n%s\n", c.Doc)
 			flags := flagsOf(c.Schema)
