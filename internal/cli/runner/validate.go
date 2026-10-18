@@ -2,8 +2,10 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -96,9 +98,14 @@ func validateProject(opt ValidateOptions, res *ValidateResult) error {
 	if cfg.Model != nil && cfg.Model.Schema != "" {
 		schemaRel = cfg.Model.Schema
 	}
-	res.Schema = schemaRel
 	schemaAbs := filepath.Join(root, schemaRel)
-	if _, err := os.Stat(schemaAbs); err != nil {
+	_, statErr := os.Stat(schemaAbs)
+	// No model block plus no default schema is an app without tables, not a missing file.
+	if cfg.Model == nil && errors.Is(statErr, fs.ErrNotExist) {
+		return finish(res)
+	}
+	res.Schema = schemaRel
+	if err := statErr; err != nil {
 		add("error", "schema", schemaRel, err.Error(), "scorix.yaml model.schema names this file")
 		return finish(res)
 	}

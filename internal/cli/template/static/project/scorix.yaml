@@ -43,6 +43,7 @@ window:
   # always_on_top: true # keep this window above other applications
   # file_drop: true # deliver OS file drops as sys:file-drop with real paths
   # remember_state: true # restore last window position/size/maximized
+  # secure: true # keep content out of screenshots and the app switcher (Android)
   # theme: system # system|dark|light native titlebar (Windows)
   # backdrop: mica # mica|acrylic|tabbed titlebar material (Windows 11)
 
@@ -53,7 +54,7 @@ security:
   csp: default
   allow_right_click: true
   # strict_modules: true # refuse modules that don't declare module.Capable
-  # keys = capability names declared by modules (built-ins: fs shell clipboard notification db store tray)
+  # keys = capability names declared by modules (built-ins: fs shell clipboard notification db store tray biometric share)
   allowlist:
     fs: true
     shell: true

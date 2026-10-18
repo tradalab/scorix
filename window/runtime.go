@@ -16,7 +16,17 @@ const (
 	RuntimeThemeChanged RuntimeEvent = "theme-changed" // OS light/dark flipped
 	RuntimeSuspend      RuntimeEvent = "suspend"       // system is going to sleep
 	RuntimeResume       RuntimeEvent = "resume"        // system woke up
+
+	// Mobile only. Background is the last reliable moment to persist: the OS may kill the app after it.
+	RuntimeBackground RuntimeEvent = "background"
+	RuntimeForeground RuntimeEvent = "foreground"
+	RuntimeLowMemory  RuntimeEvent = "low-memory"
 )
+
+// URLOpener exists because Android delivers a tapped link to the live Activity, not in argv.
+type URLOpener interface {
+	OnOpenURL(fn func(url string))
+}
 
 // Runtime owns the OS event loop on the main thread; all window/webview mutations
 // must be marshaled onto it via Dispatch.

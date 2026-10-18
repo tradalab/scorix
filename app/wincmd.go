@@ -63,6 +63,24 @@ func (a *App) registerWindowCommands() {
 		w.SetTitle(req.Title)
 		return nil, nil
 	})
+	// A driver without its own chrome treats this as a no-op: the page has already switched theme.
+	reg("setTheme", func(w *AppWindow, data json.RawMessage) (any, error) {
+		var req struct {
+			Theme string `json:"theme"`
+		}
+		if err := json.Unmarshal(data, &req); err != nil {
+			return nil, fault.Wrap("invalid_request", err)
+		}
+		switch req.Theme {
+		case "light", "dark", "system":
+		default:
+			return nil, fault.New("invalid_request", `theme must be "light", "dark" or "system"`)
+		}
+		if ts, ok := w.Window.(window.ThemeSetter); ok {
+			ts.SetTheme(req.Theme)
+		}
+		return nil, nil
+	})
 	reg("fullscreen", func(w *AppWindow, data json.RawMessage) (any, error) {
 		var req struct {
 			On bool `json:"on"`

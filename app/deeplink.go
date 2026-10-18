@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"slices"
 
 	"github.com/tradalab/scorix/internal/deeplink"
 	ipc "github.com/tradalab/scorix/internal/ipc"
@@ -19,6 +20,14 @@ var launchArgs = func() []string { return os.Args[1:] }
 func (a *App) OnOpenURL(fn func(url string)) {
 	a.mu.Lock()
 	a.openURLFns = append(a.openURLFns, fn)
+	a.mu.Unlock()
+}
+
+// HandleOpenURL claims a URL (fn returns true) before the frontend, sys:launch or
+// OnOpenURL see it, for links carrying a secret such as an otpauth:// key.
+func (a *App) HandleOpenURL(fn func(url string) bool) {
+	a.mu.Lock()
+	a.claimFns = append(a.claimFns, fn)
 	a.mu.Unlock()
 }
 
@@ -59,6 +68,12 @@ func (a *App) registerOSHandlers() {
 // yet on a cold start - that is what the sys:launch command is for.
 func (a *App) dispatchOpenArgs(args []string) {
 	urls, files := deeplink.Classify(args, a.cfg.App.Protocols, a.cfg.App.FileTypes)
+	a.mu.Lock()
+	claims := append([]func(string) bool{}, a.claimFns...)
+	a.mu.Unlock()
+	urls = slices.DeleteFunc(urls, func(u string) bool {
+		return slices.ContainsFunc(claims, func(fn func(string) bool) bool { return fn(u) })
+	})
 	if len(urls) == 0 && len(files) == 0 {
 		return
 	}

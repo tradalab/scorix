@@ -130,6 +130,7 @@
 
   const wv = window.chrome && window.chrome.webview;
   const wk = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.scorix;
+  const an = window.scorixAndroid;
   if (wv) {
     mode = "app"; // Windows: WebView2 channel
     send = (msg) => wv.postMessage(JSON.stringify(msg));
@@ -141,6 +142,14 @@
     mode = "app";
     send = (msg) => wk.postMessage(JSON.stringify(msg));
     window.__scorix_receive = dispatch;
+    setStatus("connected");
+  } else if (an) {
+    // The host can only reply via the proxy a page message hands it, so an empty
+    // hello goes first or events before the first invoke would be lost.
+    mode = "app";
+    send = (msg) => an.postMessage(JSON.stringify(msg));
+    an.onmessage = (e) => dispatch(e.data);
+    an.postMessage("");
     setStatus("connected");
   } else {
     mode = "web";
@@ -321,6 +330,7 @@
     show: () => api.invoke("win:show"),
     focus: () => api.invoke("win:focus"),
     setTitle: (title) => api.invoke("win:setTitle", { title }),
+    setTheme: (theme) => api.invoke("win:setTheme", { theme }),
     fullscreen: (on) => api.invoke("win:fullscreen", { on: !!on }),
     startDrag: () => api.invoke("win:startDrag"),
     screens: () => api.invoke("win:screens").then((r) => (r && r.screens) || []),

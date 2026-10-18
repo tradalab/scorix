@@ -90,6 +90,13 @@ func TestWindowCommands(t *testing.T) {
 		t.Fatalf("setTitle: %q %q", r.State, r.Error)
 	}
 
+	if r := invokeWin(t, w, "w5", "win:setTheme", `{"theme":"dark"}`); r.State != "done" {
+		t.Fatalf("setTheme: %q %q", r.State, r.Error)
+	}
+	if r := invokeWin(t, w, "w6", "win:setTheme", `{"theme":"sepia"}`); r.State != "error" {
+		t.Fatalf("setTheme sepia: %q, want error", r.State)
+	}
+
 	a.Quit()
 	<-done
 }

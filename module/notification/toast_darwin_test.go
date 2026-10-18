@@ -1,4 +1,4 @@
-//go:build darwin && !server
+//go:build darwin && !server && !ios
 
 package notification
 

@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"time"
 
-	"github.com/atotto/clipboard"
 	"github.com/tradalab/scorix/fault"
 	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/module"
@@ -51,22 +51,22 @@ func (m *ClipboardModule) OnStop() error   { return nil }
 func (m *ClipboardModule) OnUnload() error { return nil }
 
 // Read: scorix.invoke("mod:clipboard:Read")
-func (m *ClipboardModule) Read(_ context.Context, _ struct{}) (string, error) {
-	text, err := clipboard.ReadAll()
-	if err != nil {
-		return "", err
-	}
-	return text, nil
+func (m *ClipboardModule) Read(ctx context.Context, _ struct{}) (string, error) {
+	return readText(ctx)
 }
 
 type WriteRequest struct {
 	Text string `json:"text"`
+	// Sensitive hides the copy preview; only Android 13+ has such a flag.
+	Sensitive bool `json:"sensitive,omitempty"`
+	// ClearAfterMs leaves the clipboard alone if something else was copied meanwhile.
+	ClearAfterMs int `json:"clearAfterMs,omitempty"`
 }
 
 // Write: scorix.invoke("mod:clipboard:Write", { text: "Sample text" })
-func (m *ClipboardModule) Write(_ context.Context, req WriteRequest) (string, error) {
-	err := clipboard.WriteAll(req.Text)
-	if err != nil {
+func (m *ClipboardModule) Write(ctx context.Context, req WriteRequest) (string, error) {
+	clear := time.Duration(req.ClearAfterMs) * time.Millisecond
+	if err := writeText(ctx, req.Text, req.Sensitive, clear); err != nil {
 		return "", err
 	}
 	return "ok", nil

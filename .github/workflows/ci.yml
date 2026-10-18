@@ -47,6 +47,9 @@ jobs:
             echo "== GOOS=$os"
             GOOS=$os go vet -unsafeptr=false ./... || exit 1
           done
+      # arm64 because android/amd64 cannot link without cgo even for vet.
+      - name: vet, android
+        run: GOOS=android GOARCH=arm64 go vet -unsafeptr=false ./...
 
   cross-build:
     runs-on: ubuntu-latest
@@ -58,6 +61,17 @@ jobs:
       - run: GOOS=windows GOARCH=amd64 go build ./...
       - run: GOOS=darwin GOARCH=arm64 go build ./...
       - run: GOOS=linux GOARCH=amd64 go build ./...
+      # android matches the linux tag and ios the darwin one; this catches a desktop driver leaking in.
+      - run: GOOS=android GOARCH=arm64 go build ./...
+      # Libraries only: an ios binary cannot link without cgo, and go list refuses ios unless cgo is on.
+      - run: |
+          GOOS=ios GOARCH=arm64 go build $(GOOS=ios GOARCH=arm64 CGO_ENABLED=1 go list -f '{{if and (ne .Name "main") .GoFiles}}{{.ImportPath}}{{end}}' ./...)
+      # The cgo-off build above falls back to headless; only this compiles the real WebView driver.
+      - name: android app library (cgo)
+        run: |
+          CC=$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang
+          CGO_ENABLED=1 GOOS=android GOARCH=arm64 CC=$CC go vet -unsafeptr=false ./internal/driver/androidwebview ./native
+          CGO_ENABLED=1 GOOS=android GOARCH=arm64 CC=$CC go build ./internal/driver/androidwebview ./native ./app
 
   e2e:
     strategy:

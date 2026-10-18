@@ -288,3 +288,15 @@ func TestValidateWarnsWhenMainOutlivesTheLastCLIRpc(t *testing.T) {
 		t.Fatalf("no warning for a main.go naming CLIWords with no @cli left: %+v", res.Findings)
 	}
 }
+
+func TestValidateAcceptsAnAppWithoutTables(t *testing.T) {
+	dir := project(t, "name: probe\nproto: idl/app.proto\n", okProto, "")
+	res, err := validate(t, dir)
+	if err != nil || len(res.Findings) != 0 || res.Schema != "" {
+		t.Fatalf("err %v, schema %q, findings %+v", err, res.Schema, res.Findings)
+	}
+	dir = project(t, manifest, okProto, "")
+	if _, err := validate(t, dir); err == nil {
+		t.Fatal("a declared schema that is missing passed")
+	}
+}

@@ -409,8 +409,10 @@ func wndProc(hwnd, message, wParam, lParam uintptr) uintptr {
 		case wmSettingChange:
 			if lParam != 0 && windows.UTF16PtrToString((*uint16)(unsafe.Pointer(lParam))) == "ImmersiveColorSet" {
 				for _, ww := range rt.manager.All() {
-					if w, ok := ww.(*win); ok && (w.opts.Theme == "" || w.opts.Theme == "system") {
-						applyTitlebarTheme(w.hwnd, w.opts.Theme)
+					if w, ok := ww.(*win); ok {
+						if t := w.theme(); t == "" || t == "system" {
+							applyTitlebarTheme(w.hwnd, t)
+						}
 					}
 				}
 				rt.fireSystem(window.RuntimeThemeChanged)
@@ -845,6 +847,20 @@ func (w *win) updateBounds() {
 	var r tagRECT
 	procGetClientRect.Call(uintptr(w.hwnd), uintptr(unsafe.Pointer(&r)))
 	comCall(controller, ctrlPutBounds, uintptr(unsafe.Pointer(&r)))
+}
+
+// Locked: IPC goroutines write the theme while wndProc reads it on the UI thread.
+func (w *win) SetTheme(theme string) {
+	w.mu.Lock()
+	w.opts.Theme = theme
+	w.mu.Unlock()
+	applyTitlebarTheme(w.hwnd, theme)
+}
+
+func (w *win) theme() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.opts.Theme
 }
 
 func (w *win) SetTitle(title string) {

@@ -26,6 +26,8 @@ type Options struct {
 	Theme         string
 	Backdrop      string
 	RememberState bool
+	// Secure blocks screenshots and the app switcher preview; only Android honors it.
+	Secure bool
 
 	URL        string // initial content, e.g. "scorix://app/index.html"
 	InitScript string // injected before page scripts on every navigation

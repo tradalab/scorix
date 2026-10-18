@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin && !ios
 
 // Package mac is the Objective-C runtime access shared by the macOS modules
 // (status bar, notifications) through purego, with no CGO.

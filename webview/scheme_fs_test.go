@@ -11,8 +11,11 @@ import (
 
 func TestSchemeFromFS(t *testing.T) {
 	fsys := fstest.MapFS{
-		"index.html":    {Data: []byte("<html>root</html>")},
-		"assets/app.js": {Data: []byte("console.log(1)")},
+		"index.html":      {Data: []byte("<html>root</html>")},
+		"assets/app.js":   {Data: []byte("console.log(1)")},
+		"app/daily.html":  {Data: []byte("<html>daily</html>")},
+		"app/daily/x.txt": {Data: []byte("rsc")},
+		"docs/index.html": {Data: []byte("<html>docs</html>")},
 	}
 	h := webview.SchemeFromFS(fsys)
 
@@ -51,6 +54,20 @@ func TestSchemeFromFS(t *testing.T) {
 	t.Run("spa route falls back to index", func(t *testing.T) {
 		r := h(&webview.Request{URL: "scorix://app/dashboard"})
 		if r.Status != 200 || body(r) != "<html>root</html>" {
+			t.Fatalf("status=%d body=%q", r.Status, body(r))
+		}
+	})
+
+	t.Run("multi-page export route serves its own page", func(t *testing.T) {
+		r := h(&webview.Request{URL: "scorix://app/app/daily"})
+		if r.Status != 200 || body(r) != "<html>daily</html>" {
+			t.Fatalf("status=%d body=%q", r.Status, body(r))
+		}
+	})
+
+	t.Run("directory route serves its index", func(t *testing.T) {
+		r := h(&webview.Request{URL: "scorix://app/docs"})
+		if r.Status != 200 || body(r) != "<html>docs</html>" {
 			t.Fatalf("status=%d body=%q", r.Status, body(r))
 		}
 	})

@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -137,5 +138,31 @@ func TestFileDropDispatch(t *testing.T) {
 	_ = json.Unmarshal(msg.Data, &payload)
 	if len(payload.Paths) != 2 || payload.X != 10 || payload.Y != 20 {
 		t.Fatalf("sys:file-drop payload = %s", msg.Data)
+	}
+}
+
+func TestHandleOpenURLKeepsClaimedURLsFromTheFrontend(t *testing.T) {
+	a, err := New(Options{URL: "scorix://app/index.html"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.cfg.App.Protocols = []string{"myapp", "otpauth"}
+	var claimed, opened []string
+	a.HandleOpenURL(func(u string) bool {
+		if strings.HasPrefix(u, "otpauth://") {
+			claimed = append(claimed, u)
+			return true
+		}
+		return false
+	})
+	a.OnOpenURL(func(u string) { opened = append(opened, u) })
+
+	a.dispatchOpenArgs([]string{"otpauth://totp/x?secret=JBSWY3DPEHPK3PXP", "myapp://open/1"})
+
+	if len(claimed) != 1 || len(opened) != 1 || opened[0] != "myapp://open/1" {
+		t.Fatalf("claimed %v, opened %v", claimed, opened)
+	}
+	if len(a.launchURLs) != 1 || a.launchURLs[0] != "myapp://open/1" {
+		t.Fatalf("sys:launch would answer %v", a.launchURLs)
 	}
 }

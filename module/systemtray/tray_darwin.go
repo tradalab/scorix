@@ -1,4 +1,4 @@
-//go:build !server && darwin
+//go:build !server && darwin && !ios
 
 package systemtray
 

@@ -69,6 +69,7 @@ type WindowConfig struct {
 	HideOnClose   bool   `yaml:"hide_on_close" json:"hide_on_close" env:""`
 	FileDrop      bool   `yaml:"file_drop" json:"file_drop"`
 	RememberState bool   `yaml:"remember_state" json:"remember_state"`
+	Secure        bool   `yaml:"secure" json:"secure"`
 	Theme         string `yaml:"theme" json:"theme" validate:"omitempty,oneof=system dark light"`
 	Backdrop      string `yaml:"backdrop" json:"backdrop" validate:"omitempty,oneof=mica acrylic tabbed none"`
 }

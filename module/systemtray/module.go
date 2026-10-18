@@ -1,4 +1,4 @@
-//go:build !server && (windows || linux || darwin)
+//go:build !server && (windows || linux || darwin) && !android && !ios
 
 // Package systemtray is a system tray integration module.
 package systemtray

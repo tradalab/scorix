@@ -93,6 +93,7 @@ type App struct {
 
 	shortcuts   []shortcut
 	openURLFns  []func(string)
+	claimFns    []func(string) bool
 	openFileFns []func(string)
 	fileDropFns []func(*AppWindow, []string)
 	launchURLs  []string // everything this process was asked to open, for sys:launch
@@ -503,7 +504,10 @@ func (a *App) Run() error {
 		mainURL = devURL
 	}
 
-	for _, evt := range []window.RuntimeEvent{window.RuntimeThemeChanged, window.RuntimeSuspend, window.RuntimeResume} {
+	for _, evt := range []window.RuntimeEvent{
+		window.RuntimeThemeChanged, window.RuntimeSuspend, window.RuntimeResume,
+		window.RuntimeBackground, window.RuntimeForeground, window.RuntimeLowMemory,
+	} {
 		rt.On(evt, func() {
 			a.mu.Lock()
 			fns := append([]func(){}, a.sysHandlers[evt]...)
@@ -530,6 +534,7 @@ func (a *App) Run() error {
 			HideOnClose: a.cfg.Window.HideOnClose,
 			DevTools:    a.cfg.Window.Debug || devURL != "",
 			FileDrop:    a.cfg.Window.FileDrop,
+			Secure:      a.cfg.Window.Secure,
 			Theme:       a.cfg.Window.Theme,
 			Backdrop:    a.cfg.Window.Backdrop,
 			Center:      true,
@@ -584,6 +589,9 @@ func (a *App) Run() error {
 		// Launch args (a protocol/file-type start) go out only now: earlier and
 		// neither the Go handlers nor a loaded frontend could have seen them.
 		go a.dispatchOpenArgs(launchArgs())
+		if o, ok := rt.(window.URLOpener); ok {
+			o.OnOpenURL(func(u string) { a.dispatchOpenArgs([]string{u}) })
+		}
 	})
 	err = rt.Run()
 
@@ -894,9 +902,11 @@ func (a *App) assetHandler(fsys fs.FS) http.Handler {
 		if name == "" {
 			name = "index.html"
 		}
-		data, ctype, ok := readAsset(fsys, name)
-		if !ok && path.Ext(name) == "" { // SPA fallback
-			data, ctype, ok = readAsset(fsys, "index.html")
+		name, ok := webview.ResolveAsset(fsys, name)
+		var data []byte
+		var ctype string
+		if ok {
+			data, ctype, ok = readAsset(fsys, name)
 		}
 		if !ok {
 			http.NotFound(w, r)

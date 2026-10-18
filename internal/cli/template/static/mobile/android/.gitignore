@@ -1,0 +1,9 @@
+# Written by `scorix mobile sync`; never edit, never commit.
+.scorix/
+app/src/main/jniLibs/
+
+.gradle/
+.kotlin/
+build/
+app/build/
+local.properties

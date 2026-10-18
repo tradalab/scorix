@@ -1,4 +1,4 @@
-//go:build (!windows && !linux && !darwin) || (darwin && server)
+//go:build (!windows && !linux && !darwin) || (darwin && server) || ios
 
 package notification
 

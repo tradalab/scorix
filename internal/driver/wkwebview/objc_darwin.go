@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin && !ios
 
 // Package wkwebview is the macOS native driver: AppKit window + WKWebView via
 // the Objective-C runtime through purego.

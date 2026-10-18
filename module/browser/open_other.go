@@ -1,23 +1,35 @@
-//go:build !windows
+//go:build !windows && !android
 
 package browser
 
 import (
+	"context"
+	"fmt"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 )
 
-func revealCmd(path string) *exec.Cmd {
-	if runtime.GOOS == "darwin" {
-		return exec.Command("open", "-R", path) // reveal in Finder, selected
+func openURL(_ context.Context, url string) error {
+	switch runtime.GOOS {
+	case "darwin":
+		return exec.Command("open", url).Start()
+	case "linux":
+		return exec.Command("xdg-open", url).Start()
 	}
-	return exec.Command("xdg-open", filepath.Dir(path))
+	return fmt.Errorf("unsupported platform")
 }
 
-func openPathCmd(path string) *exec.Cmd {
+func reveal(path string) error {
 	if runtime.GOOS == "darwin" {
-		return exec.Command("open", path)
+		return exec.Command("open", "-R", path).Start() // reveal in Finder, selected
 	}
-	return exec.Command("xdg-open", path)
+	return exec.Command("xdg-open", filepath.Dir(path)).Start()
+}
+
+func openPath(path string) error {
+	if runtime.GOOS == "darwin" {
+		return exec.Command("open", path).Start()
+	}
+	return exec.Command("xdg-open", path).Start()
 }

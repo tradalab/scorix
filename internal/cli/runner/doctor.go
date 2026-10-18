@@ -118,8 +118,46 @@ func doctorChecks(ctx context.Context, res *DoctorResult) error {
 	if runtime.GOOS == "windows" {
 		checkWebView2Runtime(res)
 	}
+	if fileExists(filepath.Join("android", "settings.gradle.kts")) {
+		checkAndroidToolchain(res)
+	}
 	checkCrashReports(res)
 	return nil
+}
+
+// Gated on `scorix mobile init`: SDK warnings on a desktop-only app would bury the real ones.
+func checkAndroidToolchain(res *DoctorResult) {
+	missing := func(name string, err error) {
+		res.add(DoctorCheck{Name: name, Status: "warn", Hint: err.Error()})
+	}
+	sdk, err := findAndroidSDK()
+	if err != nil {
+		missing("android sdk", err)
+		return
+	}
+	res.add(DoctorCheck{Name: "android sdk", Status: "ok", Detail: sdk})
+	if ndk, err := findAndroidNDK(sdk); err != nil {
+		missing("android ndk", err)
+	} else if _, err := ndkClang(ndk, androidABIs[0]); err != nil {
+		missing("android ndk", err)
+	} else {
+		res.add(DoctorCheck{Name: "android ndk", Status: "ok", Detail: ndk})
+	}
+	if adb, err := findADB(); err != nil {
+		missing("adb", err)
+	} else {
+		res.add(DoctorCheck{Name: "adb", Status: "ok", Detail: adb})
+	}
+	if _, err := exec.LookPath("java"); err != nil && os.Getenv("JAVA_HOME") == "" {
+		res.add(DoctorCheck{Name: "java", Status: "warn", Hint: "java not found - Gradle needs a JDK 17 (set JAVA_HOME or put java in PATH)"})
+	} else {
+		res.add(DoctorCheck{Name: "java", Status: "ok"})
+	}
+	if _, err := gradleCommand("android"); err != nil {
+		missing("gradle", err)
+	} else {
+		res.add(DoctorCheck{Name: "gradle", Status: "ok"})
+	}
 }
 
 // checkCrashReports points at the app's own crashes. Doctor is where someone

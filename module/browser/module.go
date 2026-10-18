@@ -6,7 +6,6 @@ import (
 	"fmt"
 	neturl "net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -82,20 +81,7 @@ func (m *BrowserModule) OpenUrl(ctx context.Context, req interface{}) (interface
 		return nil, fmt.Errorf("url scheme %q is not allowed (only http, https, mailto)", parsed.Scheme)
 	}
 
-	var cmd *exec.Cmd
-
-	switch runtime.GOOS {
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
-	case "darwin":
-		cmd = exec.Command("open", url)
-	case "linux":
-		cmd = exec.Command("xdg-open", url)
-	default:
-		return nil, fmt.Errorf("unsupported platform")
-	}
-
-	return nil, cmd.Start()
+	return nil, openURL(ctx, url)
 }
 
 func (m *BrowserModule) Capability() string { return "shell" }
@@ -109,7 +95,7 @@ func (m *BrowserModule) RevealPath(_ context.Context, req PathRequest) (interfac
 	if err != nil {
 		return nil, err
 	}
-	return nil, revealCmd(clean).Start()
+	return nil, reveal(clean)
 }
 
 func (m *BrowserModule) OpenPath(_ context.Context, req PathRequest) (interface{}, error) {
@@ -117,7 +103,7 @@ func (m *BrowserModule) OpenPath(_ context.Context, req PathRequest) (interface{
 	if err != nil {
 		return nil, err
 	}
-	return nil, openPathCmd(clean).Start()
+	return nil, openPath(clean)
 }
 
 func validateLocalPath(p string) (string, error) {

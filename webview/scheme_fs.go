@@ -11,22 +11,34 @@ import (
 )
 
 // SchemeFromFS serves files from fsys (URL host is a namespace, not path).
-// Extensionless misses fall back to index.html (SPA); other misses 404.
+// Extensionless misses resolve as ResolveAsset says; other misses 404.
 func SchemeFromFS(fsys fs.FS) SchemeHandler {
 	return func(req *Request) *Response {
-		name := assetPath(req.URL)
-
-		if f, err := fsys.Open(name); err == nil {
-			return fileResponse(name, f)
+		name, ok := ResolveAsset(fsys, assetPath(req.URL))
+		if !ok {
+			return notFound()
 		}
-
-		if path.Ext(name) == "" {
-			if idx, err := fsys.Open("index.html"); err == nil {
-				return fileResponse("index.html", idx)
-			}
+		f, err := fsys.Open(name)
+		if err != nil {
+			return notFound()
 		}
-		return notFound()
+		return fileResponse(name, f)
 	}
+}
+
+// name.html and name/index.html come before the SPA fallback because a Next.js
+// export writes app/daily.html beside a directory app/daily.
+func ResolveAsset(fsys fs.FS, name string) (string, bool) {
+	candidates := []string{name}
+	if path.Ext(name) == "" {
+		candidates = append(candidates, name+".html", path.Join(name, "index.html"), "index.html")
+	}
+	for _, c := range candidates {
+		if st, err := fs.Stat(fsys, c); err == nil && !st.IsDir() {
+			return c, true
+		}
+	}
+	return "", false
 }
 
 func fileResponse(name string, f fs.File) *Response {

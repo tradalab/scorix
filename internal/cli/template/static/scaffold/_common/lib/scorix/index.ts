@@ -59,6 +59,8 @@ export interface ScorixWindow {
   show(): Promise<void>;
   focus(): Promise<void>;
   setTitle(title: string): Promise<void>;
+  // Restyles native chrome the page cannot draw (Android system bars, Windows title bar).
+  setTheme(theme: "light" | "dark" | "system"): Promise<void>;
   fullscreen(on: boolean): Promise<void>;
   startDrag(): Promise<void>;
   setMenu(items: ScorixMenuItem[]): Promise<void>;

@@ -11,8 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/zalando/go-keyring"
 )
 
 const (
@@ -57,13 +55,13 @@ func newStore(key []byte) (*Store, error) {
 }
 
 func loadOrCreateKey(service string) ([]byte, error) {
-	if enc, err := keyring.Get(service, keyAccount); err == nil {
+	if enc, err := keyGet(service); err == nil {
 		key, decErr := base64.StdEncoding.DecodeString(enc)
 		if decErr != nil || len(key) != keySize {
 			return nil, fmt.Errorf("secrets: keychain entry for %s is corrupt - refusing to overwrite; delete it manually to re-key (existing tokens become unreadable)", service)
 		}
 		return key, nil
-	} else if !errors.Is(err, keyring.ErrNotFound) {
+	} else if !errors.Is(err, errKeyNotFound) {
 		return nil, fmt.Errorf("secrets: read OS credential store: %w", err)
 	}
 
@@ -71,7 +69,7 @@ func loadOrCreateKey(service string) ([]byte, error) {
 	if _, err := rand.Read(key); err != nil {
 		return nil, err
 	}
-	if err := keyring.Set(service, keyAccount, base64.StdEncoding.EncodeToString(key)); err != nil {
+	if err := keySet(service, base64.StdEncoding.EncodeToString(key)); err != nil {
 		return nil, fmt.Errorf("secrets: store master key in OS credential store: %w", err)
 	}
 	return key, nil

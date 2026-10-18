@@ -3,3 +3,11 @@
 /etc
 
 *.exe
+
+# Local-only mobile tooling: spike, example app, e2e harness, build image.
+/mobile/spike-android/
+/mobile/example/
+/mobile/android/example/
+/mobile/android/e2e.sh
+/mobile/android/Makefile
+/mobile/toolchain/

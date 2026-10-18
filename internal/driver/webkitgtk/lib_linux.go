@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux && !android
 
 // Package webkitgtk is the Linux native driver: GTK3 window + WebKitGTK via
 // dlopen/purego, with runtime soname probing (4.1 -> 4.0).

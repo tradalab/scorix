@@ -53,6 +53,13 @@ type FullscreenReporter interface {
 	IsFullscreen() bool
 }
 
+// ThemeSetter lets a page with its own light/dark switch restyle native chrome,
+// which otherwise keeps following the OS.
+type ThemeSetter interface {
+	// SetTheme takes "light", "dark" or "system".
+	SetTheme(theme string)
+}
+
 // AlwaysOnTopReporter asks the OS: a window manager may refuse keep-above.
 type AlwaysOnTopReporter interface {
 	IsAlwaysOnTop() bool
