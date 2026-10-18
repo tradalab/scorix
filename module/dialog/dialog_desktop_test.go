@@ -49,6 +49,8 @@ func TestRewriteFileReplacesWholeContent(t *testing.T) {
 	if err := os.WriteFile(path, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// Windows reports 0666 for any writable file, so compare with what the OS said, not 0644.
+	before, _ := os.Stat(path)
 	for _, body := range []string{"a longer first body", "short"} {
 		if _, err := m.RewriteFile(context.Background(), RewriteFileRequest{File: path, Data: []byte(body)}); err != nil {
 			t.Fatal(err)
@@ -57,8 +59,8 @@ func TestRewriteFileReplacesWholeContent(t *testing.T) {
 	if got, _ := os.ReadFile(path); string(got) != "short" {
 		t.Fatalf("got %q", got)
 	}
-	if st, _ := os.Stat(path); st.Mode().Perm() != 0o644 {
-		t.Fatalf("mode became %v, want the file's own 0644", st.Mode().Perm())
+	if st, _ := os.Stat(path); st.Mode().Perm() != before.Mode().Perm() {
+		t.Fatalf("mode became %v, want the file's own %v", st.Mode().Perm(), before.Mode().Perm())
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
 		t.Fatalf("%d files left in the folder, want just the one", len(entries))
