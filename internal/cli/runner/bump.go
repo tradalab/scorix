@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -399,7 +400,11 @@ func verifyAfterBump(ctx context.Context, root string, res *BumpResult) error {
 		{"test", func() error { return Test(ctx, TestOptions{Dir: root}) }},
 		{"build windows/darwin/linux", func() error { return crossBuild(ctx, root) }},
 	}
+	tables := hasTables(root)
 	for _, s := range steps {
+		if !tables && strings.HasPrefix(s.name, "generate model") {
+			continue
+		}
 		fmt.Printf("==> %s\n", s.name)
 		err := s.run()
 		res.Steps = append(res.Steps, BumpStep{Name: s.name, OK: err == nil, Error: errText(err)})
@@ -408,6 +413,16 @@ func verifyAfterBump(ctx context.Context, root string, res *BumpResult) error {
 		}
 	}
 	return nil
+}
+
+// The same test validate applies: no model block and no default schema is an app without tables.
+func hasTables(root string) bool {
+	cfg, err := loadProjectConfig(filepath.Join(root, "scorix.yaml"))
+	if err != nil || cfg.Model != nil {
+		return true
+	}
+	_, err = os.Stat(filepath.Join(root, DefaultSchemaPath))
+	return !errors.Is(err, fs.ErrNotExist)
 }
 
 func crossBuild(ctx context.Context, root string) error {

@@ -346,3 +346,20 @@ func TestBumpWithoutAVersionIsAUsageError(t *testing.T) {
 		t.Fatalf("err = %v (exit %d), want a usage error", err, code)
 	}
 }
+
+// An app with no tables has no schema to generate from; bump used to stop there.
+func TestHasTables(t *testing.T) {
+	bare := "name: probe\nproto: idl/app.proto\n"
+	for _, c := range []struct {
+		manifest, schema string
+		want             bool
+	}{
+		{bare, "", false},
+		{bare, okSchema, true},
+		{manifest, "", true},
+	} {
+		if got := hasTables(project(t, c.manifest, okProto, c.schema)); got != c.want {
+			t.Errorf("manifest %q, schema %v: got %v", c.manifest, c.schema != "", got)
+		}
+	}
+}
