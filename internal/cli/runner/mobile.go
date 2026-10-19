@@ -20,7 +20,7 @@ import (
 // The host library is recopied from go.mod's scorix on every sync because the
 // JNI contract between it and the app's c-shared lib has no version of its own.
 const (
-	androidMinSDK        = 26
+	androidMinSDK        = 24
 	androidActivity      = "dev.scorix.ScorixActivity"
 	androidGradleVersion = "8.10.2" // the wrapper init writes; AGP 8.7 needs 8.9 or newer
 	androidLibName       = "libscorixapp.so"
@@ -231,7 +231,9 @@ func goBuildAndroid(ctx context.Context, bc *BuildContext, ndk string, abi andro
 		args = append(args, "-tags", strings.Join(bc.Tags, ","))
 	}
 	args = append(args, "-o", out, ".")
-	env := append(os.Environ(), "GOOS=android", "GOARCH="+abi.GOARCH, "CGO_ENABLED=1", "CC="+cc)
+	// Play requires 16 KB pages. CGO_LDFLAGS, not -extldflags: an app's own -extldflags would replace it.
+	cgoLD := strings.TrimSpace(os.Getenv("CGO_LDFLAGS") + " -Wl,-z,max-page-size=16384")
+	env := append(os.Environ(), "GOOS=android", "GOARCH="+abi.GOARCH, "CGO_ENABLED=1", "CC="+cc, "CGO_LDFLAGS="+cgoLD)
 	if abi.GOARM != "" {
 		env = append(env, "GOARM="+abi.GOARM)
 	}

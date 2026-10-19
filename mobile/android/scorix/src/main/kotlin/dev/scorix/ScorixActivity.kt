@@ -3,7 +3,10 @@ package dev.scorix
 import android.app.Activity
 import android.content.Intent
 import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 
 /** Launcher Activity (or base class) for the app's Go main package built with -buildmode=c-shared. */
 open class ScorixActivity : Activity() {
@@ -16,6 +19,13 @@ open class ScorixActivity : Activity() {
         super.onCreate(savedInstanceState)
         ScorixHost.register(plugins())
         ScorixHost.attach(this, libraryName)
+        // Android 16 with target 36 no longer calls onBackPressed.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                OnBackInvokedCallback { back() },
+            )
+        }
         // A recreated Activity gets its old intent back, a link already delivered.
         if (savedInstanceState == null) ScorixHost.openIntent(this, intent)
     }
@@ -50,8 +60,10 @@ open class ScorixActivity : Activity() {
         ScorixHost.lifecycle(this, ScorixNative.BACKGROUND)
     }
 
-    @Deprecated("Still delivered on every API level to an app that has not opted into predictive back")
-    override fun onBackPressed() {
+    @Deprecated("The only Back callback below API 33")
+    override fun onBackPressed() = back()
+
+    private fun back() {
         if (ScorixHost.goBack()) return
         @Suppress("DEPRECATION")
         super.onBackPressed()

@@ -14,12 +14,12 @@ val scorixVersion = Properties().apply {
 
 android {
     namespace = "{{ .AppID }}"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "{{ .AppID }}"
-        minSdk = 26
-        targetSdk = 35
+        minSdk = 24
+        targetSdk = 36
         versionCode = scorixVersion.getProperty("versionCode", "{{ .VersionCode }}").toInt()
         versionName = scorixVersion.getProperty("versionName", "{{ .Version }}")
     }
