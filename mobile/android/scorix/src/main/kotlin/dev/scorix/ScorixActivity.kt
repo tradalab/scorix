@@ -45,6 +45,13 @@ open class ScorixActivity : Activity() {
         }
     }
 
+    // An app that overrides this for its own requests calls super for the rest, as auth/app does.
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        if (!ScorixHost.onPermissionsResult(requestCode, grantResults)) {
+            super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        }
+    }
+
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         ScorixHost.configurationChanged(this)

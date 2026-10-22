@@ -2,6 +2,7 @@ package dev.scorix
 
 import android.app.Activity
 import android.content.Intent
+import android.content.IntentSender
 import org.json.JSONObject
 
 /**
@@ -42,6 +43,19 @@ class PluginCall internal constructor(
         val a = activity ?: return reject("no_activity", "$plugin.$method needs an Activity on screen")
         val code = ScorixHost.startForResult(a, intent, result)
         if (onCancel == null) onCancel = { ScorixHost.currentActivity()?.finishActivity(code) }
+    }
+
+    /** For a system dialog that hands back an IntentSender, such as CompanionDeviceManager. */
+    fun startSenderForResult(sender: IntentSender, result: (resultCode: Int, data: Intent?) -> Unit) {
+        val a = activity ?: return reject("no_activity", "$plugin.$method needs an Activity on screen")
+        val code = ScorixHost.startSenderForResult(a, sender, result)
+        if (onCancel == null) onCancel = { ScorixHost.currentActivity()?.finishActivity(code) }
+    }
+
+    /** Asks for runtime permissions; [result] is true only when every one was granted. */
+    fun requestPermissions(names: Array<String>, result: (granted: Boolean) -> Unit) {
+        val a = activity ?: return reject("no_activity", "$plugin.$method needs an Activity on screen")
+        ScorixHost.requestPermissions(a, names, result)
     }
 
     internal fun cancel() {

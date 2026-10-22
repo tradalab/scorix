@@ -7,6 +7,7 @@ require (
 	github.com/ebitengine/purego v0.10.1
 	github.com/energye/systray v1.0.3
 	github.com/go-playground/validator/v10 v10.30.1
+	github.com/godbus/dbus/v5 v5.2.2
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/jmoiron/sqlx v1.4.0
@@ -30,7 +31,6 @@ require (
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
-	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/josephspurrier/goversioninfo v1.4.1 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect

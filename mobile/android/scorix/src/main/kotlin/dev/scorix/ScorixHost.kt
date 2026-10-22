@@ -4,7 +4,9 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.IntentSender
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Build
@@ -72,10 +74,11 @@ object ScorixHost {
     private val plugins = HashMap<String, ScorixPlugin>()
     private val calls = HashMap<Long, PluginCall>()
     private val results = HashMap<Int, (Int, Intent?) -> Unit>()
+    private val granted = HashMap<Int, (Boolean) -> Unit>()
     private var nextRequest = 0x5c00
 
     init {
-        for (p in listOf(KeystorePlugin(), BiometricPlugin(), ClipboardPlugin(), DialogPlugin(), ScannerPlugin(), BrowserPlugin(), SharePlugin())) plugins[p.name] = p
+        for (p in listOf(KeystorePlugin(), BiometricPlugin(), ClipboardPlugin(), DialogPlugin(), ScannerPlugin(), BrowserPlugin(), SharePlugin(), BluetoothPlugin())) plugins[p.name] = p
     }
 
     internal fun currentActivity(): Activity? = activity
@@ -107,6 +110,27 @@ object ScorixHost {
         results[code] = result
         activity.startActivityForResult(intent, code)
         return code
+    }
+
+    // Same table as startForResult: a system dialog (CompanionDeviceManager) answers through
+    // onActivityResult too.
+    internal fun startSenderForResult(activity: Activity, sender: IntentSender, result: (Int, Intent?) -> Unit): Int {
+        val code = nextRequest++
+        results[code] = result
+        activity.startIntentSenderForResult(sender, code, null, 0, 0, 0)
+        return code
+    }
+
+    internal fun requestPermissions(activity: Activity, names: Array<String>, result: (Boolean) -> Unit) {
+        val code = nextRequest++
+        granted[code] = result
+        activity.requestPermissions(names, code)
+    }
+
+    internal fun onPermissionsResult(requestCode: Int, results: IntArray): Boolean {
+        val cb = granted.remove(requestCode) ?: return false
+        cb(results.isNotEmpty() && results.all { it == PackageManager.PERMISSION_GRANTED })
+        return true
     }
 
     internal fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
