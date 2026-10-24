@@ -35,6 +35,7 @@ var (
 	libErr  error
 
 	gtkInitCheck          func(uintptr, uintptr) int32
+	gSetPrgname           func(string)
 	gtkMain               func()
 	gtkMainQuit           func()
 	gtkWindowNew          func(int32) uintptr
@@ -204,6 +205,7 @@ func initLibs() error {
 		}
 
 		purego.RegisterLibFunc(&gtkInitCheck, gtk, "gtk_init_check")
+		purego.RegisterLibFunc(&gSetPrgname, glib, "g_set_prgname")
 		purego.RegisterLibFunc(&gtkMain, gtk, "gtk_main")
 		purego.RegisterLibFunc(&gtkMainQuit, gtk, "gtk_main_quit")
 		purego.RegisterLibFunc(&gtkWindowNew, gtk, "gtk_window_new")

@@ -37,9 +37,10 @@ func (driver) NewRuntime(cfg window.RuntimeConfig) (window.Runtime, error) {
 		return nil, err
 	}
 	r := &rt{
-		manager: &manager{byID: map[window.ID]*win{}},
-		events:  map[window.RuntimeEvent][]func(){},
-		schemes: map[string]webview.SchemeHandler{},
+		identifier: cfg.Identifier,
+		manager:    &manager{byID: map[window.ID]*win{}},
+		events:     map[window.RuntimeEvent][]func(){},
+		schemes:    map[string]webview.SchemeHandler{},
 	}
 	r.manager.rt = r
 
@@ -60,9 +61,10 @@ var (
 type rt struct {
 	manager *manager
 
-	mu      sync.Mutex
-	events  map[window.RuntimeEvent][]func()
-	schemes map[string]webview.SchemeHandler
+	mu         sync.Mutex
+	events     map[window.RuntimeEvent][]func()
+	identifier string
+	schemes    map[string]webview.SchemeHandler
 }
 
 // Run initializes GTK and blocks in gtk_main. Must be called from the main
@@ -72,6 +74,11 @@ func (r *rt) Run() error {
 	runtime.LockOSThread()
 	mainTID.Store(int64(unix.Gettid()))
 
+	// Before gtk_init, which takes the app id from it; the binary's name would not match the
+	// .desktop file, and the desktop shows no icon or name.
+	if r.identifier != "" {
+		gSetPrgname(r.identifier)
+	}
 	if gtkInitCheck(0, 0) == 0 {
 		return fmt.Errorf("webkitgtk: gtk_init failed (no display?) - use web mode on headless hosts")
 	}
