@@ -4,7 +4,7 @@
     <application
         android:label="{{ .Label }}"
         android:allowBackup="false"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@style/AppTheme">
         <!-- Recreating the Activity would reload the page and drop every open stream. -->
         <activity
             android:name="dev.scorix.ScorixActivity"
