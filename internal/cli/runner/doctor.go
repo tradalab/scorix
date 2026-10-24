@@ -147,6 +147,12 @@ func checkAndroidToolchain(res *DoctorResult) {
 		missing("adb", err)
 	} else {
 		res.add(DoctorCheck{Name: "adb", Status: "ok", Detail: adb})
+		// `adb version` starts no server, unlike most adb commands: doctor leaves nothing running.
+		out, _ := exec.Command(adb, "version").Output()
+		if v := platformToolsMajor(string(out)); v > 0 && v < 30 {
+			res.add(DoctorCheck{Name: "adb pair", Status: "warn",
+				Hint: fmt.Sprintf("platform-tools %d has no Wi-Fi pairing; `scorix device pair` needs 30 or later", v)})
+		}
 	}
 	if _, err := exec.LookPath("java"); err != nil && os.Getenv("JAVA_HOME") == "" {
 		res.add(DoctorCheck{Name: "java", Status: "warn", Hint: "java not found - Gradle needs a JDK 17 (set JAVA_HOME or put java in PATH)"})

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -51,7 +52,7 @@ type MobileOptions struct {
 	Release      bool
 	Bundle       bool // AAB instead of APK; release only
 	SkipFrontend bool
-	Device       string // adb serial; empty lets adb pick the only one
+	Device       string // adb serial or a remembered device; empty: the only one, else the default
 	DevURL       string // dev only: an already-running frontend dev server
 	JSONOut      io.Writer
 }
@@ -336,38 +337,34 @@ func gradleCommand(dir string) (string, error) {
 
 func mobileDev(ctx context.Context, opt MobileOptions, res *MobileResult) error {
 	opt.Release, opt.Bundle = false, false
-	if err := mobileBuild(ctx, opt, res); err != nil {
-		return err
-	}
-	adb, err := findADB()
+	adbRun, err := systemADB()
 	if err != nil {
 		return err
 	}
-	dev := func(args ...string) *exec.Cmd {
-		if opt.Device != "" {
-			args = append([]string{"-s", opt.Device}, args...)
-		}
-		c := exec.CommandContext(ctx, adb, args...)
-		c.Stdout, c.Stderr = os.Stdout, os.Stderr
-		return c
+	target, err := resolveDevice(ctx, adbRun, opt.Device)
+	if err != nil {
+		return err
+	}
+	opt.Device = target.Serial
+	// One device runs one ABI; building the others too costs a Go cross-compile each.
+	if len(opt.ABIs) == 0 && slices.ContainsFunc(androidABIs, func(a androidABI) bool { return a.Name == target.ABI }) {
+		opt.ABIs = []string{target.ABI}
+	}
+	fmt.Printf("==> Device %s (%s, %s)\n", target.Name, target.Serial, target.ABI)
+	if err := mobileBuild(ctx, opt, res); err != nil {
+		return err
+	}
+	dev, err := deviceCmd(ctx, opt.Device)
+	if err != nil {
+		return err
 	}
 	appID, err := androidProjectAppID(res.Project)
 	if err != nil {
 		return err
 	}
 	res.AppID = appID
-
-	fmt.Printf("==> adb install -r %s\n", res.Output)
-	install := dev("install", "-r", res.Output)
-	var installOut strings.Builder
-	install.Stdout = io.MultiWriter(os.Stdout, &installOut)
-	install.Stderr = io.MultiWriter(os.Stderr, &installOut)
-	if err := install.Run(); err != nil {
-		// Not uninstalled for the user: that wipes app data they may be testing with.
-		if strings.Contains(installOut.String(), "INSTALL_FAILED_UPDATE_INCOMPATIBLE") {
-			return fmt.Errorf("%s is already installed with another signing key (a release build?) - `adb uninstall %s` removes it and its data, then run again", appID, appID)
-		}
-		return fmt.Errorf("adb install: %w", toolchainError(err, installOut.String()))
+	if err := installAPK(dev, res.Output, appID); err != nil {
+		return err
 	}
 
 	devURL := opt.DevURL
@@ -399,6 +396,41 @@ func mobileDev(ctx context.Context, opt MobileOptions, res *MobileResult) error 
 		start = append(start, "--es", "scorix.devUrl", devURL)
 		fmt.Printf("==> Frontend from %s (HMR)\n", devURL)
 	}
+	return startAndFollow(dev, appID, start)
+}
+
+func deviceCmd(ctx context.Context, serial string) (func(args ...string) *exec.Cmd, error) {
+	adb, err := findADB()
+	if err != nil {
+		return nil, err
+	}
+	return func(args ...string) *exec.Cmd {
+		if serial != "" {
+			args = append([]string{"-s", serial}, args...)
+		}
+		c := exec.CommandContext(ctx, adb, args...)
+		c.Stdout, c.Stderr = os.Stdout, os.Stderr
+		return c
+	}, nil
+}
+
+func installAPK(dev func(args ...string) *exec.Cmd, apk, appID string) error {
+	fmt.Printf("==> adb install -r %s\n", apk)
+	install := dev("install", "-r", apk)
+	var installOut strings.Builder
+	install.Stdout = io.MultiWriter(os.Stdout, &installOut)
+	install.Stderr = io.MultiWriter(os.Stderr, &installOut)
+	if err := install.Run(); err != nil {
+		// Not uninstalled for the user: that wipes app data they may be testing with.
+		if strings.Contains(installOut.String(), "INSTALL_FAILED_UPDATE_INCOMPATIBLE") {
+			return fmt.Errorf("%s is already installed with another signing key (a release build?) - `adb uninstall %s` removes it and its data, then run again", appID, appID)
+		}
+		return fmt.Errorf("adb install: %w", toolchainError(err, installOut.String()))
+	}
+	return nil
+}
+
+func startAndFollow(dev func(args ...string) *exec.Cmd, appID string, start []string) error {
 	_ = dev("shell", "am", "force-stop", appID).Run()
 	if err := dev(start...).Run(); err != nil {
 		return fmt.Errorf("adb am start: %w", err)

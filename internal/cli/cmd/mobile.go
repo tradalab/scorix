@@ -57,7 +57,7 @@ func init() {
 
 	devCmd := mobileSub("dev", "Build a debug APK, run it on a device or emulator and follow its log; HMR when the app has a shell",
 		func(cmd *cobra.Command, opt runner.MobileOptions) error { return runner.MobileDev(cmd.Context(), opt) })
-	devCmd.Flags().StringVarP(&mobileDevice, "device", "s", "", "adb serial of the target (default: the only one connected)")
+	devCmd.Flags().StringVarP(&mobileDevice, "device", "s", "", "adb serial or a `scorix device` name (default: the only one connected, else the default device)")
 	devCmd.Flags().StringVar(&mobileDevURL, "url", "", "an already-running frontend dev server instead of starting `pnpm dev`")
 
 	for _, c := range []*cobra.Command{syncCmd, buildCmd, devCmd} {
