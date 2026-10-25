@@ -33,6 +33,16 @@ func (a *App) Module(m module.Module) {
 	a.collectPermissions(m)
 }
 
+// DefaultModule adds m at startup unless a module of that name was registered by then. The
+// handler generated from scorix.yaml uses it, so a main.go that builds the same module with its
+// own options wins whichever runs first.
+func (a *App) DefaultModule(m module.Module) {
+	a.warnIfStarted("DefaultModule(" + m.Name() + ")")
+	a.mu.Lock()
+	a.defaultMods = append(a.defaultMods, m)
+	a.mu.Unlock()
+}
+
 // What the names in security.allowlist mean for this module. One that does not
 // split its surface gets a single set named after its capability, so an older
 // allowlist keeps granting exactly what it granted.
@@ -97,7 +107,17 @@ func (a *App) startModules() error {
 		return nil
 	}
 	a.started = true
+	defaults := a.defaultMods
 	a.mu.Unlock()
+	for _, m := range defaults {
+		if !a.mods.Registered(m.Name()) {
+			a.mods.Register(m)
+			if _, ok := a.cfg.Modules[m.Name()]; !ok {
+				a.cfg.Modules[m.Name()] = map[string]any{"enabled": true}
+			}
+			a.collectPermissions(m)
+		}
+	}
 
 	// On failure, unwind and clear started so a later call can retry.
 	if err := a.mods.LoadAll(); err != nil {

@@ -19,12 +19,18 @@ const (
 	GoModel      = "static/go/model.go.tpl"
 	GoModelGen   = "static/go/model_gen.go.tpl"
 	GoSchemaGen  = "static/go/schema_gen.go.tpl"
+	GoHost       = "static/go/host.go.tpl"
+	GoModules    = "static/go/modules.go.tpl"
 
 	ShellTypes       = "static/codegen/shell/types.ts"
 	ShellAPI         = "static/codegen/shell/api.ts"
 	ShellPage        = "static/codegen/shell/page.tsx"
 	ShellHooksEvents = "static/codegen/shell/hooks_events.ts"
 	DocsIPCSurface   = "static/codegen/docs/ipc-surface.md"
+	AndroidPlugins   = "static/codegen/android/plugins.kt"
+
+	// Rewritten into android/.scorix by every `scorix mobile sync`.
+	MobileGradle = "static/mobile/gen/scorix.gradle"
 
 	ProjectScorixYaml = "static/project/scorix.yaml"
 	ProjectProto      = "static/project/idl/app.proto"

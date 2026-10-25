@@ -72,8 +72,9 @@ type App struct {
 	schemes map[string]fs.FS
 	ready   []func(*App)
 
-	cfg  *config.Config
-	mods *module.Manager
+	cfg         *config.Config
+	mods        *module.Manager
+	defaultMods []module.Module // DefaultModule, registered at startup if still absent
 
 	mu      sync.Mutex
 	senders map[int]*senderChan // event broadcast targets (window + ws conns)

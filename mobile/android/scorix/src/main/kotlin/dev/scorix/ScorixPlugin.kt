@@ -1,18 +1,50 @@
 package dev.scorix
 
 import android.app.Activity
+import android.content.Context
+import java.lang.reflect.InvocationTargetException
 import android.content.Intent
 import android.content.IntentSender
 import org.json.JSONObject
 
 /**
  * [call] runs on the main thread and must end every [PluginCall] with resolve or
- * reject, now or later. Register app plugins by overriding [ScorixActivity.plugins].
+ * reject, now or later. Plugins generated from `@native` services register themselves;
+ * others are added by overriding [ScorixActivity.plugins].
  */
 interface ScorixPlugin {
     val name: String
 
     fun call(method: String, args: JSONObject, call: PluginCall)
+
+    /** The app came on screen; a plugin holding a sensor or a listener takes it back here. */
+    fun onStart(activity: Activity) {}
+
+    /** The app left the screen; release what [onStart] took, the process may live on for hours. */
+    fun onStop(activity: Activity) {}
+}
+
+/**
+ * The typed side of a [PluginCall], for plugins extending a base that `scorix generate proto`
+ * writes from an `@native` service. [encode] turns [T] into what [PluginCall.resolve] takes.
+ */
+class Reply<T>(val call: PluginCall, private val encode: (T) -> Any?) {
+    fun resolve(value: T) = call.resolve(encode(value))
+
+    fun reject(code: String, message: String) = call.reject(code, message)
+}
+
+// Written by `scorix generate proto` into the app; absent when the proto has no @native service.
+private const val GENERATED_PLUGINS = "dev.scorix.app.ScorixPlugins"
+
+internal fun generatedPlugins(context: Context): List<ScorixPlugin> = try {
+    @Suppress("UNCHECKED_CAST")
+    Class.forName(GENERATED_PLUGINS).getMethod("create", Context::class.java).invoke(null, context) as List<ScorixPlugin>
+} catch (e: ClassNotFoundException) {
+    emptyList()
+} catch (e: InvocationTargetException) {
+    // A plugin constructor threw; its own exception is the one worth a stack trace.
+    throw e.targetException
 }
 
 class PluginCall internal constructor(
@@ -64,7 +96,9 @@ class PluginCall internal constructor(
         onCancel?.invoke()
     }
 
+    // Plugins answer from worker threads too; done, cancel and the call table all live on the main thread.
     private fun finish(reply: JSONObject) {
+        if (!ScorixHost.onMain()) return ScorixHost.post { finish(reply) }
         if (done) return
         done = true
         ScorixHost.reply(id, reply.put("id", id))

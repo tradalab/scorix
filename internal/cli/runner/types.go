@@ -82,6 +82,9 @@ type protoFile struct {
 	Middlewares   []string
 	Messages      []protoMessage
 	Services      []protoService
+	// Natives are the @native services: Go calls them in the native host. Those marked
+	// `@native expose` are in Services as well, as commands the page calls straight through.
+	Natives []protoService
 }
 
 type protoMessage struct {
@@ -101,11 +104,13 @@ type protoField struct {
 }
 
 type protoService struct {
-	Name        string
-	Package     string
-	Middlewares []string
-	RPCs        []protoRPC // request/reply commands only (events are split out)
-	Events      []protoRPC // rpcs annotated @event / @event in
+	Name         string
+	Package      string
+	Middlewares  []string
+	RPCs         []protoRPC // request/reply commands only (events are split out)
+	Events       []protoRPC // rpcs annotated @event / @event in
+	Native       bool       // `// @native` above the service: a plugin in the native host, not Go logic
+	NativeExpose bool       // `// @native expose`: the page may call it too, through a generated handler
 }
 
 type protoRPC struct {
@@ -154,6 +159,8 @@ type protoRPC struct {
 	CLISchema      string // request JSON schema; the CLI derives its flags from it
 	// Doc is the rpc's leading comment without its annotation lines.
 	Doc string
+
+	NativeMethod string // the method name a native plugin receives, e.g. "readAll"
 }
 
 type protoTemplateData struct {
@@ -166,6 +173,9 @@ type protoTemplateData struct {
 	HasMCP    bool // gates scorixMCP, so an app without @mcp regenerates unchanged
 	HasCLI    bool // gates the CLI column, for the same reason
 	Shell     ShellKind
+
+	Natives        []protoService
+	HasNativeRoute bool // an `@native expose` service, so handler.go imports internal/host
 }
 
 type logicTemplateData struct {

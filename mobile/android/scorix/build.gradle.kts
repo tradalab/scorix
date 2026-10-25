@@ -16,7 +16,11 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
+    kotlinOptions {
+        jvmTarget = "17"
+        // ScorixPlugin's lifecycle defaults become Java default methods, so a Java plugin need not write them.
+        freeCompilerArgs += "-Xjvm-default=all"
+    }
 }
 
 dependencies {

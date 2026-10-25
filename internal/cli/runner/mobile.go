@@ -15,15 +15,18 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	texttemplate "text/template"
 	"time"
+
+	"github.com/tradalab/scorix/internal/cli/template"
 )
 
 // The host library is recopied from go.mod's scorix on every sync because the
 // JNI contract between it and the app's c-shared lib has no version of its own.
 const (
 	androidMinSDK        = 24
-	androidActivity      = "dev.scorix.ScorixActivity"
-	androidGradleVersion = "8.10.2" // the wrapper init writes; AGP 8.7 needs 8.9 or newer
+	androidActivity      = "dev.scorix.ScorixActivity" // the template's launcher, when the device cannot say
+	androidGradleVersion = "8.10.2"                    // the wrapper init writes; AGP 8.7 needs 8.9 or newer
 	androidLibName       = "libscorixapp.so"
 	scorixModule         = "github.com/tradalab/scorix"
 )
@@ -123,13 +126,7 @@ func mobileInit(ctx context.Context, opt MobileOptions, res *MobileResult) error
 		return err
 	}
 	res.AppID = appID
-	data := map[string]any{
-		"Name":        bc.AppName,
-		"Label":       bc.ProductName,
-		"AppID":       appID,
-		"Version":     bc.Version,
-		"VersionCode": androidVersionCode(bc.Version),
-	}
+	data := map[string]any{"Name": bc.AppName}
 	fmt.Printf("==> Creating Android project in %s\n", dir)
 	if err := writeTemplateFS("static/mobile/android", dir, data); err != nil {
 		return err
@@ -192,6 +189,9 @@ func mobileSync(ctx context.Context, opt MobileOptions, res *MobileResult) (*Bui
 	}
 
 	if err := writeAndroidVersion(dir, bc.Version); err != nil {
+		return nil, err
+	}
+	if err := writeAndroidGradle(dir, bc); err != nil {
 		return nil, err
 	}
 
@@ -358,7 +358,8 @@ func mobileDev(ctx context.Context, opt MobileOptions, res *MobileResult) error 
 	if err != nil {
 		return err
 	}
-	appID, err := androidProjectAppID(res.Project)
+	root := filepath.Dir(res.Project)
+	appID, err := apkAppID(ctx, res.Output, root, true)
 	if err != nil {
 		return err
 	}
@@ -368,7 +369,6 @@ func mobileDev(ctx context.Context, opt MobileOptions, res *MobileResult) error 
 	}
 
 	devURL := opt.DevURL
-	root := filepath.Dir(res.Project)
 	if devURL == "" && fileExists(filepath.Join(root, "shell", "package.json")) {
 		port := devServerPort(filepath.Join(root, "scorix.yaml"))
 		fmt.Printf("==> Starting shell dev server (pnpm dev) on port %d...\n", port)
@@ -385,7 +385,7 @@ func mobileDev(ctx context.Context, opt MobileOptions, res *MobileResult) error 
 			return err
 		}
 	}
-	start := []string{"shell", "am", "start", "-n", appID + "/" + androidActivity}
+	start := []string{"shell", "am", "start", "-n", launcherActivity(dev, appID)}
 	if devURL != "" {
 		// localhost on the device is the device; reverse makes it this machine.
 		port := devURL[strings.LastIndexByte(devURL, ':')+1:]
@@ -423,7 +423,7 @@ func installAPK(dev func(args ...string) *exec.Cmd, apk, appID string) error {
 	if err := install.Run(); err != nil {
 		// Not uninstalled for the user: that wipes app data they may be testing with.
 		if strings.Contains(installOut.String(), "INSTALL_FAILED_UPDATE_INCOMPATIBLE") {
-			return fmt.Errorf("%s is already installed with another signing key (a release build?) - `adb uninstall %s` removes it and its data, then run again", appID, appID)
+			return fmt.Errorf("%s is already installed with another signing key (a release build?) - `adb uninstall %s` removes it and its data, then run again; or set applicationIdSuffix for debug in android/app/build.gradle.kts so both fit on the phone", appID, appID)
 		}
 		return fmt.Errorf("adb install: %w", toolchainError(err, installOut.String()))
 	}
@@ -526,19 +526,129 @@ func androidVersionCode(version string) int {
 	return max(code, 1)
 }
 
-var gradleAppID = regexp.MustCompile(`applicationId\s*=\s*"([^"]+)"`)
-
-// Read back, not derived again: the app may have changed the ID since init.
-func androidProjectAppID(dir string) (string, error) {
-	b, err := os.ReadFile(filepath.Join(dir, "app", "build.gradle.kts"))
+// Read from the APK itself: an app may set its own applicationIdSuffix or ID below the
+// generated scorix.gradle. Without aapt2 it is worked out from scorix.yaml as that file does.
+func apkAppID(ctx context.Context, apk, root string, debug bool) (string, error) {
+	if aapt2 := findAAPT2(); aapt2 != "" {
+		b, err := exec.CommandContext(ctx, aapt2, "dump", "packagename", apk).Output()
+		if id := strings.TrimSpace(string(b)); err == nil && id != "" {
+			return id, nil
+		}
+	}
+	fmt.Println("warning: aapt2 could not read the APK's application ID; using the one scorix.yaml gives")
+	meta, err := loadAppMetadata(root)
 	if err != nil {
 		return "", err
 	}
-	m := gradleAppID.FindSubmatch(b)
-	if m == nil {
-		return "", fmt.Errorf("no applicationId in %s", filepath.Join(dir, "app", "build.gradle.kts"))
+	id, err := androidAppID(meta.App.Identifier)
+	if err != nil {
+		return "", err
 	}
-	return string(m[1]), nil
+	if debug {
+		cfg, err := loadProjectConfig(filepath.Join(root, "scorix.yaml"))
+		if err != nil {
+			return "", err
+		}
+		id += debugIDSuffix(cfg)
+	}
+	return id, nil
+}
+
+// Asked of the device, not assumed: an app may launch from its own Activity rather than ScorixActivity.
+func launcherActivity(dev func(args ...string) *exec.Cmd, appID string) string {
+	c := dev("shell", "cmd", "package", "resolve-activity", "--brief",
+		"-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER", appID)
+	c.Stdout = nil
+	b, _ := c.Output()
+	lines := strings.Fields(string(b))
+	if n := len(lines); n > 0 && strings.HasPrefix(lines[n-1], appID+"/") {
+		return lines[n-1]
+	}
+	return appID + "/" + androidActivity
+}
+
+func findAAPT2() string {
+	sdk, err := findAndroidSDK()
+	if err != nil {
+		return ""
+	}
+	name := "aapt2"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	dir := filepath.Join(sdk, "build-tools")
+	entries, _ := os.ReadDir(dir)
+	var vers []string
+	for _, e := range entries {
+		if fileExists(filepath.Join(dir, e.Name(), name)) {
+			vers = append(vers, e.Name())
+		}
+	}
+	if len(vers) == 0 {
+		return ""
+	}
+	sort.Slice(vers, func(i, j int) bool { return versionLess(vers[i], vers[j]) })
+	return filepath.Join(dir, vers[len(vers)-1], name)
+}
+
+// AndroidConfig is the `android:` block of scorix.yaml, read by `scorix mobile sync`.
+type AndroidConfig struct {
+	// DebugIDSuffix goes on the debug build's application ID so it installs beside the release
+	// one. Unset means ".dev"; "" keeps one ID, for an app whose ID is registered elsewhere (Firebase).
+	DebugIDSuffix *string `yaml:"debug_id_suffix"`
+}
+
+// Dot-led segments only: AGP adds no dot of its own, and anything else makes an invalid ID.
+var idSuffixRe = regexp.MustCompile(`^(\.[A-Za-z][A-Za-z0-9_]*)+$`)
+
+func checkIDSuffix(cfg *ProjectConfig) error {
+	if s := debugIDSuffix(cfg); s != "" && !idSuffixRe.MatchString(s) {
+		return UsageError(fmt.Errorf("android.debug_id_suffix %q must look like \".dev\" (dot-led segments of letters, digits, _), or be \"\" for none", s))
+	}
+	return nil
+}
+
+func debugIDSuffix(cfg *ProjectConfig) string {
+	if cfg != nil && cfg.Android != nil && cfg.Android.DebugIDSuffix != nil {
+		return *cfg.Android.DebugIDSuffix
+	}
+	return ".dev"
+}
+
+// Rewritten on every sync like version.properties, so a template change reaches apps made before it.
+func writeAndroidGradle(dir string, bc *BuildContext) error {
+	appID, err := androidAppID(bc.Identifier)
+	if err != nil {
+		return err
+	}
+	if err := checkIDSuffix(bc.cfg); err != nil {
+		return err
+	}
+	src, err := template.ReadFile(template.MobileGradle)
+	if err != nil {
+		return err
+	}
+	tpl, err := texttemplate.New("scorix.gradle").Parse(src)
+	if err != nil {
+		return err
+	}
+	var out strings.Builder
+	err = tpl.Execute(&out, map[string]any{
+		"AppID":       appID,
+		"Label":       groovyString(bc.ProductName),
+		"Version":     groovyString(bc.Version),
+		"VersionCode": androidVersionCode(bc.Version),
+		"DebugSuffix": groovyString(debugIDSuffix(bc.cfg)),
+	})
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, ".scorix", "scorix.gradle"), []byte(out.String()), 0o644)
+}
+
+// For a single-quoted Groovy string, which a quote or a line break would end; $ is literal there.
+func groovyString(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `'`, `\'`, "\n", `\n`, "\r", `\r`, "\t", `\t`).Replace(s)
 }
 
 func findAndroidSDK() (string, error) {

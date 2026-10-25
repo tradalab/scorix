@@ -1,8 +1,10 @@
 package runner
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -74,17 +76,52 @@ func TestNewestNDK(t *testing.T) {
 	}
 }
 
-func TestAndroidProjectAppID(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, "app"), 0o755); err != nil {
+// Without aapt2 the ID comes from scorix.yaml, with the debug suffix scorix.gradle adds.
+func TestAPKAppIDFallsBackToTheManifest(t *testing.T) {
+	t.Setenv("ANDROID_HOME", t.TempDir())
+	t.Setenv("ANDROID_SDK_ROOT", "")
+	root := t.TempDir()
+	for _, c := range []struct {
+		yaml  string
+		debug bool
+		want  string
+	}{
+		{"app:\n  name: x\n  identifier: com.acme.app\n", false, "com.acme.app"},
+		{"app:\n  name: x\n  identifier: com.acme.app\n", true, "com.acme.app.dev"},
+		{"app:\n  name: x\n  identifier: com.acme.app\nandroid:\n  debug_id_suffix: \"\"\n", true, "com.acme.app"},
+	} {
+		if err := os.WriteFile(filepath.Join(root, "scorix.yaml"), []byte(c.yaml), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := apkAppID(context.Background(), "none.apk", root, c.debug); err != nil || got != c.want {
+			t.Errorf("apkAppID(debug=%v) = %q, %v; want %q", c.debug, got, err, c.want)
+		}
+	}
+}
+
+func TestFindAAPT2PicksNewestBuildTools(t *testing.T) {
+	sdk := t.TempDir()
+	t.Setenv("ANDROID_HOME", sdk)
+	name := "aapt2"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	if got := findAAPT2(); got != "" {
+		t.Fatalf("findAAPT2 with no build-tools = %q", got)
+	}
+	for _, v := range []string{"34.0.0", "36.0.0", "35.0.1"} {
+		if err := os.MkdirAll(filepath.Join(sdk, "build-tools", v), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(sdk, "build-tools", v, name), nil, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(sdk, "build-tools", "37.0.0"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	gradle := "android {\n    defaultConfig {\n        applicationId = \"com.acme.renamed\"\n    }\n}\n"
-	if err := os.WriteFile(filepath.Join(dir, "app", "build.gradle.kts"), []byte(gradle), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := androidProjectAppID(dir); err != nil || got != "com.acme.renamed" {
-		t.Errorf("androidProjectAppID = %q, %v", got, err)
+	if got, want := findAAPT2(), filepath.Join(sdk, "build-tools", "36.0.0", name); got != want {
+		t.Errorf("findAAPT2 = %q, want %q", got, want)
 	}
 }
 
@@ -119,5 +156,17 @@ func TestWriteAndroidVersion(t *testing.T) {
 		if string(got) != c.want {
 			t.Errorf("%s: got %q, want %q", c.version, got, c.want)
 		}
+	}
+}
+
+func TestDebugIDSuffixMustBeDotLed(t *testing.T) {
+	for s, ok := range map[string]bool{".dev": true, ".dev.qa": true, "": true, "dev": false, "-dev": false, ".1x": false} {
+		cfg := &ProjectConfig{Android: &AndroidConfig{DebugIDSuffix: &s}}
+		if err := checkIDSuffix(cfg); (err == nil) != ok {
+			t.Errorf("checkIDSuffix(%q) = %v", s, err)
+		}
+	}
+	if got := groovyString("a\nb'c"); got != `a\nb\'c` {
+		t.Errorf("groovyString = %q", got)
 	}
 }

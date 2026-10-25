@@ -70,8 +70,10 @@ func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateR
 		InEvents:  inEvents,
 		HasEvents: len(outEvents)+len(inEvents) > 0,
 		Shell:     shell,
+		Natives:   pf.Natives,
 	}
 	for _, svc := range pf.Services {
+		gen.HasNativeRoute = gen.HasNativeRoute || svc.Native
 		for _, rpc := range svc.RPCs {
 			gen.HasMCP = gen.HasMCP || rpc.MCP
 			gen.HasCLI = gen.HasCLI || rpc.CLI
@@ -178,7 +180,25 @@ func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateR
 		Force:    opt.Force,
 	})
 
+	writes = append(writes, generatedFile{
+		Path:     filepath.Join(root, "internal", "handler", "modules.go"),
+		Template: mustRead(template.GoModules),
+		Data:     map[string]any{"Modules": enabledBuiltins(cfg)},
+		Go:       true,
+		Force:    true,
+	})
+
+	nativeWrites, err := nativeFiles(root, pf, gen)
+	if err != nil {
+		return err
+	}
+	writes = append(writes, nativeWrites...)
+
 	for _, svc := range pf.Services {
+		// An exposed native service's handler calls the plugin; there is no logic to write.
+		if svc.Native {
+			continue
+		}
 		for _, rpc := range svc.RPCs {
 			writes = append(writes, generatedFile{
 				Path:     filepath.Join(root, "internal", "logic", svc.Package, rpc.FileName),
@@ -268,6 +288,39 @@ func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateR
 	fmt.Printf("==> Proto generation complete! (created: %d, updated: %d, unchanged: %d, skipped: %d)\n",
 		created, updated, unchanged, skipped)
 	return nil
+}
+
+// Once written, these stay in step even after the last @native service goes, so nothing is left
+// calling a deleted type.
+func nativeFiles(root string, pf protoFile, gen protoTemplateData) ([]generatedFile, error) {
+	var out []generatedFile
+	hostPath := filepath.Join(root, "internal", "host", "host.go")
+	if len(pf.Natives) > 0 || fileExists(hostPath) {
+		out = append(out, generatedFile{Path: hostPath, Template: mustRead(template.GoHost), Data: gen, Go: true, Force: true})
+	}
+	ktPath := filepath.Join(root, "android", "app", "src", "scorix", "kotlin", "dev", "scorix", "app", "ScorixPlugins.kt")
+	if !fileExists(filepath.Join(root, "android", "app")) || (len(pf.Natives) == 0 && !fileExists(ktPath)) {
+		return out, nil
+	}
+	appPackage := ""
+	if len(pf.Natives) > 0 {
+		meta, err := loadAppMetadata(root)
+		if err != nil {
+			return nil, err
+		}
+		// The implementations live in the package `mobile init` gave the app, its application ID.
+		if appPackage, err = androidAppID(meta.App.Identifier); err != nil {
+			return nil, err
+		}
+	}
+	kt, err := kotlinNatives(pf, appPackage)
+	if err != nil {
+		return nil, err
+	}
+	if len(pf.Natives) > 0 {
+		warnNativeSetup(root, pf.Natives)
+	}
+	return append(out, generatedFile{Path: ktPath, Template: mustRead(template.AndroidPlugins), Data: kt, Force: true}), nil
 }
 
 func mustRead(path string) string {

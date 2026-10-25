@@ -68,7 +68,9 @@ var (
 	tableHeadRegex = regexp.MustCompile(`(?i)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?` +
 		"(\"[a-zA-Z0-9_]+\"|`[a-zA-Z0-9_]+`|\\[[a-zA-Z0-9_]+\\]|[a-zA-Z0-9_]+)" +
 		`\s*`)
-	columnRegex = regexp.MustCompile(`(?i)^` +
+	// No TEMP: a temporary table is not a model, and the head pattern skips it on purpose.
+	looseTableRegex = regexp.MustCompile(`(?i)\bCREATE\s+TABLE\b`)
+	columnRegex     = regexp.MustCompile(`(?i)^` +
 		"(\"[^\"]+\"|`[^`]+`|\\[[^\\]]+\\]|[a-zA-Z0-9_]+)" +
 		`\s+([a-zA-Z0-9_]+)(?:\([0-9,]+\))?(.*)$`)
 
@@ -203,6 +205,11 @@ func parseSQLSchema(schemaPath string, d dialect.Dialect) ([]sqlTable, error) {
 	raw := stripSQLComments(string(b)) // first: a comma/quote/paren inside a comment used to silently drop columns or tables
 	sanitized := blankStringLiterals(raw)
 	heads := tableHeadRegex.FindAllStringSubmatchIndex(sanitized, -1)
+	// A CREATE TABLE the head pattern cannot read would vanish from the models while --check
+	// stays green.
+	if n := len(looseTableRegex.FindAllStringIndex(sanitized, -1)); n != len(heads) {
+		return nil, fmt.Errorf("schema: %d CREATE TABLE statements but only %d could be read - check the table names (letters, digits, _; quoted or not)", n, len(heads))
+	}
 
 	seen := make(map[string]bool)
 	var tables []sqlTable

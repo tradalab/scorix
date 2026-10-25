@@ -13,11 +13,12 @@ open class ScorixActivity : Activity() {
     /** Name of the Go library in jniLibs, without the lib prefix and .so suffix. */
     protected open val libraryName = "scorixapp"
 
+    /** Plugins besides the generated @native ones; one of the same name replaces the generated one. */
     protected open fun plugins(): List<ScorixPlugin> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        ScorixHost.register(plugins())
+        ScorixHost.register(ScorixHost.generated(applicationContext) + plugins())
         ScorixHost.attach(this, libraryName)
         // Android 16 with target 36 no longer calls onBackPressed.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -59,10 +60,12 @@ open class ScorixActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
+        ScorixHost.pluginLifecycle(this, start = true)
         ScorixHost.lifecycle(this, ScorixNative.FOREGROUND)
     }
 
     override fun onStop() {
+        ScorixHost.pluginLifecycle(this, start = false)
         super.onStop()
         ScorixHost.lifecycle(this, ScorixNative.BACKGROUND)
     }

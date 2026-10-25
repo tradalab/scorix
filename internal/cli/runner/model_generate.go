@@ -34,6 +34,8 @@ type ProjectConfig struct {
 	App     *AppManifest   `yaml:"app"`
 	MCP     *MCPManifest   `yaml:"mcp"`
 	CLI     *CLIManifest   `yaml:"cli"`
+	Android *AndroidConfig `yaml:"android"`
+	Modules map[string]any `yaml:"modules"`
 }
 
 // Read only to warn when the switch and the proto disagree; the app decides.

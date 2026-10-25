@@ -2,9 +2,9 @@
 <!-- No INTERNET: the app is served from Go in-process. Add it only if the app talks to the network. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:label="{{ .Label }}"
+        android:label="${appLabel}"
         android:allowBackup="false"
-        android:theme="@style/AppTheme">
+        android:theme="@style/Theme.Scorix">
         <!-- Recreating the Activity would reload the page and drop every open stream. -->
         <activity
             android:name="dev.scorix.ScorixActivity"

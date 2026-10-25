@@ -99,6 +99,29 @@ object ScorixHost {
         for (p in list) plugins[p.name] = p
     }
 
+    // Made once per process: a recreated Activity must not build a second plugin over a sensor or a channel.
+    private var generated: List<ScorixPlugin>? = null
+
+    internal fun generated(context: Context) = generated ?: generatedPlugins(context).also { generated = it }
+
+    // Same guard as lifecycle, and a throwing plugin must not take the Activity down with it.
+    internal fun pluginLifecycle(activity: Activity, start: Boolean) {
+        if (this.activity !== activity) return
+        for (p in plugins.values) {
+            try {
+                if (start) p.onStart(activity) else p.onStop(activity)
+            } catch (e: Exception) {
+                Log.e(TAG, "plugin ${p.name} ${if (start) "onStart" else "onStop"} failed", e)
+            }
+        }
+    }
+
+    internal fun onMain() = Looper.myLooper() == Looper.getMainLooper()
+
+    internal fun post(fn: () -> Unit) {
+        main.post(fn)
+    }
+
     internal fun reply(id: Long, reply: JSONObject) {
         calls.remove(id)
         ScorixNative.callReply(reply.toString().toByteArray(Charsets.UTF_8))
@@ -108,7 +131,13 @@ object ScorixHost {
     internal fun startForResult(activity: Activity, intent: Intent, result: (Int, Intent?) -> Unit): Int {
         val code = nextRequest++
         results[code] = result
-        activity.startActivityForResult(intent, code)
+        // No app for the intent throws here; the caller rejects, so the callback must not linger.
+        try {
+            activity.startActivityForResult(intent, code)
+        } catch (e: RuntimeException) {
+            results.remove(code)
+            throw e
+        }
         return code
     }
 

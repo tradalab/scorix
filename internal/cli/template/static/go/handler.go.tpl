@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 
 	"github.com/tradalab/scorix/app"
+{{- if .HasNativeRoute }}
+	scorixhost "{{ .Module }}/internal/host"
+{{- end }}
 {{- range .Services }}
-{{- if .RPCs }}
+{{- if and .RPCs (not .Native) }}
 	"{{ $.Module }}/internal/logic/{{ .Package }}"
 {{- end }}
 {{- end }}
@@ -30,10 +33,15 @@ func reg[Req any](a *app.App, name string, call func(context.Context, *Req) (any
 }
 
 func RegisterHandlers(a *app.App, svcCtx *svc.ServiceContext) {
+	registerModules(a)
 {{- range .Services }}
 {{- $svc := . }}
 {{- range .RPCs }}
-{{- if .IsServerStream }}
+{{- if $svc.Native }}
+	reg(a, "{{ .CommandName }}", func(ctx context.Context, r *{{ .RequestGoType }}) (any, error) {
+		return scorixhost.{{ $svc.Name | exported }}.{{ .MethodName }}(ctx, r)
+	})
+{{- else if .IsServerStream }}
 	app.RegisterServerStream(a, "{{ .CommandName }}", func(ctx context.Context, req *{{ .RequestGoType }}, out app.Sink[{{ .ResultGoType }}]) error {
 		return {{ $svc.Package }}.New{{ .LogicName }}(ctx, svcCtx).{{ .MethodName }}(req, out)
 	})

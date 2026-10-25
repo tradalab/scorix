@@ -34,13 +34,14 @@ func parseProto(src string) (protoFile, error) {
 	// Modifiers are captured whatever they say, so a misspelt one is refused below.
 	mcpRe := regexp.MustCompile(`(?m)^[ \t]*//[ \t]*@mcp(?:[ \t]+([^\r\n]*?))?[ \t]*\r?$`)
 	cliRe := regexp.MustCompile(`(?m)^[ \t]*//[ \t]*@cli(?:[ \t]+([^\r\n]*?))?[ \t]*\r?$`)
+	nativeRe := regexp.MustCompile(`(?m)^[ \t]*//[ \t]*@native(?:[ \t]+([^\r\n]*?))?[ \t]*\r?$`)
 
 	// A trailing same-line annotation would be captured as the NEXT rpc's leading
 	// comment. The line anchors above already refuse to read it, so without this
 	// guard it would be dropped in silence; reject it loudly instead.
-	trailingAnno := regexp.MustCompile(`returns\s*\(\s*(?:stream\s+)?[A-Za-z_][A-Za-z0-9_.]*\s*\)[ \t]*;?[ \t]*//[^\n]*@(?:event|broadcast|mcp|cli)(?:[ \t]+(?:in|out|destructive|headless|exec|timeout=\S+|arg=\S+|rest=\S+|secret=\S+))*[ \t]*(?:\r?\n|$)`)
+	trailingAnno := regexp.MustCompile(`returns\s*\(\s*(?:stream\s+)?[A-Za-z_][A-Za-z0-9_.]*\s*\)[ \t]*;?[ \t]*//[^\n]*@(?:event|broadcast|mcp|cli|native)(?:[ \t]+(?:in|out|destructive|headless|exec|timeout=\S+|arg=\S+|rest=\S+|secret=\S+))*[ \t]*(?:\r?\n|$)`)
 	if m := trailingAnno.FindString(src); m != "" {
-		return pf, fmt.Errorf("proto: @event/@broadcast/@mcp/@cli must be on its own comment line above the rpc, not a trailing comment: %q", strings.TrimSpace(m))
+		return pf, fmt.Errorf("proto: @event/@broadcast/@mcp/@cli/@native must be on its own comment line above the rpc, not a trailing comment: %q", strings.TrimSpace(m))
 	}
 
 	// Collect @middleware only from service-header/rpc scopes (below), not a global
@@ -96,6 +97,15 @@ func parseProto(src string) (protoFile, error) {
 		for _, mm := range middlewareRe.FindAllStringSubmatch(commentPrefix, -1) {
 			svc.Middlewares = append(svc.Middlewares, mm[1])
 			addMiddleware(mm[1])
+		}
+		if m := nativeRe.FindStringSubmatch(commentPrefix); m != nil {
+			svc.Native = true
+			for _, mod := range strings.Fields(m[1]) {
+				if mod != "expose" {
+					return protoFile{}, fmt.Errorf("proto: service %s has `@native %s`; the one modifier is `expose`", svc.Name, mod)
+				}
+				svc.NativeExpose = true
+			}
 		}
 
 		for _, r := range rpcWithCommentRe.FindAllStringSubmatch(body, -1) {
@@ -193,6 +203,10 @@ func parseProto(src string) (protoFile, error) {
 					}
 				}
 				rpc.CLI = true
+			}
+			// The plugin is the whole service; an rpc-level @native would read as a half-native service.
+			if nativeRe.MatchString(commentBlock) {
+				return protoFile{}, fmt.Errorf("proto: rpc %s.%s has @native; it goes above the service, which becomes the plugin", svc.Name, rpcName)
 			}
 			rpc.Doc = rpcDoc(commentBlock)
 			svc.RPCs = append(svc.RPCs, rpc)

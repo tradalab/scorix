@@ -123,6 +123,12 @@ func enrichProto(pf *protoFile) (outEvents, inEvents []protoRPC, err error) {
 		commands := svc.RPCs[:0]
 		for j := range svc.RPCs {
 			rpc := svc.RPCs[j]
+			if svc.Native {
+				if err := checkNative(svc, rpc); err != nil {
+					return nil, nil, err
+				}
+				rpc.NativeMethod = lowerCamel(rpc.Name)
+			}
 			// A stream keyword on a one-way event would be silently discarded.
 			if rpc.IsEvent && rpc.Arity != "unary" {
 				return nil, nil, fmt.Errorf("rpc %s.%s is @event/@broadcast and cannot also be a %s; drop the stream keyword or the annotation", svc.Name, rpc.Name, rpc.Arity)
@@ -201,7 +207,38 @@ func enrichProto(pf *protoFile) (outEvents, inEvents []protoRPC, err error) {
 		}
 		svc.RPCs = commands
 	}
+	// Split last, so a native service went through the same naming as any other.
+	services := pf.Services[:0]
+	for _, svc := range pf.Services {
+		if svc.Native {
+			pf.Natives = append(pf.Natives, svc)
+			if !svc.NativeExpose {
+				continue
+			}
+		}
+		services = append(services, svc)
+	}
+	pf.Services = services
 	return outEvents, inEvents, nil
+}
+
+// A plugin call is one JSON request and one reply, and the Kotlin base reserves a few names.
+func checkNative(svc *protoService, rpc protoRPC) error {
+	switch {
+	case rpc.IsEvent:
+		return fmt.Errorf("rpc %s.%s is @event in a @native service; a plugin answers calls and cannot push yet", svc.Name, rpc.Name)
+	case rpc.Arity != "unary":
+		return fmt.Errorf("rpc %s.%s is a %s in a @native service; a plugin call answers once", svc.Name, rpc.Name, rpc.Arity)
+	case rpc.MCP || rpc.CLI:
+		return fmt.Errorf("rpc %s.%s is @mcp or @cli in a @native service; expose a Go service that calls the plugin instead", svc.Name, rpc.Name)
+	case len(rpc.Middlewares) > 0 || len(svc.Middlewares) > 0:
+		return fmt.Errorf("service %s is @native with @middleware; its exposed commands go straight to the plugin, so check in a Go service instead", svc.Name)
+	}
+	switch lowerCamel(rpc.Name) {
+	case "call", "name", "onStart", "onStop":
+		return fmt.Errorf("rpc %s.%s would hide ScorixPlugin.%s in the Kotlin base; rename it", svc.Name, rpc.Name, lowerCamel(rpc.Name))
+	}
+	return nil
 }
 
 // Call after enrichProto: CommandName, EventName and the TS types are assigned

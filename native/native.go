@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/tradalab/scorix/fault"
 	"github.com/tradalab/scorix/internal/nativecall"
 )
 
@@ -29,6 +30,26 @@ func (e *Error) Error() string {
 func IsCode(err error, code string) bool {
 	var ne *Error
 	return errors.As(err, &ne) && ne.Code == code
+}
+
+// Fault turns a Call error into the fault a page receives, with the plugin's code. The
+// *Error stays inside it, so IsCode still answers on the result.
+func Fault(err error) error {
+	// Already a fault: the caller chose its code, and the plugin's must not replace it.
+	if _, ok := errors.AsType[*fault.Error](err); ok {
+		return err
+	}
+	if errors.Is(err, ErrUnavailable) {
+		fe := fault.Wrap(fault.CodeUnavailable, err)
+		fe.Message = "this runs only in the native host"
+		return fe
+	}
+	if ne, ok := errors.AsType[*Error](err); ok {
+		fe := fault.Wrap(ne.Code, err)
+		fe.Message = ne.Message
+		return fe
+	}
+	return err
 }
 
 // args are JSON-encoded, so []byte travels as base64. Canceling ctx also tells

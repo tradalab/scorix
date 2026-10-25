@@ -434,7 +434,8 @@ func DeviceRun(ctx context.Context, opt DeviceOptions) error {
 				return err
 			}
 		}
-		appID, err := androidProjectAppID(filepath.Join(opt.Dir, "android"))
+		// Only a debug APK the CLI built ends in -debug.apk; any other is taken for a release.
+		appID, err := apkAppID(ctx, apk, opt.Dir, strings.HasSuffix(apk, "-debug.apk"))
 		if err != nil {
 			return UsageError(fmt.Errorf("%w - run from the project root, or pass --dir", err))
 		}
@@ -451,7 +452,7 @@ func DeviceRun(ctx context.Context, opt DeviceOptions) error {
 		if err := installAPK(dev, apk, appID); err != nil {
 			return err
 		}
-		return startAndFollow(dev, appID, []string{"shell", "am", "start", "-n", appID + "/" + androidActivity})
+		return startAndFollow(dev, appID, []string{"shell", "am", "start", "-n", launcherActivity(dev, appID)})
 	})
 }
 

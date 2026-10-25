@@ -2,5 +2,5 @@
 <!-- The WebView reports prefers-color-scheme from this theme's isLightTheme, not from the system,
      so a light-only theme keeps a page that follows the system light; values-night has the dark one. -->
 <resources>
-    <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar" />
+    <style name="Theme.Scorix" parent="@android:style/Theme.Material.Light.NoActionBar" />
 </resources>

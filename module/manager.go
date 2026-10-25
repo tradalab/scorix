@@ -34,6 +34,14 @@ func NewManager(cfg *config.Config, ipcCore Core, appCtrl AppController) *Manage
 	}
 }
 
+// Registered reports whether a module of this name is already in.
+func (m *Manager) Registered(name string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	_, ok := m.states[name]
+	return ok
+}
+
 // Register does NOT load the module yet.
 func (m *Manager) Register(mod Module) {
 	m.mu.Lock()

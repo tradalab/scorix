@@ -558,3 +558,26 @@ func colNames(tables []sqlTable) map[string][]string {
 	}
 	return out
 }
+
+func TestParseSQLSchemaRefusesATableItCannotRead(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "schema.sql")
+	ddl := "CREATE TABLE users (id INTEGER PRIMARY KEY);\nCREATE TABLE \"bad-name\" (id INTEGER PRIMARY KEY);\n"
+	if err := os.WriteFile(path, []byte(ddl), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := parseSQLSchema(path, dialect.MustNew("sqlite")); err == nil {
+		t.Fatal("a table the parser could not read was dropped in silence")
+	}
+}
+
+func TestParseSQLSchemaSkipsTemporaryTables(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "schema.sql")
+	ddl := "CREATE TABLE users (id INTEGER PRIMARY KEY);\nCREATE TEMP TABLE scratch (id INTEGER);\n"
+	if err := os.WriteFile(path, []byte(ddl), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tables, err := parseSQLSchema(path, dialect.MustNew("sqlite"))
+	if err != nil || len(tables) != 1 {
+		t.Fatalf("got %d tables, %v; a temporary table is no model and must not fail the parse", len(tables), err)
+	}
+}
