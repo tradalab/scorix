@@ -7,12 +7,13 @@ import (
 	"errors"
 
 	"github.com/tradalab/scorix/fault"
+	"github.com/tradalab/scorix/internal/hostapi"
 	"github.com/tradalab/scorix/native"
 )
 
 // ACTION_VIEW, so a link another app claims (Play Store, maps) opens in that app.
 func openURL(ctx context.Context, url string) error {
-	err := native.Call(ctx, "browser", "open", map[string]string{"url": url}, nil)
+	_, err := hostapi.Browser.Open(ctx, &hostapi.BrowserUrl{Url: url})
 	if errors.Is(err, native.ErrUnavailable) {
 		return fault.New(fault.CodeUnavailable, "no native host to open the url")
 	}

@@ -289,6 +289,40 @@ func TestValidateWarnsWhenMainOutlivesTheLastCLIRpc(t *testing.T) {
 	}
 }
 
+func TestValidateAcceptsAnAppWithoutIPC(t *testing.T) {
+	res, err := validate(t, project(t, "name: probe\n", "", ""))
+	if err != nil || len(res.Findings) != 0 || res.Proto != "" {
+		t.Fatalf("err %v, proto %q, findings %+v", err, res.Proto, res.Findings)
+	}
+}
+
+func TestHasIPC(t *testing.T) {
+	for _, c := range []struct {
+		manifest, proto string
+		want            bool
+	}{
+		{"name: probe\n", "", false},
+		{"name: probe\n", okProto, true},
+		{"name: probe\nproto: idl/app.proto\n", "", true},
+	} {
+		if got := hasIPC(project(t, c.manifest, c.proto, "")); got != c.want {
+			t.Errorf("manifest %q, proto %v: got %v", c.manifest, c.proto != "", got)
+		}
+	}
+}
+
+func TestValidateWarnsWhenMainGoWantsACLIWithoutAProto(t *testing.T) {
+	dir := project(t, "name: probe\n", "", "")
+	main := "package main\n\nfunc main() { _ = handler.CLIWords }\n"
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(main), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err := validate(t, dir)
+	if err != nil || len(res.Findings) != 1 || res.Findings[0].Path != "main.go" {
+		t.Fatalf("err %v, findings %+v", err, res.Findings)
+	}
+}
+
 func TestValidateAcceptsAnAppWithoutTables(t *testing.T) {
 	dir := project(t, "name: probe\nproto: idl/app.proto\n", okProto, "")
 	res, err := validate(t, dir)

@@ -111,13 +111,16 @@ func (r *deviceRegistry) find(key string) *DeviceRecord {
 	return nil
 }
 
+// Only `device use` and `device pair` move an existing default: `-s` picks for one run.
 func (r *deviceRegistry) remember(d DeviceRecord) {
 	if old := r.find(d.ID); old != nil {
 		*old = d
 	} else {
 		r.Devices = append(r.Devices, d)
 	}
-	r.Default = d.ID
+	if r.find(r.Default) == nil {
+		r.Default = d.ID
+	}
 }
 
 type adbDevice struct {
@@ -341,6 +344,7 @@ func devicePair(ctx context.Context, adb adbFunc, opt DeviceOptions, res *Device
 		return err
 	}
 	reg.remember(rec)
+	reg.Default = rec.ID
 	if err := reg.save(); err != nil {
 		return err
 	}
@@ -514,7 +518,7 @@ func DeviceForget(ctx context.Context, opt DeviceOptions) error {
 }
 
 // resolveDevice picks the target of `mobile dev`: the one asked for, the only one connected, or
-// the remembered default, reconnecting a Wi-Fi phone whose port has moved. It remembers the pick.
+// the remembered default, reconnecting a Wi-Fi phone whose port has moved.
 func resolveDevice(ctx context.Context, adb adbFunc, want string) (DeviceRecord, error) {
 	reg, err := loadDevices()
 	if err != nil {

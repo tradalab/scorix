@@ -2,7 +2,9 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -44,6 +46,21 @@ func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateR
 	}
 
 	protoPath := resolveProtoPath(root, opt.Proto, cfg)
+	if opt.Proto == DefaultProtoPath && !hasIPC(root) {
+		// Modules still go over IPC, but a hand-wired shell has no lib/scorix for the clients to import.
+		var writes []generatedFile
+		lib := filepath.Join(root, "shell", "lib", "scorix")
+		if fileExists(lib) || fileExists(lib+".ts") {
+			f, err := moduleClientFile(root, cfg, opt.Check)
+			if err != nil {
+				return err
+			} else if f != nil {
+				writes = append(writes, *f)
+			}
+		}
+		fmt.Println("==> No proto: only the module clients apply")
+		return emitGenerated(ctx, root, opt.Check, res, writes)
+	}
 
 	pf, err := readProto(protoPath)
 	if err != nil {
@@ -188,6 +205,12 @@ func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateR
 		Force:    true,
 	})
 
+	if f, err := moduleClientFile(root, cfg, opt.Check); err != nil {
+		return err
+	} else if f != nil {
+		writes = append(writes, *f)
+	}
+
 	nativeWrites, err := nativeFiles(root, pf, gen)
 	if err != nil {
 		return err
@@ -233,7 +256,10 @@ func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateR
 	} else {
 		fmt.Printf("==> Generating Scorix code from %s\n", protoPath)
 	}
+	return emitGenerated(ctx, root, opt.Check, res, writes)
+}
 
+func emitGenerated(ctx context.Context, root string, check bool, res *GenerateResult, writes []generatedFile) error {
 	// Pass 1: render all; abort before any write if one fails.
 	staged := make([]stagedFile, 0, len(writes))
 	for _, f := range writes {
@@ -249,7 +275,7 @@ func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateR
 		staged = append(staged, s)
 	}
 
-	if opt.Check {
+	if check {
 		var drifted []DriftItem
 		for _, s := range staged {
 			reason, err := driftOf(s)
@@ -329,4 +355,14 @@ func mustRead(path string) string {
 		panic(err)
 	}
 	return s
+}
+
+// The same test as validate's: no proto key and no default proto is an app without services.
+func hasIPC(root string) bool {
+	cfg, err := loadProjectConfig(filepath.Join(root, "scorix.yaml"))
+	if err != nil || cfg.Proto != "" {
+		return true
+	}
+	_, err = os.Stat(filepath.Join(root, DefaultProtoPath))
+	return !errors.Is(err, fs.ErrNotExist)
 }

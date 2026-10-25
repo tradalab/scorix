@@ -76,7 +76,12 @@ func validateProject(opt ValidateOptions, res *ValidateResult) error {
 		protoRel = DefaultProtoPath
 	}
 	res.Proto = protoRel
-	if src, err := os.ReadFile(filepath.Join(root, protoRel)); err != nil {
+	if src, err := os.ReadFile(filepath.Join(root, protoRel)); cfg.Proto == "" && errors.Is(err, fs.ErrNotExist) {
+		// An app without IPC, not a missing file; main.go may still expect a CLI or MCP.
+		res.Proto = ""
+		validateMCP(root, protoRel, cfg, protoFile{}, add)
+		validateCLI(root, protoRel, cfg, protoFile{}, add)
+	} else if err != nil {
 		add("error", "proto", protoRel, err.Error(), "scorix.yaml proto: names this file")
 	} else if pf, err := parseProto(string(src)); err != nil {
 		add("error", "proto", protoRel, err.Error(), "")

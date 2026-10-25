@@ -5,8 +5,6 @@ import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.security.keystore.StrongBoxUnavailableException
-import android.util.Base64
-import org.json.JSONObject
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -17,34 +15,26 @@ import javax.crypto.spec.GCMParameterSpec
  * The key needs no user auth and survives new fingerprints: the app gates access with its
  * own prompt, and a key that dies on an enrollment change would take every secret with it.
  */
-internal class KeystorePlugin : ScorixPlugin {
-    override val name = "keystore"
+internal class KeystorePlugin : KeystorePluginBase() {
+    override fun seal(req: KeystoreData, reply: Reply<Sealed>) {
+        val cipher = Cipher.getInstance(TRANSFORM)
+        cipher.init(Cipher.ENCRYPT_MODE, key("scorix." + req.alias, reply.call))
+        reply.resolve(Sealed(data = cipher.iv + cipher.doFinal(req.data)))
+    }
 
-    override fun call(method: String, args: JSONObject, call: PluginCall) {
-        val alias = "scorix." + args.getString("alias")
-        when (method) {
-            "seal" -> {
-                val cipher = Cipher.getInstance(TRANSFORM)
-                cipher.init(Cipher.ENCRYPT_MODE, key(alias, call))
-                val sealed = cipher.iv + cipher.doFinal(decode(args.getString("data")))
-                call.resolve(JSONObject().put("data", encode(sealed)))
-            }
-            "open" -> {
-                val sealed = decode(args.getString("data"))
-                val ks = keystore()
-                val k = ks.getKey(alias, null) as? SecretKey
-                    ?: return call.reject("not_found", "no Keystore key $alias")
-                val cipher = Cipher.getInstance(TRANSFORM)
-                cipher.init(Cipher.DECRYPT_MODE, k, GCMParameterSpec(128, sealed, 0, IV_LEN))
-                val plain = cipher.doFinal(sealed, IV_LEN, sealed.size - IV_LEN)
-                call.resolve(JSONObject().put("data", encode(plain)))
-            }
-            "delete" -> {
-                keystore().deleteEntry(alias)
-                call.resolve()
-            }
-            else -> call.reject("no_method", "keystore has no method $method")
-        }
+    override fun open(req: KeystoreData, reply: Reply<Sealed>) {
+        val alias = "scorix." + req.alias
+        val sealed = req.data
+        val k = keystore().getKey(alias, null) as? SecretKey
+            ?: return reply.reject("not_found", "no Keystore key $alias")
+        val cipher = Cipher.getInstance(TRANSFORM)
+        cipher.init(Cipher.DECRYPT_MODE, k, GCMParameterSpec(128, sealed, 0, IV_LEN))
+        reply.resolve(Sealed(data = cipher.doFinal(sealed, IV_LEN, sealed.size - IV_LEN)))
+    }
+
+    override fun delete(req: KeystoreAlias, reply: Reply<Empty>) {
+        keystore().deleteEntry("scorix." + req.alias)
+        reply.resolve(Empty())
     }
 
     private fun keystore() = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -77,7 +67,3 @@ internal class KeystorePlugin : ScorixPlugin {
         const val IV_LEN = 12
     }
 }
-
-internal fun encode(b: ByteArray): String = Base64.encodeToString(b, Base64.NO_WRAP)
-
-internal fun decode(s: String): ByteArray = Base64.decode(s, Base64.DEFAULT)

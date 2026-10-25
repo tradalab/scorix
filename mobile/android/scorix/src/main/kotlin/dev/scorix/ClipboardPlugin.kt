@@ -8,26 +8,20 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PersistableBundle
-import org.json.JSONObject
 
-internal class ClipboardPlugin : ScorixPlugin {
-    override val name = "clipboard"
+internal class ClipboardPlugin : ClipboardPluginBase() {
     private val main = Handler(Looper.getMainLooper())
 
-    override fun call(method: String, args: JSONObject, call: PluginCall) {
-        val a = call.activity ?: return call.reject("no_activity", "the clipboard is only readable from the foreground")
+    override fun read(req: Empty, reply: Reply<PlainText>) {
+        val a = reply.call.activity ?: return reply.reject("no_activity", "the clipboard is only readable from the foreground")
         val cm = a.getSystemService(ClipboardManager::class.java)
-        when (method) {
-            "read" -> {
-                val text = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(a)?.toString() ?: ""
-                call.resolve(JSONObject().put("text", text))
-            }
-            "write" -> {
-                write(a, cm, args.getString("text"), args.optBoolean("sensitive"), args.optLong("clearAfterMs"))
-                call.resolve()
-            }
-            else -> call.reject("no_method", "clipboard has no method $method")
-        }
+        reply.resolve(PlainText(text = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(a)?.toString() ?: ""))
+    }
+
+    override fun write(req: ClipWrite, reply: Reply<Empty>) {
+        val a = reply.call.activity ?: return reply.reject("no_activity", "the clipboard is only readable from the foreground")
+        write(a, a.getSystemService(ClipboardManager::class.java), req.text, req.sensitive, req.clearAfterMs)
+        reply.resolve(Empty())
     }
 
     private fun write(c: Context, cm: ClipboardManager, text: String, sensitive: Boolean, clearAfterMs: Long) {

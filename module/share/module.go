@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/tradalab/scorix/fault"
+	"github.com/tradalab/scorix/internal/hostapi"
 	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/module"
 	"github.com/tradalab/scorix/native"
@@ -43,7 +44,7 @@ func (m *Module) Share(ctx context.Context, r Request) (string, error) {
 	if r.Text == "" && r.URL == "" {
 		return "", fault.New("invalid_request", "nothing to share: text and url are both empty")
 	}
-	if err := native.Call(ctx, "share", "share", r, nil); err != nil {
+	if _, err := hostapi.Share.Share(ctx, &hostapi.ShareContent{Title: r.Title, Text: r.Text, Url: r.URL, DialogTitle: r.DialogTitle}); err != nil {
 		return "", mapErr(err)
 	}
 	return "ok", nil

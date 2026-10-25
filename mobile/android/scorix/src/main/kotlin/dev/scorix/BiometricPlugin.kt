@@ -6,23 +6,17 @@ import android.hardware.biometrics.BiometricManager
 import android.hardware.biometrics.BiometricPrompt
 import android.os.Build
 import android.os.CancellationSignal
-import org.json.JSONObject
 
 /** Platform APIs only: androidx.biometric needs a FragmentActivity, which the host is not. */
-internal class BiometricPlugin : ScorixPlugin {
-    override val name = "biometric"
+internal class BiometricPlugin : BiometricPluginBase() {
+    override fun status(req: Empty, reply: Reply<BiometricStatus>) {
+        val a = reply.call.activity ?: return reply.reject("no_activity", "biometric needs an Activity on screen")
+        reply.resolve(BiometricStatus(biometric = hasBiometric(a), deviceCredential = keyguard(a).isDeviceSecure))
+    }
 
-    override fun call(method: String, args: JSONObject, call: PluginCall) {
-        val a = call.activity ?: return call.reject("no_activity", "biometric needs an Activity on screen")
-        when (method) {
-            "status" -> call.resolve(
-                JSONObject()
-                    .put("biometric", hasBiometric(a))
-                    .put("deviceCredential", keyguard(a).isDeviceSecure),
-            )
-            "authenticate" -> authenticate(a, args, call)
-            else -> call.reject("no_method", "biometric has no method $method")
-        }
+    override fun authenticate(req: AuthenticateRequest, reply: Reply<Empty>) {
+        val a = reply.call.activity ?: return reply.reject("no_activity", "biometric needs an Activity on screen")
+        authenticate(a, req, reply.call)
     }
 
     private fun keyguard(c: Context) = c.getSystemService(KeyguardManager::class.java)
@@ -37,10 +31,10 @@ internal class BiometricPlugin : ScorixPlugin {
         else -> false
     }
 
-    private fun authenticate(a: android.app.Activity, args: JSONObject, call: PluginCall) {
-        val title = args.optString("title").ifEmpty { a.title?.toString() ?: "" }
-        val subtitle = args.optString("subtitle")
-        val allowCredential = args.optBoolean("allowDeviceCredential", true)
+    private fun authenticate(a: android.app.Activity, req: AuthenticateRequest, call: PluginCall) {
+        val title = req.title.ifEmpty { a.title?.toString() ?: "" }
+        val subtitle = req.subtitle
+        val allowCredential = req.allowDeviceCredential
         val bio = hasBiometric(a)
         val credential = allowCredential && keyguard(a).isDeviceSecure
 
@@ -72,7 +66,7 @@ internal class BiometricPlugin : ScorixPlugin {
         val cancel = CancellationSignal()
         // The prompt refuses to build without a way out when the PIN is not one.
         if (!credential) {
-            b.setNegativeButton(args.optString("cancelLabel").ifEmpty { a.getString(android.R.string.cancel) }, a.mainExecutor) { _, _ ->
+            b.setNegativeButton(req.cancelLabel.ifEmpty { a.getString(android.R.string.cancel) }, a.mainExecutor) { _, _ ->
                 call.reject("canceled", "the user canceled")
             }
         }

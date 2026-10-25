@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/tradalab/scorix/fault"
+	"github.com/tradalab/scorix/internal/hostapi"
 	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/module"
 	"github.com/tradalab/scorix/native"
@@ -44,19 +45,15 @@ func (m *Module) OnUnload() error { return nil }
 // ScanImage covers what the camera cannot: a code already on this phone's own screen.
 // JS: scorix.invoke("mod:scanner:ScanImage") -> "otpauth://totp/..."
 func (m *Module) ScanImage(ctx context.Context, _ struct{}) (string, error) {
-	return m.call(ctx, "scanImage")
+	return m.text(hostapi.Scanner.ScanImage(ctx, &hostapi.Empty{}))
 }
 
 // JS: scorix.invoke("mod:scanner:ScanQR") -> "otpauth://totp/..."
 func (m *Module) ScanQR(ctx context.Context, _ struct{}) (string, error) {
-	return m.call(ctx, "scanQR")
+	return m.text(hostapi.Scanner.ScanQr(ctx, &hostapi.Empty{}))
 }
 
-func (m *Module) call(ctx context.Context, method string) (string, error) {
-	var out struct {
-		Text string `json:"text"`
-	}
-	err := native.Call(ctx, "scanner", method, nil, &out)
+func (m *Module) text(out *hostapi.PlainText, err error) (string, error) {
 	switch {
 	case err == nil:
 		return out.Text, nil

@@ -9,15 +9,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/tradalab/scorix/native"
+	"github.com/tradalab/scorix/internal/hostapi"
 )
 
 // Android has no app-writable keychain, so the master key is stored sealed by a Keystore AES key.
 var errKeyNotFound = errors.New("secrets: no master key yet")
-
-type sealed struct {
-	Data []byte `json:"data"`
-}
 
 func keyPath(service string) (string, error) {
 	dir, err := os.UserConfigDir()
@@ -39,16 +35,16 @@ func keyGet(service string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var out sealed
-	if err := native.Call(context.Background(), "keystore", "open", map[string]any{"alias": service, "data": blob}, &out); err != nil {
+	out, err := hostapi.Keystore.Open(context.Background(), &hostapi.KeystoreData{Alias: service, Data: blob})
+	if err != nil {
 		return "", err
 	}
 	return string(out.Data), nil
 }
 
 func keySet(service, value string) error {
-	var out sealed
-	if err := native.Call(context.Background(), "keystore", "seal", map[string]any{"alias": service, "data": []byte(value)}, &out); err != nil {
+	out, err := hostapi.Keystore.Seal(context.Background(), &hostapi.KeystoreData{Alias: service, Data: []byte(value)})
+	if err != nil {
 		return err
 	}
 	p, err := keyPath(service)

@@ -18,20 +18,10 @@ import com.google.zxing.RGBLuminanceSource
 import com.google.zxing.common.GlobalHistogramBinarizer
 import com.google.zxing.common.HybridBinarizer
 import com.google.zxing.qrcode.QRCodeReader
-import org.json.JSONObject
 
-internal class ScannerPlugin : ScorixPlugin {
-    override val name = "scanner"
-
-    override fun call(method: String, args: JSONObject, call: PluginCall) {
-        when (method) {
-            "scanQR" -> scanCamera(call)
-            "scanImage" -> scanImage(call)
-            else -> call.reject("no_method", "scanner has no method $method")
-        }
-    }
-
-    private fun scanCamera(call: PluginCall) {
+internal class ScannerPlugin : ScannerPluginBase() {
+    override fun scanQr(req: Empty, reply: Reply<PlainText>) {
+        val call = reply.call
         val a = call.activity ?: return call.reject("no_activity", "scanning needs an Activity on screen")
         val declared = a.packageManager.getPackageInfo(a.packageName, PackageManager.GET_PERMISSIONS)
             .requestedPermissions?.contains(Manifest.permission.CAMERA) == true
@@ -43,7 +33,7 @@ internal class ScannerPlugin : ScorixPlugin {
         }
         call.startForResult(Intent(a, ScanActivity::class.java)) { code, data ->
             when (code) {
-                Activity.RESULT_OK -> call.resolve(JSONObject().put("text", data?.getStringExtra(ScanActivity.EXTRA_TEXT) ?: ""))
+                Activity.RESULT_OK -> reply.resolve(PlainText(text = data?.getStringExtra(ScanActivity.EXTRA_TEXT) ?: ""))
                 ScanActivity.RESULT_DENIED -> call.reject("denied", "the user did not allow the camera")
                 ScanActivity.RESULT_FAILED -> call.reject("failed", "the camera could not be opened")
                 else -> call.reject("canceled", "the user canceled")
@@ -53,7 +43,8 @@ internal class ScannerPlugin : ScorixPlugin {
 
     // A QR already on this phone cannot be pointed at its own camera. The photo picker needs
     // no storage permission; before Android 13 the generic image picker stands in.
-    private fun scanImage(call: PluginCall) {
+    override fun scanImage(req: Empty, reply: Reply<PlainText>) {
+        val call = reply.call
         val pick = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             Intent(MediaStore.ACTION_PICK_IMAGES)
         } else {
@@ -74,7 +65,7 @@ internal class ScannerPlugin : ScorixPlugin {
                 }
                 main.post {
                     if (text == null) call.reject("not_found", "no QR code in that image")
-                    else call.resolve(JSONObject().put("text", text))
+                    else reply.resolve(PlainText(text = text))
                 }
             }.start()
         }

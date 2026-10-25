@@ -363,3 +363,10 @@ func TestHasTables(t *testing.T) {
 		}
 	}
 }
+
+func TestBumpNoteWithoutAWorkflow(t *testing.T) {
+	note := statusNote("v0.29.0", []BumpPin{{File: "go.mod", Kind: "module"}}, &BumpResult{})
+	if !strings.Contains(note, "Ghim `v0.29.0` ở `go.mod` - bump") {
+		t.Errorf("note:\n%s", note)
+	}
+}

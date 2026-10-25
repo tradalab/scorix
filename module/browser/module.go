@@ -3,6 +3,7 @@ package browser
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	neturl "net/url"
 	"os"
@@ -49,23 +50,18 @@ type OpenUrlRequest struct {
 	URL string `json:"url"`
 }
 
-// JS: scorix.invoke("mod:browser:OpenUrl", { url: "https://example.com" })
-func (m *BrowserModule) OpenUrl(ctx context.Context, req interface{}) (interface{}, error) {
-	// Accept both a bare string and {url: "..."}.
-	var url string
-	switch v := req.(type) {
-	case string:
-		url = v
-	case map[string]interface{}:
-		if mappedUrl, ok := v["url"].(string); ok {
-			url = mappedUrl
-		} else {
-			return nil, fmt.Errorf("missing 'url' key in request payload")
-		}
-	default:
-		return nil, fmt.Errorf("invalid payload format, expected string or {url: string}")
+// Pages may also send the url as a bare string.
+func (r *OpenUrlRequest) UnmarshalJSON(b []byte) error {
+	if err := json.Unmarshal(b, &r.URL); err == nil {
+		return nil
 	}
+	type plain OpenUrlRequest
+	return json.Unmarshal(b, (*plain)(r))
+}
 
+// JS: scorix.invoke("mod:browser:OpenUrl", { url: "https://example.com" })
+func (m *BrowserModule) OpenUrl(ctx context.Context, req OpenUrlRequest) (interface{}, error) {
+	url := req.URL
 	// Validate before shelling out.
 	if url == "" {
 		return nil, fmt.Errorf("url is empty")

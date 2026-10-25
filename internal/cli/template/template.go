@@ -21,13 +21,18 @@ const (
 	GoSchemaGen  = "static/go/schema_gen.go.tpl"
 	GoHost       = "static/go/host.go.tpl"
 	GoModules    = "static/go/modules.go.tpl"
+	GoHostAPI    = "static/go/hostapi.go.tpl"
 
 	ShellTypes       = "static/codegen/shell/types.ts"
 	ShellAPI         = "static/codegen/shell/api.ts"
 	ShellPage        = "static/codegen/shell/page.tsx"
 	ShellHooksEvents = "static/codegen/shell/hooks_events.ts"
+	ShellModules     = "static/codegen/shell/modules.ts"
 	DocsIPCSurface   = "static/codegen/docs/ipc-surface.md"
 	AndroidPlugins   = "static/codegen/android/plugins.kt"
+
+	// One fragment per module package, written by `go generate ./internal/modulets`.
+	ShellModuleDir = "static/codegen/shell/modules"
 
 	// Rewritten into android/.scorix by every `scorix mobile sync`.
 	MobileGradle = "static/mobile/gen/scorix.gradle"

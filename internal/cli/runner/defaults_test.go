@@ -12,9 +12,9 @@ import (
 // idl/schema.sql), which a caller that is not cobra never sees. scorix mcp
 // passed the zero value and generate model read the project root as a file.
 func TestZeroValueOptionsUseTheSamePathsAsTheFlags(t *testing.T) {
-	// A manifest that names neither path, so the default is the only source.
+	// proto: keeps the app on IPC, so the missing default file is still an error.
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "scorix.yaml"), []byte("name: probe\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "scorix.yaml"), []byte("name: probe\nproto: idl/app.proto\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

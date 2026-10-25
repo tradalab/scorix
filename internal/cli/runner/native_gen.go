@@ -24,6 +24,10 @@ type ktFile struct {
 	Messages   []ktMessage
 	Base64     bool
 	Arrays     bool
+
+	// Host is the library's own bases: package dev.scorix, internal, no registry.
+	Host bool
+	Vis  string
 }
 
 type ktPlugin struct {
@@ -208,17 +212,12 @@ func ktIdent(s string) string {
 	return s
 }
 
-// The host's own plugins, which an app plugin of the same name replaces (ScorixHost.register).
-var hostPlugins = map[string]bool{
-	"keystore": true, "biometric": true, "clipboard": true, "dialog": true,
-	"scanner": true, "browser": true, "share": true, "bluetooth": true,
-}
-
 // Warnings, not errors: replacing a built-in plugin is allowed (auth/app does it), and an
 // app made before scorix.gradle builds without the plugins until its gradle file applies it.
 func warnNativeSetup(root string, natives []protoService) {
+	host := hostPlugins()
 	for _, svc := range natives {
-		if hostPlugins[svc.Package] {
+		if host[svc.Package] {
 			fmt.Printf("warning: @native service %s replaces the host's own %q plugin; the scorix module of that name now reaches yours\n", svc.Name, svc.Package)
 		}
 	}

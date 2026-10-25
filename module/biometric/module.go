@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/tradalab/scorix/fault"
+	"github.com/tradalab/scorix/internal/hostapi"
 	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/module"
 	"github.com/tradalab/scorix/native"
@@ -48,11 +49,11 @@ type Status struct {
 
 // JS: scorix.invoke("mod:biometric:Status") -> {biometric, deviceCredential}
 func (m *Module) Status(ctx context.Context, _ struct{}) (*Status, error) {
-	var s Status
-	if err := native.Call(ctx, "biometric", "status", nil, &s); err != nil {
+	s, err := hostapi.Biometric.Status(ctx, &hostapi.Empty{})
+	if err != nil {
 		return nil, mapErr(err)
 	}
-	return &s, nil
+	return &Status{Biometric: s.Biometric, DeviceCredential: s.DeviceCredential}, nil
 }
 
 type Prompt struct {
@@ -66,7 +67,11 @@ type Prompt struct {
 // Fault codes: canceled, lockout, unavailable, failed.
 // JS: scorix.invoke("mod:biometric:Authenticate", { title: "Unlock" })
 func (m *Module) Authenticate(ctx context.Context, p Prompt) (string, error) {
-	if err := native.Call(ctx, "biometric", "authenticate", p, nil); err != nil {
+	req := &hostapi.AuthenticateRequest{
+		Title: p.Title, Subtitle: p.Subtitle, CancelLabel: p.CancelLabel,
+		AllowDeviceCredential: p.AllowDeviceCredential == nil || *p.AllowDeviceCredential,
+	}
+	if _, err := hostapi.Biometric.Authenticate(ctx, req); err != nil {
 		return "", mapErr(err)
 	}
 	return "ok", nil

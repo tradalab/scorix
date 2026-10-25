@@ -338,3 +338,19 @@ func TestForgetDisconnectsAnMDNSConnectedDevice(t *testing.T) {
 		t.Fatalf("err %v, calls %v", err, adb.calls)
 	}
 }
+
+func TestResolveWithSerialKeepsTheDefault(t *testing.T) {
+	tempDevices(t)
+	reg := &deviceRegistry{Devices: []DeviceRecord{{ID: "A1", Name: "Pixel 8", Serial: "A1"}}, Default: "A1"}
+	if err := reg.save(); err != nil {
+		t.Fatal(err)
+	}
+	k, v := props("B2", "B2", "SM-G991B", "arm64-v8a")
+	adb := &fakeADB{replies: map[string]any{"devices": "List of devices attached\nA1\tdevice\nB2\tdevice\n", k: v}}
+	if rec, err := resolveDevice(context.Background(), adb.run, "B2"); err != nil || rec.ID != "B2" {
+		t.Fatalf("got %+v %v", rec, err)
+	}
+	if reg, _ := loadDevices(); reg.Default != "A1" || len(reg.Devices) != 2 {
+		t.Fatalf("after -s B2: %+v", reg)
+	}
+}

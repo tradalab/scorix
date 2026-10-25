@@ -451,7 +451,7 @@ func errText(err error) string {
 }
 
 func statusNote(version string, pins []BumpPin, res *BumpResult) string {
-	files := []string{}
+	files := []string{"`go.mod`"}
 	seen := map[string]bool{}
 	for _, p := range pins {
 		if p.Kind == "workflow" || p.Kind == "install" {
@@ -461,8 +461,8 @@ func statusNote(version string, pins []BumpPin, res *BumpResult) string {
 			}
 		}
 	}
-	sort.Strings(files)
-	return fmt.Sprintf("## scorix\n\nGhim `%s` ở `go.mod`, %s - bump `<hash>` (<YYYY-MM-DD>).\n"+
+	sort.Strings(files[1:])
+	return fmt.Sprintf("## scorix\n\nGhim `%s` ở %s - bump `<hash>` (<YYYY-MM-DD>).\n"+
 		"Nghiệm: version CLI khớp · validate · generate --check 0 drift · lint · test · build ba GOOS.\n"+
 		"Luật nâng: RELEASE.md §C của scorix.",
 		version, strings.Join(files, ", "))

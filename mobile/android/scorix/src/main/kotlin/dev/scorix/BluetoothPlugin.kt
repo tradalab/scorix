@@ -22,7 +22,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
-import org.json.JSONObject
 import java.util.UUID
 
 /**
@@ -30,46 +29,43 @@ import java.util.UUID
  * bonded devices. The app declares BLUETOOTH_CONNECT itself, as with CAMERA.
  */
 @SuppressLint("MissingPermission") // checked by needConnect before any GATT call
-internal class BluetoothPlugin : ScorixPlugin {
-    override val name = "bluetooth"
-
+internal class BluetoothPlugin : BluetoothPluginBase() {
     private val main = Handler(Looper.getMainLooper())
     private val links = HashMap<String, Link>()
     private val sockets = HashMap<String, Classic>()
     // RFCOMM sockets block, so exchanges run off the main thread, one at a time per socket.
     private val io = java.util.concurrent.Executors.newCachedThreadPool()
 
-    override fun call(method: String, args: JSONObject, call: PluginCall) {
-        when (method) {
-            "associate" -> associate(args, call)
-            "connect" -> needConnect(call) { connect(args.getString("address"), call) }
-            "read" -> needConnect(call) { op(args, call) { g, c -> readOf(g, c) } }
-            "write" -> needConnect(call) {
-                val value = android.util.Base64.decode(args.getString("value"), android.util.Base64.NO_WRAP)
-                op(args, call) { g, c -> writeOf(g, c, value) }
-            }
-            "bonded" -> needConnect(call) { bonded(call) }
-            "exchange" -> needConnect(call) { exchange(args, call) }
-            "hangup" -> {
-                synchronized(sockets) { sockets.remove(args.getString("address")) }?.close()
-                call.resolve()
-            }
-            "observe" -> observe(args.getString("address"), args.getBoolean("on"), call)
-            "disconnect" -> {
-                links.remove(args.getString("address"))?.gatt?.close()
-                call.resolve()
-            }
-            else -> call.reject("no_method", "bluetooth has no method $method")
-        }
+    override fun connect(req: BtAddress, reply: Reply<Empty>) = needConnect(reply.call) { connect(req.address, reply.call) }
+
+    override fun read(req: BtCharacteristic, reply: Reply<BtValue>) =
+        needConnect(reply.call) { op(req.address, req.service, req.characteristic, reply.call) { g, c -> readOf(g, c) } }
+
+    override fun write(req: BtWrite, reply: Reply<Empty>) =
+        needConnect(reply.call) { op(req.address, req.service, req.characteristic, reply.call) { g, c -> writeOf(g, c, req.value) } }
+
+    override fun bonded(req: Empty, reply: Reply<BtDevices>) = needConnect(reply.call) { bonded(reply) }
+
+    override fun exchange(req: BtLine, reply: Reply<BtLine>) = needConnect(reply.call) { exchangeLine(req, reply) }
+
+    override fun hangup(req: BtAddress, reply: Reply<Empty>) {
+        synchronized(sockets) { sockets.remove(req.address) }?.close()
+        reply.resolve(Empty())
     }
 
-    private fun associate(args: JSONObject, call: PluginCall) {
+    override fun disconnect(req: BtAddress, reply: Reply<Empty>) {
+        links.remove(req.address)?.gatt?.close()
+        reply.resolve(Empty())
+    }
+
+    override fun associate(req: BtService, reply: Reply<BtDevice>) {
+        val call = reply.call
         val a = call.activity ?: return call.reject("no_activity", "pairing needs an Activity on screen")
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             return call.reject("unavailable", "companion device pairing needs Android 8")
         }
         val filter = BluetoothLeDeviceFilter.Builder()
-            .setScanFilter(ScanFilter.Builder().setServiceUuid(ParcelUuid.fromString(args.getString("service"))).build())
+            .setScanFilter(ScanFilter.Builder().setServiceUuid(ParcelUuid.fromString(req.service)).build())
             .build()
         val request = AssociationRequest.Builder().addDeviceFilter(filter).setSingleDevice(false).build()
         val cdm = a.getSystemService(CompanionDeviceManager::class.java)
@@ -79,7 +75,7 @@ internal class BluetoothPlugin : ScorixPlugin {
                     call.reject("canceled", "no device was chosen")
                 } else {
                     deviceOf(data)?.let {
-                        call.resolve(JSONObject().put("address", it.address).put("name", it.name ?: ""))
+                        reply.resolve(BtDevice(address = it.address, name = it.name ?: ""))
                     } ?: call.reject("failed", "the chooser returned no device")
                 }
             }
@@ -98,19 +94,19 @@ internal class BluetoothPlugin : ScorixPlugin {
 
     // The app's CompanionDeviceService hears when the device comes in range: for a computer that
     // advertises only while it asks, that is the ask. The app declares the service and permission.
-    private fun observe(address: String, on: Boolean, call: PluginCall) {
+    override fun observe(req: BtObserve, reply: Reply<Empty>) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            return call.reject("unavailable", "presence needs Android 12")
+            return reply.reject("unavailable", "presence needs Android 12")
         }
-        val c = ScorixHost.appContext ?: return call.reject("unavailable", "no application context")
+        val c = ScorixHost.appContext ?: return reply.reject("unavailable", "no application context")
         val cdm = c.getSystemService(CompanionDeviceManager::class.java)
         try {
             @Suppress("DEPRECATION")
-            if (on) cdm.startObservingDevicePresence(address) else cdm.stopObservingDevicePresence(address)
+            if (req.on) cdm.startObservingDevicePresence(req.address) else cdm.stopObservingDevicePresence(req.address)
         } catch (e: Exception) {
-            return call.reject("failed", e.message ?: "presence refused")
+            return reply.reject("failed", e.message ?: "presence refused")
         }
-        call.resolve()
+        reply.resolve(Empty())
     }
 
     private fun adapterOf(call: PluginCall): android.bluetooth.BluetoothAdapter? {
@@ -121,13 +117,9 @@ internal class BluetoothPlugin : ScorixPlugin {
         return a
     }
 
-    private fun bonded(call: PluginCall) {
-        val a = adapterOf(call) ?: return
-        val list = org.json.JSONArray()
-        for (d in a.bondedDevices) {
-            list.put(JSONObject().put("address", d.address).put("name", d.name ?: ""))
-        }
-        call.resolve(JSONObject().put("devices", list))
+    private fun bonded(reply: Reply<BtDevices>) {
+        val a = adapterOf(reply.call) ?: return
+        reply.resolve(BtDevices(devices = a.bondedDevices.map { BtDevice(address = it.address, name = it.name ?: "") }))
     }
 
     /** A bonded device's RFCOMM service, kept open between exchanges. */
@@ -141,11 +133,12 @@ internal class BluetoothPlugin : ScorixPlugin {
         }
     }
 
-    private fun exchange(args: JSONObject, call: PluginCall) {
+    private fun exchangeLine(req: BtLine, reply: Reply<BtLine>) {
+        val call = reply.call
         val a = adapterOf(call) ?: return
-        val address = args.getString("address")
-        val uuid = UUID.fromString(args.getString("uuid"))
-        val line = android.util.Base64.decode(args.getString("line"), android.util.Base64.NO_WRAP)
+        val address = req.address
+        val uuid = UUID.fromString(req.uuid)
+        val line = req.line
         val cancelled = java.util.concurrent.atomic.AtomicBoolean(false)
         call.onCancel {
             cancelled.set(true)
@@ -171,9 +164,8 @@ internal class BluetoothPlugin : ScorixPlugin {
                         s.writer.write(line)
                         s.writer.write('\n'.code)
                         s.writer.flush()
-                        val reply = s.reader.readLine() ?: throw java.io.IOException("closed")
-                        val bytes = reply.toByteArray(Charsets.UTF_8)
-                        main.post { call.resolve(JSONObject().put("line", android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP))) }
+                        val answer = s.reader.readLine() ?: throw java.io.IOException("closed")
+                        main.post { reply.resolve(BtLine(line = answer.toByteArray(Charsets.UTF_8))) }
                     }
                     return@execute
                 } catch (e: java.io.IOException) {
@@ -260,7 +252,7 @@ internal class BluetoothPlugin : ScorixPlugin {
                 val p = pending ?: return@post
                 pending = null
                 if (status != BluetoothGatt.GATT_SUCCESS) return@post p.reject("failed", "GATT status $status")
-                p.resolve(JSONObject().put("value", android.util.Base64.encodeToString(value ?: ByteArray(0), android.util.Base64.NO_WRAP)))
+                p.resolve(BtValue(value = value ?: ByteArray(0)).toJson())
             }
         }
     }
@@ -280,12 +272,12 @@ internal class BluetoothPlugin : ScorixPlugin {
         }
     }
 
-    private fun op(args: JSONObject, call: PluginCall, run: (BluetoothGatt, BluetoothGattCharacteristic) -> Boolean) {
-        val link = links[args.getString("address")] ?: return call.reject("not_connected", "connect first")
+    private fun op(address: String, service: String, characteristic: String, call: PluginCall, run: (BluetoothGatt, BluetoothGattCharacteristic) -> Boolean) {
+        val link = links[address] ?: return call.reject("not_connected", "connect first")
         val g = link.gatt ?: return call.reject("not_connected", "connect first")
         if (link.pending != null) return call.reject("busy", "another operation is in flight")
-        val ch = g.getService(UUID.fromString(args.getString("service")))
-            ?.getCharacteristic(UUID.fromString(args.getString("characteristic")))
+        val ch = g.getService(UUID.fromString(service))
+            ?.getCharacteristic(UUID.fromString(characteristic))
             ?: return call.reject("not_found", "no such characteristic")
         link.pending = call
         if (!run(g, ch)) {

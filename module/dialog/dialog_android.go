@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/tradalab/scorix/fault"
+	"github.com/tradalab/scorix/internal/hostapi"
 	"github.com/tradalab/scorix/native"
 )
 
@@ -23,30 +24,25 @@ func mimeOf(ext string) string {
 }
 
 func openFileData(ctx context.Context, req OpenFileDataRequest) (*FileData, error) {
-	var out FileData
-	err := native.Call(ctx, "dialog", "openDocument", map[string]any{"mime": mimeOf(req.Ext)}, &out)
+	out, err := hostapi.Dialog.OpenDocument(ctx, &hostapi.MimeFilter{Mime: mimeOf(req.Ext)})
 	if native.IsCode(err, "canceled") {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return &out, nil
+	return &FileData{Name: out.Name, Data: out.Data}, nil
 }
 
 func saveFileData(ctx context.Context, req SaveFileDataRequest) (string, error) {
-	var out struct {
-		Name string `json:"name"`
-	}
-	err := native.Call(ctx, "dialog", "createDocument", map[string]any{
-		"fileName": req.FileName,
-		"mime":     mimeOf(req.Ext),
-		"data":     req.Data,
-	}, &out)
+	out, err := hostapi.Dialog.CreateDocument(ctx, &hostapi.NewDocument{FileName: req.FileName, Mime: mimeOf(req.Ext), Data: req.Data})
 	if native.IsCode(err, "canceled") {
 		return "", nil
 	}
-	return out.Name, err
+	if err != nil {
+		return "", err
+	}
+	return out.Name, nil
 }
 
 func openFile(ctx context.Context, req OpenFileRequest) (string, error) {
@@ -66,24 +62,18 @@ func openFile(ctx context.Context, req OpenFileRequest) (string, error) {
 }
 
 func openFolder(ctx context.Context, req OpenFolderRequest) (*Folder, error) {
-	var out Folder
-	err := native.Call(ctx, "dialog", "openTree", nil, &out)
+	out, err := hostapi.Dialog.OpenTree(ctx, &hostapi.Empty{})
 	if native.IsCode(err, "canceled") {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return &out, nil
+	return &Folder{ID: out.Id, Name: out.Name}, nil
 }
 
 func writeFolderFile(ctx context.Context, req WriteFolderFileRequest) error {
-	err := native.Call(ctx, "dialog", "writeTree", map[string]any{
-		"tree": req.Folder,
-		"name": req.Name,
-		"mime": mimeOf(req.Ext),
-		"data": req.Data,
-	}, nil)
+	_, err := hostapi.Dialog.WriteTree(ctx, &hostapi.TreeFile{Tree: req.Folder, Name: req.Name, Mime: mimeOf(req.Ext), Data: req.Data})
 	if native.IsCode(err, CodeFolderGone) {
 		return fault.New(CodeFolderGone, "the app no longer has access to that folder")
 	}
@@ -91,8 +81,7 @@ func writeFolderFile(ctx context.Context, req WriteFolderFileRequest) error {
 }
 
 func pickFile(ctx context.Context, req PickFileRequest) (*SavedFile, error) {
-	var out SavedFile
-	err := native.Call(ctx, "dialog", "pickFile", map[string]any{"fileName": req.FileName, "mime": mimeOf(req.Ext)}, &out)
+	out, err := hostapi.Dialog.PickFile(ctx, &hostapi.NewDocument{FileName: req.FileName, Mime: mimeOf(req.Ext)})
 	switch {
 	case native.IsCode(err, "canceled"):
 		return nil, nil
@@ -101,11 +90,11 @@ func pickFile(ctx context.Context, req PickFileRequest) (*SavedFile, error) {
 	case err != nil:
 		return nil, err
 	}
-	return &out, nil
+	return &SavedFile{ID: out.Id, Name: out.Name}, nil
 }
 
 func rewriteFile(ctx context.Context, req RewriteFileRequest) error {
-	err := native.Call(ctx, "dialog", "rewriteFile", map[string]any{"uri": req.File, "data": req.Data}, nil)
+	_, err := hostapi.Dialog.RewriteFile(ctx, &hostapi.FileRewrite{Uri: req.File, Data: req.Data})
 	if native.IsCode(err, CodeFolderGone) {
 		return fault.New(CodeFolderGone, "the app no longer has access to that file")
 	}
@@ -121,5 +110,6 @@ func saveFile(context.Context, SaveFileRequest) (string, error) {
 }
 
 func message(ctx context.Context, req MessageRequest) error {
-	return native.Call(ctx, "dialog", "message", map[string]any{"title": req.Title, "text": req.Text, "level": req.Level}, nil)
+	_, err := hostapi.Dialog.Message(ctx, &hostapi.MessageBox{Title: req.Title, Text: req.Text})
+	return err
 }

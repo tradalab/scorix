@@ -1,0 +1,209 @@
+syntax = "proto3";
+
+package hostapi;
+
+// The host library's own plugins (mobile/android/scorix). `go generate ./internal/hostapi`
+// rewrites hostapi.go and HostPlugins.kt from this file. An app's @native service of the same
+// name replaces the plugin, so a wire name or key changed here breaks such an app.
+
+message Empty {}
+
+// The Keystore AES key under "scorix.<alias>" seals the secrets master key.
+// @native
+service Keystore {
+  rpc Seal(KeystoreData) returns (Sealed);
+  // Rejects not_found when no key exists under the alias.
+  rpc Open(KeystoreData) returns (Sealed);
+  rpc Delete(KeystoreAlias) returns (Empty);
+}
+
+message KeystoreData {
+  string alias = 1;
+  bytes data = 2;
+}
+
+message KeystoreAlias {
+  string alias = 1;
+}
+
+message Sealed {
+  bytes data = 1;
+}
+
+// @native
+service Biometric {
+  rpc Status(Empty) returns (BiometricStatus);
+  // Rejects canceled, lockout, unavailable or failed.
+  rpc Authenticate(AuthenticateRequest) returns (Empty);
+}
+
+message BiometricStatus {
+  bool biometric = 1;
+  bool device_credential = 2;
+}
+
+message AuthenticateRequest {
+  string title = 1;
+  string subtitle = 2;
+  bool allow_device_credential = 3;
+  string cancel_label = 4;
+}
+
+// @native
+service Clipboard {
+  rpc Read(Empty) returns (PlainText);
+  rpc Write(ClipWrite) returns (Empty);
+}
+
+message PlainText {
+  string text = 1;
+}
+
+message ClipWrite {
+  string text = 1;
+  bool sensitive = 2;
+  int64 clear_after_ms = 3;
+}
+
+// @native
+service Dialog {
+  // Rejects canceled when nothing is picked.
+  rpc OpenDocument(MimeFilter) returns (PickedDocument);
+  rpc CreateDocument(NewDocument) returns (DocumentName);
+  // The folder's grant is persisted; id is what WriteTree takes.
+  rpc OpenTree(Empty) returns (PickedPlace);
+  // Rejects folder_gone when the grant is no longer held.
+  rpc WriteTree(TreeFile) returns (Empty);
+  // Rejects not_persistable when the place gives no lasting write grant.
+  rpc PickFile(NewDocument) returns (PickedPlace);
+  rpc RewriteFile(FileRewrite) returns (Empty);
+  rpc Message(MessageBox) returns (Empty);
+}
+
+message MimeFilter {
+  string mime = 1;
+}
+
+message NewDocument {
+  string file_name = 1;
+  string mime = 2;
+  bytes data = 3;
+}
+
+message PickedDocument {
+  string name = 1;
+  bytes data = 2;
+}
+
+message DocumentName {
+  string name = 1;
+}
+
+message PickedPlace {
+  string id = 1;
+  string name = 2;
+}
+
+message TreeFile {
+  string tree = 1;
+  string name = 2;
+  string mime = 3;
+  bytes data = 4;
+}
+
+message FileRewrite {
+  string uri = 1;
+  bytes data = 2;
+}
+
+message MessageBox {
+  string title = 1;
+  string text = 2;
+}
+
+// @native
+service Scanner {
+  // Rejects canceled, denied or failed.
+  rpc ScanQR(Empty) returns (PlainText);
+  // Rejects canceled, or not_found when the image holds no QR code.
+  rpc ScanImage(Empty) returns (PlainText);
+}
+
+// @native
+service Browser {
+  rpc Open(BrowserUrl) returns (Empty);
+}
+
+message BrowserUrl {
+  string url = 1;
+}
+
+// @native
+service Share {
+  rpc Share(ShareContent) returns (Empty);
+}
+
+message ShareContent {
+  string title = 1;
+  string text = 2;
+  string url = 3;
+  string dialog_title = 4;
+}
+
+// @native
+service Bluetooth {
+  rpc Associate(BtService) returns (BtDevice);
+  rpc Connect(BtAddress) returns (Empty);
+  rpc Read(BtCharacteristic) returns (BtValue);
+  rpc Write(BtWrite) returns (Empty);
+  rpc Observe(BtObserve) returns (Empty);
+  rpc Disconnect(BtAddress) returns (Empty);
+  rpc Bonded(Empty) returns (BtDevices);
+  rpc Exchange(BtLine) returns (BtLine);
+  rpc Hangup(BtAddress) returns (Empty);
+}
+
+message BtService {
+  string service = 1;
+}
+
+message BtAddress {
+  string address = 1;
+}
+
+message BtDevice {
+  string address = 1;
+  string name = 2;
+}
+
+message BtDevices {
+  repeated BtDevice devices = 1;
+}
+
+message BtCharacteristic {
+  string address = 1;
+  string service = 2;
+  string characteristic = 3;
+}
+
+message BtValue {
+  bytes value = 1;
+}
+
+message BtWrite {
+  string address = 1;
+  string service = 2;
+  string characteristic = 3;
+  bytes value = 4;
+}
+
+message BtObserve {
+  string address = 1;
+  bool on = 2;
+}
+
+message BtLine {
+  string address = 1;
+  string uuid = 2;
+  bytes line = 3;
+}
