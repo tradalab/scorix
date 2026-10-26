@@ -210,6 +210,9 @@ func (m *Module) resolveDriver() {
 }
 
 func defaultSqliteInit(dsn string) (*sqlx.DB, error) {
+	if err := sqliteUnsupported(); err != nil {
+		return nil, err
+	}
 	return sqlx.Connect("sqlite", dsn)
 }
 
