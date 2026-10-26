@@ -207,3 +207,24 @@ message BtLine {
   string uuid = 2;
   bytes line = 3;
 }
+
+// A local notification; a click opens the app on url, or plainly when url is empty.
+// @native
+service Notification {
+  // Asks for the permission first on Android 13 and later; rejects denied when refused.
+  rpc Show(NotificationContent) returns (Empty);
+}
+
+message NotificationContent {
+  // Showing the same key again replaces the notification.
+  string key = 1;
+  string title = 2;
+  string text = 3;
+  string url = 4;
+  repeated NotificationButton buttons = 5;
+}
+
+message NotificationButton {
+  string label = 1;
+  string url = 2;
+}

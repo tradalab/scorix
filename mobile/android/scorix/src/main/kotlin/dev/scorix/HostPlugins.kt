@@ -182,6 +182,21 @@ internal abstract class BluetoothPluginBase : ScorixPlugin {
     }
 }
 
+/** The `notification` plugin, implemented as NotificationPlugin. */
+internal abstract class NotificationPluginBase : ScorixPlugin {
+    final override val name = "notification"
+
+    /** Asks for the permission first on Android 13 and later; rejects denied when refused. */
+    abstract fun show(req: NotificationContent, reply: Reply<Empty>)
+
+    final override fun call(method: String, args: JSONObject, call: PluginCall) {
+        when (method) {
+            "show" -> show(NotificationContent.fromJson(args), Reply(call) { it.toJson() })
+            else -> call.reject("no_method", "notification has no method $method")
+        }
+    }
+}
+
 internal data class AuthenticateRequest(
     val title: String = "",
     val subtitle: String = "",
@@ -507,6 +522,47 @@ internal data class NewDocument(
             fileName = o.optString("file_name"),
             mime = o.optString("mime"),
             data = if (o.isNull("data")) ByteArray(0) else Base64.decode(o.optString("data"), Base64.DEFAULT),
+        )
+    }
+}
+
+internal data class NotificationButton(
+    val label: String = "",
+    val url: String = "",
+) {
+    fun toJson(): JSONObject = JSONObject()
+        .put("label", label)
+        .put("url", url)
+
+    companion object {
+        fun fromJson(o: JSONObject) = NotificationButton(
+            label = o.optString("label"),
+            url = o.optString("url"),
+        )
+    }
+}
+
+internal data class NotificationContent(
+    val key: String = "",
+    val title: String = "",
+    val text: String = "",
+    val url: String = "",
+    val buttons: List<NotificationButton> = emptyList(),
+) {
+    fun toJson(): JSONObject = JSONObject()
+        .put("key", key)
+        .put("title", title)
+        .put("text", text)
+        .put("url", url)
+        .put("buttons", JSONArray().apply { buttons.forEach { put(it.toJson()) } })
+
+    companion object {
+        fun fromJson(o: JSONObject) = NotificationContent(
+            key = o.optString("key"),
+            title = o.optString("title"),
+            text = o.optString("text"),
+            url = o.optString("url"),
+            buttons = o.optJSONArray("buttons")?.let { a -> List(a.length()) { NotificationButton.fromJson(a.getJSONObject(it)) } } ?: emptyList(),
         )
     }
 }

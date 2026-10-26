@@ -113,6 +113,19 @@ type NewDocument struct {
 	Data     []byte `json:"data"`
 }
 
+type NotificationButton struct {
+	Label string `json:"label"`
+	Url   string `json:"url"`
+}
+
+type NotificationContent struct {
+	Key     string               `json:"key"`
+	Title   string               `json:"title"`
+	Text    string               `json:"text"`
+	Url     string               `json:"url"`
+	Buttons []NotificationButton `json:"buttons"`
+}
+
 type PickedDocument struct {
 	Name string `json:"name"`
 	Data []byte `json:"data"`
@@ -396,6 +409,19 @@ func (bluetoothPlugin) Exchange(ctx context.Context, req *BtLine) (*BtLine, erro
 func (bluetoothPlugin) Hangup(ctx context.Context, req *BtAddress) (*Empty, error) {
 	out := new(Empty)
 	if err := native.Call(ctx, "bluetooth", "hangup", req, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+var Notification notificationPlugin
+
+type notificationPlugin struct{}
+
+// Asks for the permission first on Android 13 and later; rejects denied when refused.
+func (notificationPlugin) Show(ctx context.Context, req *NotificationContent) (*Empty, error) {
+	out := new(Empty)
+	if err := native.Call(ctx, "notification", "show", req, out); err != nil {
 		return nil, err
 	}
 	return out, nil
