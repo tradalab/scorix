@@ -59,6 +59,7 @@ type appMetadata struct {
 		Description string   `yaml:"description"`
 		Icon        string   `yaml:"icon"`
 		Authors     []string `yaml:"authors"`
+		Protocols   []string `yaml:"protocols"`
 	} `yaml:"app"`
 }
 

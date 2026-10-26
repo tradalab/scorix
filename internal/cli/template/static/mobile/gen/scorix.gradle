@@ -54,6 +54,13 @@ android {
     sourceSets.main.java.srcDirs += 'src/scorix/kotlin'
 }
 
+// Permissions and intent filters that follow from scorix.yaml, merged over app/src/main's manifest.
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.sources.manifests.addStaticManifestFile(rootProject.file('.scorix/AndroidManifest.xml').path)
+    }
+}
+
 plugins.withId('org.jetbrains.kotlin.android') {
     android.kotlinOptions { jvmTarget = '17' }
 }

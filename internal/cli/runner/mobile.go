@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -192,6 +193,9 @@ func mobileSync(ctx context.Context, opt MobileOptions, res *MobileResult) (*Bui
 		return nil, err
 	}
 	if err := writeAndroidGradle(dir, bc); err != nil {
+		return nil, err
+	}
+	if err := writeAndroidManifest(dir, bc); err != nil {
 		return nil, err
 	}
 
@@ -644,6 +648,92 @@ func writeAndroidGradle(dir string, bc *BuildContext) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(dir, ".scorix", "scorix.gradle"), []byte(out.String()), 0o644)
+}
+
+// Android matches schemes case-sensitively and only ever delivers them lowercase.
+var schemeRe = regexp.MustCompile(`^[a-z][a-z0-9+.-]*$`)
+
+type androidComponent struct {
+	Name    string `xml:"http://schemas.android.com/apk/res/android name,attr"`
+	Filters []struct {
+		Actions    []androidName `xml:"action"`
+		Categories []androidName `xml:"category"`
+	} `xml:"intent-filter"`
+}
+
+type androidName struct {
+	Name string `xml:"http://schemas.android.com/apk/res/android name,attr"`
+}
+
+// Links must reach what the launcher starts, which may be an alias (auth's dev.scorix.ScorixActivity).
+func launcherComponent(manifest string) (tag, name string, err error) {
+	b, err := os.ReadFile(manifest)
+	if err != nil {
+		return "", "", err
+	}
+	var m struct {
+		Activities []androidComponent `xml:"application>activity"`
+		Aliases    []androidComponent `xml:"application>activity-alias"`
+	}
+	if err := xml.Unmarshal(b, &m); err != nil {
+		return "", "", fmt.Errorf("%s: %w", manifest, err)
+	}
+	for _, g := range []struct {
+		tag  string
+		list []androidComponent
+	}{{"activity", m.Activities}, {"activity-alias", m.Aliases}} {
+		for _, c := range g.list {
+			for _, f := range c.Filters {
+				if slices.Contains(f.Actions, androidName{"android.intent.action.MAIN"}) &&
+					slices.Contains(f.Categories, androidName{"android.intent.category.LAUNCHER"}) {
+					return g.tag, c.Name, nil
+				}
+			}
+		}
+	}
+	return "", "", fmt.Errorf("%s declares no launcher activity for links to open", manifest)
+}
+
+// Rewritten on every sync; scorix.gradle merges it over the app's own manifest.
+func writeAndroidManifest(dir string, bc *BuildContext) error {
+	meta, err := loadAppMetadata(bc.Root)
+	if err != nil {
+		return err
+	}
+	for _, s := range meta.App.Protocols {
+		if !schemeRe.MatchString(s) {
+			return UsageError(fmt.Errorf("app.protocols %q: Android needs a lowercase scheme of letters, digits, + . or -", s))
+		}
+		if s == "http" || s == "https" {
+			return UsageError(fmt.Errorf("app.protocols %q: a web scheme would claim every link; use the app's own scheme", s))
+		}
+	}
+	data := map[string]any{"Schemes": meta.App.Protocols}
+	if len(meta.App.Protocols) > 0 {
+		tag, name, err := launcherComponent(filepath.Join(dir, "app", "src", "main", "AndroidManifest.xml"))
+		if err != nil {
+			return err
+		}
+		data["Tag"], data["Launcher"] = tag, name
+	}
+	mods, err := appModules(bc.Root, bc.cfg)
+	if err != nil {
+		return err
+	}
+	src, err := template.ReadFile(template.MobileManifest)
+	if err != nil {
+		return err
+	}
+	tpl, err := texttemplate.New("AndroidManifest.xml").Parse(src)
+	if err != nil {
+		return err
+	}
+	var out strings.Builder
+	data["Notifications"] = mods["notification"]
+	if err := tpl.Execute(&out, data); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, ".scorix", "AndroidManifest.xml"), []byte(out.String()), 0o644)
 }
 
 // For a single-quoted Groovy string, which a quote or a line break would end; $ is literal there.

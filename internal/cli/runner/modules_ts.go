@@ -22,20 +22,9 @@ func moduleClientFile(root string, cfg *ProjectConfig, check bool) (*generatedFi
 	if check && !fileExists(out) {
 		return nil, nil
 	}
-	dirs := map[string]bool{}
-	for _, m := range enabledBuiltins(cfg) {
-		dirs[path.Base(m.Import)] = true
-	}
-	imported, err := registeredModules(root)
+	dirs, err := appModules(root, cfg)
 	if err != nil {
 		return nil, err
-	}
-	for _, d := range imported {
-		dirs[d] = true
-	}
-	// generate model registers sqlx and may run later; the output must not depend on order.
-	if hasTables(root) {
-		dirs["sqlx"] = true
 	}
 	names := make([]string, 0, len(dirs))
 	for d := range dirs {
@@ -53,6 +42,26 @@ func moduleClientFile(root string, cfg *ProjectConfig, check bool) (*generatedFi
 		return nil, nil
 	}
 	return &generatedFile{Path: out, Template: mustRead(template.ShellModules), Data: map[string]any{"Fragments": fragments}, Force: true}, nil
+}
+
+// appModules names the module/ packages the app uses: turned on in scorix.yaml or registered in Go.
+func appModules(root string, cfg *ProjectConfig) (map[string]bool, error) {
+	dirs := map[string]bool{}
+	for _, m := range enabledBuiltins(cfg) {
+		dirs[path.Base(m.Import)] = true
+	}
+	imported, err := registeredModules(root)
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range imported {
+		dirs[d] = true
+	}
+	// generate model registers sqlx and may run later; the output must not depend on order.
+	if hasTables(root) {
+		dirs["sqlx"] = true
+	}
+	return dirs, nil
 }
 
 // Not the app's Go, or too big to walk.

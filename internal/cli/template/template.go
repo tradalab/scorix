@@ -35,7 +35,8 @@ const (
 	ShellModuleDir = "static/codegen/shell/modules"
 
 	// Rewritten into android/.scorix by every `scorix mobile sync`.
-	MobileGradle = "static/mobile/gen/scorix.gradle"
+	MobileGradle   = "static/mobile/gen/scorix.gradle"
+	MobileManifest = "static/mobile/gen/AndroidManifest.xml"
 
 	ProjectScorixYaml = "static/project/scorix.yaml"
 	ProjectProto      = "static/project/idl/app.proto"

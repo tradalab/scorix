@@ -92,3 +92,75 @@ func TestAndroidGradleIsGenerated(t *testing.T) {
 		}
 	}
 }
+
+// auth's shape: the launcher is an alias named dev.scorix.ScorixActivity.
+const aliasManifest = `<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application>
+<activity android:name=".MainActivity" android:exported="false" />
+<activity-alias android:name="dev.scorix.ScorixActivity" android:targetActivity=".MainActivity" android:exported="true">
+<intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+</activity-alias></application></manifest>`
+
+func androidManifestOf(t *testing.T, yaml, appManifest string) (string, error) {
+	t.Helper()
+	root := t.TempDir()
+	dir := filepath.Join(root, "android")
+	if appManifest == "" {
+		if err := writeTemplateFS("static/mobile/android", dir, map[string]any{"Name": "demo"}); err != nil {
+			t.Fatal(err)
+		}
+	} else if err := os.MkdirAll(filepath.Join(dir, "app", "src", "main"), 0o755); err != nil {
+		t.Fatal(err)
+	} else if err := os.WriteFile(filepath.Join(dir, "app", "src", "main", "AndroidManifest.xml"), []byte(appManifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".scorix"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "scorix.yaml"), []byte(yaml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := loadProjectConfig(filepath.Join(root, "scorix.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeAndroidManifest(dir, &BuildContext{Root: root, cfg: cfg}); err != nil {
+		return "", err
+	}
+	return readGenerated(t, dir, ".scorix/AndroidManifest.xml"), nil
+}
+
+func TestAndroidManifestFollowsScorixYaml(t *testing.T) {
+	for _, c := range []struct {
+		yaml, appManifest string
+		want, wantNot     []string
+	}{
+		{"app:\n  name: demo\n  protocols: [demo, demo-auth]\nmodules:\n  notification:\n    enabled: true\n", "",
+			[]string{"POST_NOTIFICATIONS", `<activity android:name="dev.scorix.ScorixActivity">`, `<data android:scheme="demo" />`, `<data android:scheme="demo-auth" />`}, nil},
+		{"app:\n  name: demo\n  protocols: [demo]\n", aliasManifest,
+			[]string{`<activity-alias android:name="dev.scorix.ScorixActivity">`, "</activity-alias>"}, []string{"<activity "}},
+		{"app:\n  name: demo\n", "", nil, []string{"POST_NOTIFICATIONS", "<application>"}},
+	} {
+		got, err := androidManifestOf(t, c.yaml, c.appManifest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, w := range c.want {
+			if !strings.Contains(got, w) {
+				t.Errorf("manifest lacks %s:\n%s", w, got)
+			}
+		}
+		for _, w := range c.wantNot {
+			if strings.Contains(got, w) {
+				t.Errorf("manifest has %s:\n%s", w, got)
+			}
+		}
+	}
+}
+
+func TestAndroidManifestRefusesABadScheme(t *testing.T) {
+	for _, scheme := range []string{"MyApp", "https"} {
+		if _, err := androidManifestOf(t, "app:\n  name: demo\n  protocols: ["+scheme+"]\n", ""); err == nil || !strings.Contains(err.Error(), scheme) {
+			t.Errorf("%s: got %v", scheme, err)
+		}
+	}
+}
