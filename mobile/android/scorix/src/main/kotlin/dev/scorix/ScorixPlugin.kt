@@ -53,6 +53,7 @@ class PluginCall internal constructor(
     private val method: String,
 ) {
     private var done = false
+    private var covers = false
     private var onCancel: (() -> Unit)? = null
 
     /** The Activity on screen, or null between two of them. */
@@ -70,9 +71,21 @@ class PluginCall internal constructor(
         onCancel = fn
     }
 
+    /**
+     * Marks a screen of the app's own (a picker, the PIN prompt) as over the app until the call
+     * ends, so Go gets no background event for it. [startForResult] does this itself.
+     */
+    fun coverScreen() {
+        if (!ScorixHost.onMain()) return ScorixHost.post { coverScreen() }
+        if (done || covers) return
+        covers = true
+        ScorixHost.covering++
+    }
+
     /** If Go abandons the call first, the started Activity is closed. */
     fun startForResult(intent: Intent, result: (resultCode: Int, data: Intent?) -> Unit) {
         val a = activity ?: return reject("no_activity", "$plugin.$method needs an Activity on screen")
+        coverScreen()
         val code = ScorixHost.startForResult(a, intent, result)
         if (onCancel == null) onCancel = { ScorixHost.currentActivity()?.finishActivity(code) }
     }
@@ -80,6 +93,7 @@ class PluginCall internal constructor(
     /** For a system dialog that hands back an IntentSender, such as CompanionDeviceManager. */
     fun startSenderForResult(sender: IntentSender, result: (resultCode: Int, data: Intent?) -> Unit) {
         val a = activity ?: return reject("no_activity", "$plugin.$method needs an Activity on screen")
+        coverScreen()
         val code = ScorixHost.startSenderForResult(a, sender, result)
         if (onCancel == null) onCancel = { ScorixHost.currentActivity()?.finishActivity(code) }
     }
@@ -93,7 +107,14 @@ class PluginCall internal constructor(
     internal fun cancel() {
         if (done) return
         done = true
+        uncover()
         onCancel?.invoke()
+    }
+
+    private fun uncover() {
+        if (!covers) return
+        covers = false
+        ScorixHost.covering--
     }
 
     // Plugins answer from worker threads too; done, cancel and the call table all live on the main thread.
@@ -101,6 +122,7 @@ class PluginCall internal constructor(
         if (!ScorixHost.onMain()) return ScorixHost.post { finish(reply) }
         if (done) return
         done = true
+        uncover()
         ScorixHost.reply(id, reply.put("id", id))
     }
 }

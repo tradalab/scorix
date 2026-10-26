@@ -71,6 +71,8 @@ internal class BiometricPlugin : BiometricPluginBase() {
             }
         }
         call.onCancel { cancel.cancel() }
+        // Without a biometric the PIN screen is a full Activity over the app, not a dialog.
+        call.coverScreen()
         b.build().authenticate(cancel, a.mainExecutor, object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) = call.resolve()
 

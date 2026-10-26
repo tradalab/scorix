@@ -76,6 +76,10 @@ object ScorixHost {
     private val results = HashMap<Int, (Int, Intent?) -> Unit>()
     private val granted = HashMap<Int, (Boolean) -> Unit>()
     private var nextRequest = 0x5c00
+    // Calls showing a screen of the app's own over it. Go hears neither the stop under one nor the
+    // start after: an app that locks in the background would lock while the user unlocks.
+    internal var covering = 0
+    private var hidden = false
 
     init {
         for (p in listOf(KeystorePlugin(), BiometricPlugin(), ClipboardPlugin(), DialogPlugin(), ScannerPlugin(), BrowserPlugin(), SharePlugin(), BluetoothPlugin())) plugins[p.name] = p
@@ -218,7 +222,12 @@ object ScorixHost {
 
     // A replaced Activity stops after its successor starts; its late onStop would wrongly report background.
     internal fun lifecycle(activity: Activity, event: Int) {
-        if (this.activity === activity) ScorixNative.lifecycle(event)
+        if (this.activity !== activity) return
+        when {
+            event == ScorixNative.BACKGROUND && covering > 0 -> hidden = true
+            event == ScorixNative.FOREGROUND && hidden -> hidden = false
+            else -> ScorixNative.lifecycle(event)
+        }
     }
 
     // Go has no Android Context: its data, config and temp dirs come from here.
