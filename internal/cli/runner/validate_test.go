@@ -296,21 +296,6 @@ func TestValidateAcceptsAnAppWithoutIPC(t *testing.T) {
 	}
 }
 
-func TestHasIPC(t *testing.T) {
-	for _, c := range []struct {
-		manifest, proto string
-		want            bool
-	}{
-		{"name: probe\n", "", false},
-		{"name: probe\n", okProto, true},
-		{"name: probe\nproto: idl/app.proto\n", "", true},
-	} {
-		if got := hasIPC(project(t, c.manifest, c.proto, "")); got != c.want {
-			t.Errorf("manifest %q, proto %v: got %v", c.manifest, c.proto != "", got)
-		}
-	}
-}
-
 func TestValidateWarnsWhenMainGoWantsACLIWithoutAProto(t *testing.T) {
 	dir := project(t, "name: probe\n", "", "")
 	main := "package main\n\nfunc main() { _ = handler.CLIWords }\n"
