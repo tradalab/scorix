@@ -123,6 +123,9 @@ func appcast(ctx context.Context, opt AppcastOptions, res *AppcastResult) error 
 
 		sum := sha256.Sum256(data)
 		sums = append(sums, fmt.Sprintf("%s  %s", hex.EncodeToString(sum[:]), base))
+		if slices.Contains(checksumOnlyExts, strings.ToLower(filepath.Ext(base))) {
+			continue
+		}
 
 		var sigB64 string
 		if priv != nil {
@@ -213,6 +216,9 @@ func loadUpdatePrivateKey(env string) (ed25519.PrivateKey, error) {
 // out of the appcast with only a warning.
 var installerExts = []string{".msi", ".dmg", ".appimage"}
 
+// Updated by the package manager, not the updater.
+var checksumOnlyExts = []string{".deb"}
+
 func listInstallers(dir string) ([]string, error) {
 	var out []string
 	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
@@ -222,7 +228,7 @@ func listInstallers(dir string) ([]string, error) {
 		if d.IsDir() {
 			return nil
 		}
-		if slices.Contains(installerExts, strings.ToLower(filepath.Ext(d.Name()))) {
+		if ext := strings.ToLower(filepath.Ext(d.Name())); slices.Contains(installerExts, ext) || slices.Contains(checksumOnlyExts, ext) {
 			out = append(out, p)
 		}
 		return nil

@@ -118,11 +118,12 @@ jobs:
           for line in block.group(1).splitlines():
               t = re.search(r"os:\s*([a-z]+)", line)
               a = re.search(r"arch:\s*([a-z0-9]+)", line)
+              f = re.search(r"format:\s*([a-z]+)", line)
               if not t or not a:
                   die(f"cannot read target: {line.strip()}")
               if t.group(1) not in RUNNER:
                   die(f"no runner mapped for target {t.group(1)}")
-              matrix.append({"target": t.group(1), "arch": a.group(1), "runner": RUNNER[t.group(1)]})
+              matrix.append({"target": t.group(1), "arch": a.group(1), "format": f.group(1) if f else "", "runner": RUNNER[t.group(1)]})
           print("matrix=" + json.dumps(matrix))
 
           provider = re.search(r"^    provider:\s*(\w+)", src, re.M)
@@ -266,18 +267,20 @@ jobs:
             export "$CERT_ENV=$WIN_CERT_PFX_B64"
             [ -n "$CERT_PW_ENV" ] && export "$CERT_PW_ENV=$WIN_CERT_PW"
           fi
-          scorix package -d . --os ${{ matrix.target }} --arch ${{ matrix.arch }}
+          scorix package -d . --os ${{ matrix.target }} --arch ${{ matrix.arch }} ${{ matrix.format && format('--target {0}', matrix.format) || '' }}
 
       # No signing or checksums here: `scorix appcast` does both once, over every
       # platform, in the publish job.
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
-          name: installers-${{ matrix.target }}
+          # Per job: an AppImage and a .deb on one OS would collide.
+          name: installers-${{ strategy.job-index }}
           path: |
             artifacts/*.msi
             artifacts/*.dmg
             artifacts/*.AppImage
+            artifacts/*.deb
           if-no-files-found: error
 
   publish:
@@ -367,7 +370,7 @@ jobs:
           esac
           dest="s3://$R2_BUCKET/$APP_PREFIX/$APP_VERSION"
 
-          for f in artifacts/*.msi artifacts/*.dmg artifacts/*.AppImage artifacts/*.sig \
+          for f in artifacts/*.msi artifacts/*.dmg artifacts/*.AppImage artifacts/*.deb artifacts/*.sig \
                    artifacts/SHA256SUMS artifacts/appcast.json; do
             aws s3 cp --endpoint-url "$endpoint" --no-progress "$f" "$dest/$(basename "$f")" \
               --cache-control "public, max-age=31536000, immutable"
@@ -400,6 +403,7 @@ jobs:
             artifacts/*.msi
             artifacts/*.dmg
             artifacts/*.AppImage
+            artifacts/*.deb
             artifacts/*.sig
             artifacts/SHA256SUMS
         env:

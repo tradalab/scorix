@@ -1,6 +1,8 @@
 package runner
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -14,5 +16,24 @@ func TestEveryCollectedInstallerHasAPlatform(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestDebIsChecksummedButNotInTheAppcast(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range []string{"app_1.2.3_amd64.deb", "App-1.2.3.AppImage", "notes.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, n), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files, err := listInstallers(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 2 || filepath.Base(files[1]) != "app_1.2.3_amd64.deb" {
+		t.Fatalf("collected %v", files)
+	}
+	if keys := platformKeysForArtifact("app_1.2.3_amd64.deb"); len(keys) != 0 {
+		t.Fatalf("a .deb maps to updater platforms %v", keys)
 	}
 }
