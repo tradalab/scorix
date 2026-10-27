@@ -21,7 +21,7 @@ var (
 var packageCmd = &cobra.Command{
 	Use:     "package",
 	Aliases: []string{"pkg"},
-	Short:   "Build and package the app into a native installer (msi/dmg/appimage)",
+	Short:   "Build and package the app into a native installer (msi/dmg/appimage/deb)",
 	Long: "Build and package the app into a native installer.\n\n" +
 		"Native installers require their target OS toolchain (WiX for MSI, etc.),\n" +
 		"so by default packaging targets the host OS only. Currently implemented: windows (MSI).",
@@ -45,7 +45,7 @@ func init() {
 	packageCmd.Flags().StringVarP(&packageDir, "dir", "d", ".", "project root directory")
 	packageCmd.Flags().StringVar(&packageOS, "os", "", "target GOOS (default: host / scorix.yaml targets)")
 	packageCmd.Flags().StringVar(&packageArch, "arch", "", "target GOARCH (default: host)")
-	packageCmd.Flags().StringVar(&packageFormat, "target", "", "installer format (msi|dmg|appimage); default per-OS")
+	packageCmd.Flags().StringVar(&packageFormat, "target", "", "installer format (msi|dmg|appimage|deb); default per-OS")
 	packageCmd.Flags().StringSliceVar(&packageTags, "tags", nil, "extra go build tags")
 	packageCmd.Flags().BoolVar(&packageSkipFrontend, "skip-frontend", false, "reuse existing .scorix/dist instead of rebuilding the frontend")
 	packageCmd.Flags().BoolVar(&packageSkipSign, "skip-sign", false, "skip code signing / notarization even if configured")

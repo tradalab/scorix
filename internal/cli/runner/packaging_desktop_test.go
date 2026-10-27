@@ -27,13 +27,6 @@ func TestDesktopIdentityRefusesAnotherAppsExec(t *testing.T) {
 	}
 }
 
-func TestDesktopIdentityRefusesAnotherAppsIcon(t *testing.T) {
-	p := writeDesktop(t, "[Desktop Entry]\nName=S3Hub\nExec=S3Hub\nIcon=RedisHub\nType=Application\n")
-	if err := checkDesktopIdentity(p, "S3Hub"); err == nil {
-		t.Fatal("accepted a desktop entry pointing at another app's icon")
-	}
-}
-
 func TestDesktopIdentityAllowsFieldCodes(t *testing.T) {
 	p := writeDesktop(t, "[Desktop Entry]\nName=S3Hub\nExec=S3Hub %u\nIcon=S3Hub\nType=Application\n")
 	if err := checkDesktopIdentity(p, "S3Hub"); err != nil {

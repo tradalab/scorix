@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"image"
+	"image/png"
 	"io"
 	"os"
 	"path/filepath"
@@ -18,16 +20,26 @@ func TestBuildDeb(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tempDir, "MyApp"), []byte("ELFELFELF"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	var icon bytes.Buffer
+	if err := png.Encode(&icon, image.NewRGBA(image.Rect(0, 0, 256, 256))); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "installer", "linux"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "installer", "linux", "app.png"), icon.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	bc := &BuildContext{
-		Root: root, TempDir: tempDir, BinaryName: "MyApp",
-		ProductName: "My App", Version: "1.2.3", Arch: "amd64",
+		Root: root, TempDir: tempDir, BinaryName: "MyApp", ArtifactDir: filepath.Join(root, "artifacts"),
+		ProductName: "MyApp", Version: "1.2.3", Arch: "amd64", Protocols: []string{"myapp"},
 		Manufacturer: "TradaLab", Description: "Demo app", Identifier: "com.tradalab.myapp",
 	}
 	out, err := buildDeb(bc)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filepath.Base(out) != "my-app_1.2.3_amd64.deb" {
+	if filepath.Base(out) != "myapp_1.2.3_amd64.deb" {
 		t.Fatalf("artifact name = %s", out)
 	}
 
@@ -45,19 +57,24 @@ func TestBuildDeb(t *testing.T) {
 	}
 
 	control := readTarGz(t, members[1].body)["./control"]
-	for _, want := range []string{"Package: my-app", "Version: 1.2.3", "Architecture: amd64", "Maintainer: TradaLab", "Description: Demo app"} {
+	for _, want := range []string{"Package: myapp", "Version: 1.2.3", "Architecture: amd64", "Maintainer: TradaLab", "Description: Demo app", "Depends: libgtk-3-0, libwebkit2gtk-4.1-0 | libwebkit2gtk-4.0-37"} {
 		if !strings.Contains(string(control), want) {
 			t.Fatalf("control missing %q:\n%s", want, control)
 		}
 	}
 
 	data := readTarGz(t, members[2].body)
-	if string(data["./usr/bin/my-app"]) != "ELFELFELF" {
+	if string(data["./usr/bin/myapp"]) != "ELFELFELF" {
 		t.Fatal("binary payload missing or wrong")
 	}
-	desktop := string(data["./usr/share/applications/my-app.desktop"])
-	if !strings.Contains(desktop, "Exec=/usr/bin/my-app %u") || !strings.Contains(desktop, "Name=My App") {
-		t.Fatalf("desktop entry:\n%s", desktop)
+	if !bytes.Equal(data["./usr/share/icons/hicolor/256x256/apps/com.tradalab.myapp.png"], icon.Bytes()) {
+		t.Fatal("icon missing from the hicolor size it has")
+	}
+	desktop := string(data["./usr/share/applications/com.tradalab.myapp.desktop"])
+	for _, want := range []string{"Exec=/usr/bin/myapp %u", "Icon=com.tradalab.myapp", "StartupWMClass=com.tradalab.myapp", "MimeType=x-scheme-handler/myapp;"} {
+		if !strings.Contains(desktop, want) {
+			t.Fatalf("desktop entry missing %q:\n%s", want, desktop)
+		}
 	}
 }
 

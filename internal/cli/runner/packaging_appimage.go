@@ -28,30 +28,23 @@ func (linuxPackager) Package(ctx context.Context, bc *BuildContext) (string, err
 
 	binary := filepath.Join(bc.TempDir, bc.BinaryName) // built by the caller
 
-	desktop := firstExisting(
-		filepath.Join(bc.Root, "installer", "linux", bc.ProductName+".desktop"),
-		filepath.Join(bc.Root, "installer", "linux", "app.desktop"),
-	)
-	if desktop == "" {
-		fmt.Println("==> Desktop entry not found - scaffolding installer/linux/")
-		if err := scaffoldLinuxInstaller(bc); err != nil {
-			return "", fmt.Errorf("scaffold installer: %w", err)
-		}
-		desktop = filepath.Join(bc.Root, "installer", "linux", "app.desktop")
-	}
-	if err := checkDesktopIdentity(desktop, bc.ProductName); err != nil {
+	src, err := linuxDesktopSource(bc)
+	if err != nil {
 		return "", err
 	}
-
-	icon := firstExisting(
-		filepath.Join(bc.Root, "installer", "linux", bc.ProductName+".png"),
-		filepath.Join(bc.Root, "installer", "linux", "app.png"),
-	)
-	if icon == "" && bc.IconPath != "" && strings.EqualFold(filepath.Ext(bc.IconPath), ".png") {
-		icon = bc.IconPath
+	srcIcon, err := linuxIcon(bc)
+	if err != nil {
+		return "", err
 	}
-	if icon == "" {
-		return "", fmt.Errorf("linux icon not found - provide installer/linux/%s.png (PNG; .ico is not accepted by AppImage)", bc.ProductName)
+	// linuxdeploy requires the icon named as Icon=.
+	id := desktopID(bc)
+	desktop := filepath.Join(bc.TempDir, id+".desktop")
+	if err := os.WriteFile(desktop, linuxDesktopEntry(bc, id, src, ""), 0o644); err != nil {
+		return "", err
+	}
+	icon := filepath.Join(bc.TempDir, id+".png")
+	if err := copyFile(srcIcon, icon); err != nil {
+		return "", err
 	}
 
 	appDir := filepath.Join(bc.Root, ".scorix", "AppDir")

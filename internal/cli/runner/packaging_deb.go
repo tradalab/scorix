@@ -5,8 +5,12 @@ import (
 	"bytes"
 	"compress/gzip"
 	"fmt"
+	"image/png"
+	"maps"
 	"os"
+	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -25,33 +29,53 @@ func buildDeb(bc *BuildContext) (string, error) {
 	}
 	version := orDefault(bc.Version, "0.0.0")
 
-	exe := "/usr/bin/" + pkgName
-	desktop := fmt.Sprintf(`[Desktop Entry]
-Type=Application
-Name=%s
-Comment=%s
-Exec=%s %%u
-Terminal=false
-Categories=Utility;
-`, bc.ProductName, orDefault(bc.Description, bc.ProductName), exe)
+	src, err := linuxDesktopSource(bc)
+	if err != nil {
+		return "", err
+	}
+	iconPath, err := linuxIcon(bc)
+	if err != nil {
+		return "", err
+	}
+	iconData, err := os.ReadFile(iconPath)
+	if err != nil {
+		return "", err
+	}
+	iconDir, err := debIconDir(iconData)
+	if err != nil {
+		return "", fmt.Errorf("deb: %s: %w", iconPath, err)
+	}
+	id := desktopID(bc)
+	desktop := linuxDesktopEntry(bc, id, src, "/usr/bin/"+pkgName)
 
 	var data bytes.Buffer
 	dataGz := gzip.NewWriter(&data)
 	dataTar := tar.NewWriter(dataGz)
 	now := time.Now()
-	writeTar := func(name string, mode int64, body []byte) error {
-		return writeTarFile(dataTar, name, mode, now, body)
+	files := []struct {
+		name string
+		mode int64
+		body []byte
+	}{
+		{"./usr/bin/" + pkgName, 0o755, binData},
+		{"./usr/share/applications/" + id + ".desktop", 0o644, desktop},
+		{"./" + iconDir + id + ".png", 0o644, iconData},
 	}
-	for _, dir := range []string{"./usr/", "./usr/bin/", "./usr/share/", "./usr/share/applications/"} {
+	dirs := map[string]bool{}
+	for _, f := range files {
+		for d := path.Dir(f.name); d != "."; d = path.Dir(d) {
+			dirs["./"+d+"/"] = true
+		}
+	}
+	for _, dir := range slices.Sorted(maps.Keys(dirs)) {
 		if err := dataTar.WriteHeader(&tar.Header{Name: dir, Mode: 0o755, Typeflag: tar.TypeDir, ModTime: now}); err != nil {
 			return "", err
 		}
 	}
-	if err := writeTar("./usr/bin/"+pkgName, 0o755, binData); err != nil {
-		return "", err
-	}
-	if err := writeTar("./usr/share/applications/"+pkgName+".desktop", 0o644, []byte(desktop)); err != nil {
-		return "", err
+	for _, f := range files {
+		if err := writeTarFile(dataTar, f.name, f.mode, now, f.body); err != nil {
+			return "", err
+		}
 	}
 	if err := dataTar.Close(); err != nil {
 		return "", err
@@ -60,7 +84,7 @@ Categories=Utility;
 		return "", err
 	}
 
-	installedKB := (len(binData) + 1023) / 1024
+	installedKB := (len(binData) + len(desktop) + len(iconData) + 1023) / 1024
 	control := fmt.Sprintf(`Package: %s
 Version: %s
 Section: utils
@@ -68,8 +92,9 @@ Priority: optional
 Architecture: %s
 Maintainer: %s
 Installed-Size: %d
+Depends: %s
 Description: %s
-`, pkgName, version, arch, orDefault(bc.Manufacturer, "unknown"), installedKB, orDefault(bc.Description, bc.ProductName))
+`, pkgName, version, arch, orDefault(bc.Manufacturer, "unknown"), installedKB, debDepends, orDefault(bc.Description, bc.ProductName))
 
 	var ctrl bytes.Buffer
 	ctrlGz := gzip.NewWriter(&ctrl)
@@ -84,11 +109,10 @@ Description: %s
 		return "", err
 	}
 
-	outDir := filepath.Join(bc.Root, "dist")
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
+	if err := os.MkdirAll(bc.ArtifactDir, 0o755); err != nil {
 		return "", err
 	}
-	out := filepath.Join(outDir, fmt.Sprintf("%s_%s_%s.deb", pkgName, version, arch))
+	out := filepath.Join(bc.ArtifactDir, fmt.Sprintf("%s_%s_%s.deb", pkgName, version, arch))
 	f, err := os.Create(out)
 	if err != nil {
 		return "", err
@@ -111,6 +135,20 @@ Description: %s
 		}
 	}
 	return out, nil
+}
+
+// The webview is dlopen'd, so dpkg cannot infer these.
+const debDepends = "libgtk-3-0, libwebkit2gtk-4.1-0 | libwebkit2gtk-4.0-37"
+
+func debIconDir(icon []byte) (string, error) {
+	cfg, err := png.DecodeConfig(bytes.NewReader(icon))
+	if err != nil {
+		return "", err
+	}
+	if cfg.Width == cfg.Height && slices.Contains([]int{16, 22, 24, 32, 48, 64, 128, 256, 512}, cfg.Width) {
+		return fmt.Sprintf("usr/share/icons/hicolor/%dx%d/apps/", cfg.Width, cfg.Height), nil
+	}
+	return "usr/share/pixmaps/", nil
 }
 
 func writeTarFile(tw *tar.Writer, name string, mode int64, mod time.Time, body []byte) error {

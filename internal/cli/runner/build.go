@@ -37,7 +37,7 @@ type PackageConfig struct {
 type PackageTarget struct {
 	OS     string `yaml:"os"`     // windows | darwin | linux
 	Arch   string `yaml:"arch"`   // amd64 | arm64 | universal (darwin)
-	Format string `yaml:"format"` // msi | dmg | appimage (defaults per-OS)
+	Format string `yaml:"format"` // msi | dmg | appimage | deb (defaults per-OS)
 }
 
 type WindowsPackage struct {
@@ -75,6 +75,7 @@ type BuildContext struct {
 	HelpURL      string
 	AboutURL     string
 	IconPath     string // absolute path to source icon, or "" if none
+	Protocols    []string
 
 	OS     string
 	Arch   string
@@ -266,6 +267,7 @@ func resolveBuildContext(dir, goos, goarch string) (*BuildContext, error) {
 		HelpURL:      pkg.HelpURL,
 		AboutURL:     pkg.AboutURL,
 		IconPath:     iconPath,
+		Protocols:    meta.App.Protocols,
 		OS:           goos,
 		Arch:         goarch,
 		Ldflags:      pkg.Ldflags,
