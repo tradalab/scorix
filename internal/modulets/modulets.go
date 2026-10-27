@@ -69,7 +69,8 @@ func Generate(root string, check bool) error {
 		}
 		path := filepath.Join(out, m.Dir+".ts")
 		disk, err := os.ReadFile(path)
-		if err == nil && string(disk) == src {
+		// A Windows checkout with core.autocrlf turns the fragment to CRLF; that is not drift.
+		if err == nil && strings.ReplaceAll(string(disk), "\r\n", "\n") == src {
 			continue
 		}
 		if check {
