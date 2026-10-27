@@ -468,6 +468,7 @@ func (a *App) Run() error {
 	}
 
 	a.registerOSHandlers()
+	installDesktopEntry(a.opts.Identifier)
 	rt, err := newDriver().NewRuntime(window.RuntimeConfig{Identifier: a.opts.Identifier})
 	if err != nil {
 		return err
