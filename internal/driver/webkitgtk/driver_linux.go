@@ -78,6 +78,8 @@ func (r *rt) Run() error {
 	// .desktop file, and the desktop shows no icon or name.
 	if r.identifier != "" {
 		gSetPrgname(r.identifier)
+		// X11 matches StartupWMClass against WM_CLASS, whose class GTK would otherwise capitalize.
+		gdkSetProgramClass(r.identifier)
 	}
 	if gtkInitCheck(0, 0) == 0 {
 		return fmt.Errorf("webkitgtk: gtk_init failed (no display?) - use web mode on headless hosts")
