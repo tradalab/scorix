@@ -15,6 +15,7 @@ var (
 	mobileSkipFrontend bool
 	mobileDevice       string
 	mobileDevURL       string
+	mobileDocker       bool
 )
 
 var mobileCmd = &cobra.Command{
@@ -35,6 +36,7 @@ func mobileSub(use, short string, run func(cmd *cobra.Command, opt runner.Mobile
 			SkipFrontend: mobileSkipFrontend,
 			Device:       mobileDevice,
 			DevURL:       mobileDevURL,
+			Docker:       mobileDocker,
 		})
 	})
 	c.Flags().StringVarP(&mobileDir, "dir", "d", ".", "project root directory")
@@ -54,6 +56,7 @@ func init() {
 		})
 	buildCmd.Flags().BoolVar(&mobileRelease, "release", false, "release build, R8 on; signed when SCORIX_ANDROID_KEYSTORE and its password vars are set")
 	buildCmd.Flags().BoolVar(&mobileBundle, "aab", false, "Android App Bundle for the store instead of an APK (needs --release)")
+	buildCmd.Flags().BoolVar(&mobileDocker, "docker", false, "build in scorix's Android image: needs only docker, not an SDK or JDK (linux/amd64 hosts; SDK cached in SCORIX_ANDROID_CACHE)")
 
 	devCmd := mobileSub("dev", "Build a debug APK, run it on a device or emulator and follow its log; HMR when the app has a shell",
 		func(cmd *cobra.Command, opt runner.MobileOptions) error { return runner.MobileDev(cmd.Context(), opt) })

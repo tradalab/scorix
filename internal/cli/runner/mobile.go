@@ -58,6 +58,7 @@ type MobileOptions struct {
 	SkipFrontend bool
 	Device       string // adb serial or a remembered device; empty: the only one, else the default
 	DevURL       string // dev only: an already-running frontend dev server
+	Docker       bool   // build only: inside scorix's Android image instead of the local SDK
 	JSONOut      io.Writer
 }
 
@@ -82,7 +83,12 @@ func MobileSync(ctx context.Context, opt MobileOptions) error {
 }
 
 func MobileBuild(ctx context.Context, opt MobileOptions) error {
-	return mobileRun(opt, "mobile build", func(res *MobileResult) error { return mobileBuild(ctx, opt, res) })
+	return mobileRun(opt, "mobile build", func(res *MobileResult) error {
+		if opt.Docker {
+			return mobileBuildDocker(ctx, opt, res)
+		}
+		return mobileBuild(ctx, opt, res)
+	})
 }
 
 func MobileDev(ctx context.Context, opt MobileOptions) error {

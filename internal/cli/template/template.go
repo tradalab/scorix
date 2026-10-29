@@ -38,6 +38,10 @@ const (
 	MobileGradle   = "static/mobile/gen/scorix.gradle"
 	MobileManifest = "static/mobile/gen/AndroidManifest.xml"
 
+	// The image and SDK installer behind `scorix mobile build --docker`.
+	MobileDockerfile = "static/mobile/docker/Dockerfile"
+	MobileDockerSDK  = "static/mobile/docker/sdk.sh"
+
 	ProjectScorixYaml = "static/project/scorix.yaml"
 	ProjectProto      = "static/project/idl/app.proto"
 
