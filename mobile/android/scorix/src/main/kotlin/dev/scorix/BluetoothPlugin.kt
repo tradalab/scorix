@@ -8,6 +8,7 @@ import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.bluetooth.BluetoothStatusCodes
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.companion.AssociationInfo
@@ -290,7 +291,7 @@ internal class BluetoothPlugin : BluetoothPluginBase() {
 
     private fun writeOf(g: BluetoothGatt, c: BluetoothGattCharacteristic, value: ByteArray): Boolean =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            g.writeCharacteristic(c, value, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == BluetoothGatt.GATT_SUCCESS
+            g.writeCharacteristic(c, value, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == BluetoothStatusCodes.SUCCESS
         } else {
             @Suppress("DEPRECATION")
             c.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT

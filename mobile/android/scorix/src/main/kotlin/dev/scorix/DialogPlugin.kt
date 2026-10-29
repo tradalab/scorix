@@ -83,10 +83,11 @@ internal class DialogPlugin : DialogPluginBase() {
                 ?: return@startForResult call.reject("unavailable", "the app is not started")
             // Persisted, or the grant ends with this process. Refusing here beats failing at the
             // first write after a restart, and the empty file the save screen made is taken back.
-            val granted = data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            val read = data.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0
             try {
-                if (granted and Intent.FLAG_GRANT_WRITE_URI_PERMISSION == 0) throw SecurityException("no write grant for $uri")
-                cr.takePersistableUriPermission(uri, granted)
+                if (data.flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION == 0) throw SecurityException("no write grant for $uri")
+                // Constants per branch: lint rejects a flag set computed from data.flags.
+                cr.takePersistableUriPermission(uri, if (read) Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION else Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             } catch (e: SecurityException) {
                 runCatching { DocumentsContract.deleteDocument(cr, uri) }
                 return@startForResult call.reject("not_persistable", e.message ?: "no lasting access to $uri")
