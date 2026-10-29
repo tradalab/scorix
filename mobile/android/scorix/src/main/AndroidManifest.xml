@@ -9,5 +9,11 @@
             android:exported="false"
             android:screenOrientation="portrait"
             android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen" />
+        <!-- Files handed to the share sheet; ${applicationId} keeps two apps on one phone from clashing. -->
+        <provider
+            android:name="dev.scorix.ShareProvider"
+            android:authorities="${applicationId}.scorix.share"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

@@ -148,6 +148,10 @@ message ShareContent {
   string text = 2;
   string url = 3;
   string dialog_title = 4;
+  // A file to attach, written to the app cache and offered through ShareProvider.
+  string file_name = 5;
+  string mime = 6;
+  bytes data = 7;
 }
 
 // @native

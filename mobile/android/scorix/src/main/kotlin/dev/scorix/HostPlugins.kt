@@ -630,12 +630,18 @@ internal data class ShareContent(
     val text: String = "",
     val url: String = "",
     val dialogTitle: String = "",
+    val fileName: String = "",
+    val mime: String = "",
+    val data: ByteArray = ByteArray(0),
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("title", title)
         .put("text", text)
         .put("url", url)
         .put("dialog_title", dialogTitle)
+        .put("file_name", fileName)
+        .put("mime", mime)
+        .put("data", Base64.encodeToString(data, Base64.NO_WRAP))
 
     companion object {
         fun fromJson(o: JSONObject) = ShareContent(
@@ -643,6 +649,9 @@ internal data class ShareContent(
             text = o.optString("text"),
             url = o.optString("url"),
             dialogTitle = o.optString("dialog_title"),
+            fileName = o.optString("file_name"),
+            mime = o.optString("mime"),
+            data = if (o.isNull("data")) ByteArray(0) else Base64.decode(o.optString("data"), Base64.DEFAULT),
         )
     }
 }

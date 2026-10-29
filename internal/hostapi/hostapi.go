@@ -149,6 +149,9 @@ type ShareContent struct {
 	Text        string `json:"text"`
 	Url         string `json:"url"`
 	DialogTitle string `json:"dialog_title"`
+	FileName    string `json:"file_name"`
+	Mime        string `json:"mime"`
+	Data        []byte `json:"data"`
 }
 
 type TreeFile struct {

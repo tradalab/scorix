@@ -4,6 +4,9 @@ export interface ShareRequest {
   text?: string;
   url?: string;
   dialogTitle?: string;
+  fileName?: string;
+  mime?: string;
+  data?: string;
 }
 
 export const share = {
