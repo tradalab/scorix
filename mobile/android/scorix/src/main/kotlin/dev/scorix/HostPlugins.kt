@@ -189,9 +189,13 @@ internal abstract class NotificationPluginBase : ScorixPlugin {
     /** Asks for the permission first on Android 13 and later; rejects denied when refused. */
     abstract fun show(req: NotificationContent, reply: Reply<Empty>)
 
+    /** Replaces every pending one, and outlives the process and a reboot. An empty list cancels them all without asking for the permission; a time already past is dropped. */
+    abstract fun schedule(req: NotificationSchedule, reply: Reply<Empty>)
+
     final override fun call(method: String, args: JSONObject, call: PluginCall) {
         when (method) {
             "show" -> show(NotificationContent.fromJson(args), Reply(call) { it.toJson() })
+            "schedule" -> schedule(NotificationSchedule.fromJson(args), Reply(call) { it.toJson() })
             else -> call.reject("no_method", "notification has no method $method")
         }
     }
@@ -567,6 +571,19 @@ internal data class NotificationContent(
     }
 }
 
+internal data class NotificationSchedule(
+    val items: List<ScheduledNotification> = emptyList(),
+) {
+    fun toJson(): JSONObject = JSONObject()
+        .put("items", JSONArray().apply { items.forEach { put(it.toJson()) } })
+
+    companion object {
+        fun fromJson(o: JSONObject) = NotificationSchedule(
+            items = o.optJSONArray("items")?.let { a -> List(a.length()) { ScheduledNotification.fromJson(a.getJSONObject(it)) } } ?: emptyList(),
+        )
+    }
+}
+
 internal data class PickedDocument(
     val name: String = "",
     val data: ByteArray = ByteArray(0),
@@ -608,6 +625,22 @@ internal data class PlainText(
     companion object {
         fun fromJson(o: JSONObject) = PlainText(
             text = o.optString("text"),
+        )
+    }
+}
+
+internal data class ScheduledNotification(
+    val atMs: Long = 0L,
+    val content: NotificationContent = NotificationContent(),
+) {
+    fun toJson(): JSONObject = JSONObject()
+        .put("at_ms", atMs)
+        .put("content", content.toJson())
+
+    companion object {
+        fun fromJson(o: JSONObject) = ScheduledNotification(
+            atMs = o.optLong("at_ms"),
+            content = NotificationContent.fromJson(o.optJSONObject("content") ?: JSONObject()),
         )
     }
 }

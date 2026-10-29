@@ -12,15 +12,32 @@ import (
 // A click comes back as the activation url on the app's scheme, through the deep-link path, as on
 // Windows and Linux.
 func showToast(ctx context.Context, _ appInfo, req NotifyRequest, scheme string) error {
-	c := &hostapi.NotificationContent{Key: req.ID, Title: req.Title, Text: req.Text, Url: activationURL(scheme, req.ID, DefaultAction)}
+	_, err := hostapi.Notification.Show(ctx, content(req.ID, req.Title, req.Text, req.Actions, scheme))
+	return mapErr(err)
+}
+
+func schedule(ctx context.Context, items []ScheduledNotify, scheme string) error {
+	s := &hostapi.NotificationSchedule{}
+	for _, it := range items {
+		s.Items = append(s.Items, hostapi.ScheduledNotification{AtMs: it.At, Content: *content(it.ID, it.Title, it.Text, it.Actions, scheme)})
+	}
+	_, err := hostapi.Notification.Schedule(ctx, s)
+	return mapErr(err)
+}
+
+func content(id, title, text string, actions []Action, scheme string) *hostapi.NotificationContent {
+	c := &hostapi.NotificationContent{Key: id, Title: title, Text: text, Url: activationURL(scheme, id, DefaultAction)}
 	if c.Url != "" {
-		for _, a := range req.Actions {
-			c.Buttons = append(c.Buttons, hostapi.NotificationButton{Label: a.Label, Url: activationURL(scheme, req.ID, a.Key)})
+		for _, a := range actions {
+			c.Buttons = append(c.Buttons, hostapi.NotificationButton{Label: a.Label, Url: activationURL(scheme, id, a.Key)})
 		}
 	}
-	_, err := hostapi.Notification.Show(ctx, c)
+	return c
+}
+
+func mapErr(err error) error {
 	if errors.Is(err, native.ErrUnavailable) {
-		return fault.New(fault.CodeUnavailable, "no native host to show the notification")
+		return fault.New(fault.CodeUnavailable, "no native host for notifications")
 	}
 	var ne *native.Error
 	if errors.As(err, &ne) {

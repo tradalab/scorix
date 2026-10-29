@@ -24,7 +24,7 @@ type NotificationModule struct {
 func New() *NotificationModule { return &NotificationModule{} }
 
 func (m *NotificationModule) Name() string    { return "notification" }
-func (m *NotificationModule) Version() string { return "1.1.0" }
+func (m *NotificationModule) Version() string { return "1.2.0" }
 
 func (m *NotificationModule) OnLoad(ctx *module.Context) error {
 	logger.Info(fmt.Sprintf("[notification] loading (v%s)", m.Version()))
@@ -61,6 +61,7 @@ func (m *NotificationModule) OnLoad(ctx *module.Context) error {
 	subMu.Unlock()
 
 	module.Expose(m, "Notify", ctx.IPC)
+	module.Expose(m, "Schedule", ctx.IPC)
 	return nil
 }
 

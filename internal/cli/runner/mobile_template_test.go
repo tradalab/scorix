@@ -138,7 +138,9 @@ func TestAndroidManifestFollowsScorixYaml(t *testing.T) {
 			[]string{"POST_NOTIFICATIONS", `<activity android:name="dev.scorix.ScorixActivity">`, `<data android:scheme="demo" />`, `<data android:scheme="demo-auth" />`}, nil},
 		{"app:\n  name: demo\n  protocols: [demo]\n", aliasManifest,
 			[]string{`<activity-alias android:name="dev.scorix.ScorixActivity">`, "</activity-alias>"}, []string{"<activity "}},
-		{"app:\n  name: demo\n", "", nil, []string{"POST_NOTIFICATIONS", "<application>"}},
+		{"app:\n  name: demo\n", "", nil, []string{"POST_NOTIFICATIONS", "RECEIVE_BOOT_COMPLETED", "<application>"}},
+		{"app:\n  name: demo\nmodules:\n  notification:\n    enabled: true\n", "",
+			[]string{"RECEIVE_BOOT_COMPLETED", `<receiver android:name="dev.scorix.NotificationAlarm"`, "<application>"}, []string{"<activity"}},
 	} {
 		got, err := androidManifestOf(t, c.yaml, c.appManifest)
 		if err != nil {

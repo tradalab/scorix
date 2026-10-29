@@ -217,6 +217,19 @@ message BtLine {
 service Notification {
   // Asks for the permission first on Android 13 and later; rejects denied when refused.
   rpc Show(NotificationContent) returns (Empty);
+  // Replaces every pending one, and outlives the process and a reboot. An empty list cancels them
+  // all without asking for the permission; a time already past is dropped.
+  rpc Schedule(NotificationSchedule) returns (Empty);
+}
+
+message NotificationSchedule {
+  repeated ScheduledNotification items = 1;
+}
+
+message ScheduledNotification {
+  // Unix milliseconds. The alarm is inexact: it may come some minutes late.
+  int64 at_ms = 1;
+  NotificationContent content = 2;
 }
 
 message NotificationContent {

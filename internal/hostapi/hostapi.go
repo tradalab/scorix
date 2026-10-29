@@ -126,6 +126,10 @@ type NotificationContent struct {
 	Buttons []NotificationButton `json:"buttons"`
 }
 
+type NotificationSchedule struct {
+	Items []ScheduledNotification `json:"items"`
+}
+
 type PickedDocument struct {
 	Name string `json:"name"`
 	Data []byte `json:"data"`
@@ -138,6 +142,11 @@ type PickedPlace struct {
 
 type PlainText struct {
 	Text string `json:"text"`
+}
+
+type ScheduledNotification struct {
+	AtMs    int64               `json:"at_ms"`
+	Content NotificationContent `json:"content"`
 }
 
 type Sealed struct {
@@ -425,6 +434,15 @@ type notificationPlugin struct{}
 func (notificationPlugin) Show(ctx context.Context, req *NotificationContent) (*Empty, error) {
 	out := new(Empty)
 	if err := native.Call(ctx, "notification", "show", req, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// Replaces every pending one, and outlives the process and a reboot. An empty list cancels them all without asking for the permission; a time already past is dropped.
+func (notificationPlugin) Schedule(ctx context.Context, req *NotificationSchedule) (*Empty, error) {
+	out := new(Empty)
+	if err := native.Call(ctx, "notification", "schedule", req, out); err != nil {
 		return nil, err
 	}
 	return out, nil
