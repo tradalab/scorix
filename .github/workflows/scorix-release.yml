@@ -282,6 +282,7 @@ jobs:
             artifacts/*.AppImage
             artifacts/*.deb
           if-no-files-found: error
+          retention-days: 1
 
   publish:
     needs: [meta, build]
