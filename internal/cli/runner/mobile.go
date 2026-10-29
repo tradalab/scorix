@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"cmp"
 	"context"
 	"encoding/xml"
 	"errors"
@@ -606,6 +607,128 @@ type AndroidConfig struct {
 	// DebugIDSuffix goes on the debug build's application ID so it installs beside the release
 	// one. Unset means ".dev"; "" keeps one ID, for an app whose ID is registered elsewhere (Firebase).
 	DebugIDSuffix *string `yaml:"debug_id_suffix"`
+	// Widgets are the home-screen widgets the launcher lists, read when the widget module is on.
+	Widgets []AndroidWidget `yaml:"widgets"`
+}
+
+type AndroidWidget struct {
+	// ID is the kind SetTimeline names, and what the generated provider class is named after.
+	ID    string `yaml:"id"`
+	Label string `yaml:"label"`
+	// Layout is "card" (the default) or "clock", which rearrange themselves as the widget is resized, or "grid".
+	Layout string `yaml:"layout"`
+	// Size is the cells the widget takes when placed, as WxH: 2x2 unless set, 4x4 for a grid.
+	Size string `yaml:"size"`
+}
+
+// What the templates need of an android.widgets entry; Label is XML-escaped.
+type androidWidget struct {
+	ID, Label, Layout, Class                      string
+	Width, Height, MinWidth, MinHeight, MinResize int
+}
+
+var (
+	widgetIDRe   = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+	widgetSizeRe = regexp.MustCompile(`^([1-6])x([1-6])$`)
+)
+
+func androidWidgets(cfg *ProjectConfig, on bool) ([]androidWidget, error) {
+	var decl []AndroidWidget
+	if cfg != nil && cfg.Android != nil {
+		decl = cfg.Android.Widgets
+	}
+	if !on {
+		if len(decl) > 0 {
+			return nil, UsageError(fmt.Errorf("android.widgets is set but the widget module is off: register widget.New() or remove android.widgets"))
+		}
+		return nil, nil
+	}
+	if len(decl) == 0 {
+		return nil, UsageError(fmt.Errorf("the widget module is on but android.widgets declares none, e.g.\n  android:\n    widgets:\n      - { id: today, label: Today }"))
+	}
+	// By class, not id: "a_b" and "a__b" would name the same provider class.
+	seen := map[string]bool{}
+	var out []androidWidget
+	for _, d := range decl {
+		if !widgetIDRe.MatchString(d.ID) || seen[widgetClass(d.ID)] {
+			return nil, UsageError(fmt.Errorf("android.widgets id %q must be unique and lowercase letters, digits or _, starting with a letter", d.ID))
+		}
+		seen[widgetClass(d.ID)] = true
+		if d.Label == "" {
+			return nil, UsageError(fmt.Errorf("android.widgets %s needs a label: the launcher lists the widget under it", d.ID))
+		}
+		w := androidWidget{ID: d.ID, Layout: d.Layout, Class: widgetClass(d.ID), MinResize: 40}
+		switch w.Layout {
+		case "", "card", "clock":
+			w.Layout, w.Width, w.Height = cmp.Or(w.Layout, "card"), 2, 2
+		case "grid":
+			// Seven columns of day numbers stop being legible below about three cells.
+			w.Width, w.Height, w.MinResize = 4, 4, 180
+		default:
+			return nil, UsageError(fmt.Errorf("android.widgets %s layout %q must be card, clock or grid", d.ID, d.Layout))
+		}
+		if d.Size != "" {
+			m := widgetSizeRe.FindStringSubmatch(d.Size)
+			if m == nil {
+				return nil, UsageError(fmt.Errorf("android.widgets %s size %q must be cells as WxH, each 1 to 6, e.g. 2x2", d.ID, d.Size))
+			}
+			w.Width, w.Height = int(m[1][0]-'0'), int(m[2][0]-'0')
+		}
+		// The launcher's legacy rule for n cells, which still sizes the widget below Android 12.
+		w.MinWidth, w.MinHeight = 70*w.Width-30, 70*w.Height-30
+		var label strings.Builder
+		if err := xml.EscapeText(&label, []byte(d.Label)); err != nil {
+			return nil, err
+		}
+		w.Label = label.String()
+		out = append(out, w)
+	}
+	return out, nil
+}
+
+func widgetClass(id string) string {
+	var b strings.Builder
+	for _, part := range strings.Split(id, "_") {
+		if part != "" {
+			b.WriteString(strings.ToUpper(part[:1]) + part[1:])
+		}
+	}
+	return b.String() + "Widget"
+}
+
+// Cleared on every sync, so a widget dropped from scorix.yaml leaves no class or info file behind.
+func writeAndroidWidgets(dir string, widgets []androidWidget) error {
+	out := filepath.Join(dir, ".scorix", "widgets")
+	if err := os.RemoveAll(out); err != nil || len(widgets) == 0 {
+		return err
+	}
+	render := func(name, path string, data any) error {
+		src, err := template.ReadFile(name)
+		if err != nil {
+			return err
+		}
+		tpl, err := texttemplate.New(filepath.Base(name)).Parse(src)
+		if err != nil {
+			return err
+		}
+		var b strings.Builder
+		if err := tpl.Execute(&b, data); err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(path, []byte(b.String()), 0o644)
+	}
+	if err := render(template.MobileWidgets, filepath.Join(out, "kotlin", "dev", "scorix", "app", "ScorixWidgets.kt"), widgets); err != nil {
+		return err
+	}
+	for _, w := range widgets {
+		if err := render(template.MobileWidgetInfo, filepath.Join(out, "res", "xml", "scorix_widget_"+w.ID+".xml"), w); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Dot-led segments only: AGP adds no dot of its own, and anything else makes an invalid ID.
@@ -735,7 +858,14 @@ func writeAndroidManifest(dir string, bc *BuildContext) error {
 		return err
 	}
 	var out strings.Builder
-	data["Notifications"] = mods["notification"]
+	widgets, err := androidWidgets(bc.cfg, mods["widget"])
+	if err != nil {
+		return err
+	}
+	if err := writeAndroidWidgets(dir, widgets); err != nil {
+		return err
+	}
+	data["Notifications"], data["Widgets"] = mods["notification"], widgets
 	if err := tpl.Execute(&out, data); err != nil {
 		return err
 	}

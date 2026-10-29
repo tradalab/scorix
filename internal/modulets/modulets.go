@@ -34,6 +34,7 @@ import (
 	"github.com/tradalab/scorix/module/store"
 	"github.com/tradalab/scorix/module/systemtray"
 	"github.com/tradalab/scorix/module/updater"
+	"github.com/tradalab/scorix/module/widget"
 )
 
 // Dir is the package's directory under module/; Name is what mod:<name>: carries. llm is left
@@ -57,6 +58,7 @@ var Modules = []struct {
 	{"store", "store", reflect.TypeFor[*store.StoreModule]()},
 	{"systemtray", "systemtray", reflect.TypeFor[*systemtray.SystemTrayModule]()},
 	{"updater", "updater", reflect.TypeFor[*updater.UpdaterModule]()},
+	{"widget", "widget", reflect.TypeFor[*widget.Module]()},
 }
 
 // Generate rewrites, or with check only compares, every fragment for the scorix checkout at root.

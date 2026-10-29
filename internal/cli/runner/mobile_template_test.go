@@ -140,7 +140,15 @@ func TestAndroidManifestFollowsScorixYaml(t *testing.T) {
 			[]string{`<activity-alias android:name="dev.scorix.ScorixActivity">`, "</activity-alias>"}, []string{"<activity "}},
 		{"app:\n  name: demo\n", "", nil, []string{"POST_NOTIFICATIONS", "RECEIVE_BOOT_COMPLETED", "<application>"}},
 		{"app:\n  name: demo\nmodules:\n  notification:\n    enabled: true\n", "",
-			[]string{"RECEIVE_BOOT_COMPLETED", `<receiver android:name="dev.scorix.NotificationAlarm"`, "<application>"}, []string{"<activity"}},
+			[]string{"RECEIVE_BOOT_COMPLETED", `<receiver android:name="dev.scorix.NotificationAlarm"`, "<application>"}, []string{"ScorixWidget", "<activity"}},
+		{"app:\n  name: demo\nmodules:\n  widget:\n    enabled: true\nandroid:\n  widgets:\n    - { id: today, label: Hôm nay & mai }\n    - { id: month_grid, label: Tháng, layout: grid }\n", "",
+			[]string{
+				"RECEIVE_BOOT_COMPLETED",
+				`<receiver android:name="dev.scorix.app.TodayWidget" android:label="Hôm nay &amp; mai"`,
+				`<receiver android:name="dev.scorix.app.MonthGridWidget"`,
+				"@xml/scorix_widget_month_grid",
+				`android:name="dev.scorix.widget.layout" android:value="grid"`,
+			}, []string{"POST_NOTIFICATIONS", "NotificationAlarm"}},
 	} {
 		got, err := androidManifestOf(t, c.yaml, c.appManifest)
 		if err != nil {
@@ -163,6 +171,71 @@ func TestAndroidManifestRefusesABadScheme(t *testing.T) {
 	for _, scheme := range []string{"MyApp", "https"} {
 		if _, err := androidManifestOf(t, "app:\n  name: demo\n  protocols: ["+scheme+"]\n", ""); err == nil || !strings.Contains(err.Error(), scheme) {
 			t.Errorf("%s: got %v", scheme, err)
+		}
+	}
+}
+
+func TestAndroidWidgetsAreWritten(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "android")
+	stale := filepath.Join(dir, ".scorix", "widgets", "res", "xml", "scorix_widget_gone.xml")
+	if err := os.MkdirAll(filepath.Dir(stale), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stale, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	widgets, err := androidWidgets(&ProjectConfig{Android: &AndroidConfig{Widgets: []AndroidWidget{
+		{ID: "today", Label: "Today"}, {ID: "month", Label: "Month", Layout: "grid"}, {ID: "hour", Label: "Hour", Size: "2x1"}, {ID: "clock", Label: "Clock", Layout: "clock", Size: "4x2"},
+	}}}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeAndroidWidgets(dir, widgets); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Error("a widget gone from scorix.yaml kept its info file")
+	}
+	kt := readGenerated(t, dir, ".scorix/widgets/kotlin/dev/scorix/app/ScorixWidgets.kt")
+	for _, w := range []string{"class TodayWidget : dev.scorix.ScorixWidget()", "class MonthWidget", "class HourWidget", "class ClockWidget"} {
+		if !strings.Contains(kt, w) {
+			t.Errorf("ScorixWidgets.kt lacks %s:\n%s", w, kt)
+		}
+	}
+	for file, want := range map[string][]string{
+		"today": {`@layout/scorix_widget_card"`, `android:minWidth="110dp"`, `android:targetCellWidth="2"`},
+		"month": {`@layout/scorix_widget_grid"`, `android:minWidth="250dp"`, `android:minResizeWidth="180dp"`},
+		"hour":  {`android:minHeight="40dp"`, `android:targetCellHeight="1"`},
+		"clock": {`@layout/scorix_widget_clock"`, `android:minWidth="250dp"`, `android:minResizeWidth="40dp"`},
+	} {
+		got := readGenerated(t, dir, ".scorix/widgets/res/xml/scorix_widget_"+file+".xml")
+		for _, w := range want {
+			if !strings.Contains(got, w) {
+				t.Errorf("scorix_widget_%s.xml lacks %s:\n%s", file, w, got)
+			}
+		}
+	}
+}
+
+func TestAndroidWidgetsRefuseABadEntry(t *testing.T) {
+	for name, c := range map[string]struct {
+		widgets []AndroidWidget
+		on      bool
+		want    string
+	}{
+		"module off": {[]AndroidWidget{{ID: "today", Label: "Today"}}, false, "module is off"},
+		"none":       {nil, true, "declares none"},
+		"bad id":     {[]AndroidWidget{{ID: "Today", Label: "Today"}}, true, `"Today"`},
+		"twice":      {[]AndroidWidget{{ID: "a", Label: "A"}, {ID: "a", Label: "B"}}, true, "unique"},
+		"same class": {[]AndroidWidget{{ID: "a_b", Label: "A"}, {ID: "a__b", Label: "B"}}, true, "unique"},
+		"no label":   {[]AndroidWidget{{ID: "a"}}, true, "label"},
+		"layout":     {[]AndroidWidget{{ID: "a", Label: "A", Layout: "list"}}, true, `"list"`},
+		"size":       {[]AndroidWidget{{ID: "a", Label: "A", Size: "9x9"}}, true, `"9x9"`},
+	} {
+		_, err := androidWidgets(&ProjectConfig{Android: &AndroidConfig{Widgets: c.widgets}}, c.on)
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: err = %v, want it to mention %s", name, err, c.want)
 		}
 	}
 }

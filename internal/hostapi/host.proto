@@ -245,3 +245,52 @@ message NotificationButton {
   string label = 1;
   string url = 2;
 }
+
+// A home-screen widget fed ahead of time, since no page runs when it redraws: it shows the last
+// entry whose time has come, until expires_ms, then the fallback. A tap opens the app on url.
+// Each kind is one entry in the launcher's widget list, declared under android.widgets.
+// @native
+service Widget {
+  // Replaces the kind's timeline and redraws every placed widget of it now.
+  rpc SetTimeline(WidgetTimeline) returns (Empty);
+}
+
+message WidgetTimeline {
+  string url = 1;
+  repeated WidgetEntry entries = 2;
+  int64 expires_ms = 3;
+  WidgetEntry fallback = 4;
+  // The id of an android.widgets entry in scorix.yaml.
+  string kind = 5;
+}
+
+message WidgetEntry {
+  // Unix milliseconds; ignored on the fallback.
+  int64 at_ms = 1;
+  string caption = 2;
+  string title = 3;
+  string text = 4;
+  // Draws the title in the accent color.
+  bool accent = 5;
+  // Shown by a card widget sized large enough.
+  repeated WidgetRow rows = 6;
+  // A grid widget's cells, seven to a row. Its arrows step through the entries.
+  repeated WidgetCell cells = 7;
+}
+
+message WidgetRow {
+  string label = 1;
+  string value = 2;
+  bool accent = 3;
+}
+
+message WidgetCell {
+  string text = 1;
+  string sub = 2;
+  // Start of the day the cell stands for, which is drawn as today for 24 hours; 0 for a header.
+  int64 at_ms = 3;
+  bool muted = 4;
+  bool accent = 5;
+  // What a tap on the cell opens the app on; empty, the tap opens the timeline's url.
+  string url = 6;
+}

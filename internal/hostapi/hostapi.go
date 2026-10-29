@@ -170,6 +170,39 @@ type TreeFile struct {
 	Data []byte `json:"data"`
 }
 
+type WidgetCell struct {
+	Text   string `json:"text"`
+	Sub    string `json:"sub"`
+	AtMs   int64  `json:"at_ms"`
+	Muted  bool   `json:"muted"`
+	Accent bool   `json:"accent"`
+	Url    string `json:"url"`
+}
+
+type WidgetEntry struct {
+	AtMs    int64        `json:"at_ms"`
+	Caption string       `json:"caption"`
+	Title   string       `json:"title"`
+	Text    string       `json:"text"`
+	Accent  bool         `json:"accent"`
+	Rows    []WidgetRow  `json:"rows"`
+	Cells   []WidgetCell `json:"cells"`
+}
+
+type WidgetRow struct {
+	Label  string `json:"label"`
+	Value  string `json:"value"`
+	Accent bool   `json:"accent"`
+}
+
+type WidgetTimeline struct {
+	Url       string        `json:"url"`
+	Entries   []WidgetEntry `json:"entries"`
+	ExpiresMs int64         `json:"expires_ms"`
+	Fallback  WidgetEntry   `json:"fallback"`
+	Kind      string        `json:"kind"`
+}
+
 var Keystore keystorePlugin
 
 type keystorePlugin struct{}
@@ -443,6 +476,19 @@ func (notificationPlugin) Show(ctx context.Context, req *NotificationContent) (*
 func (notificationPlugin) Schedule(ctx context.Context, req *NotificationSchedule) (*Empty, error) {
 	out := new(Empty)
 	if err := native.Call(ctx, "notification", "schedule", req, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+var Widget widgetPlugin
+
+type widgetPlugin struct{}
+
+// Replaces the kind's timeline and redraws every placed widget of it now.
+func (widgetPlugin) SetTimeline(ctx context.Context, req *WidgetTimeline) (*Empty, error) {
+	out := new(Empty)
+	if err := native.Call(ctx, "widget", "setTimeline", req, out); err != nil {
 		return nil, err
 	}
 	return out, nil

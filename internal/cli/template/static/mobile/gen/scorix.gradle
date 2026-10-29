@@ -52,6 +52,9 @@ android {
 
     // Plugin bases from the @native services of idl/app.proto, written by `scorix generate proto`.
     sourceSets.main.java.srcDirs += 'src/scorix/kotlin'
+    // A provider class and info file per android.widgets entry, written by `scorix mobile sync`.
+    sourceSets.main.java.srcDirs += rootProject.file('.scorix/widgets/kotlin')
+    sourceSets.main.res.srcDirs += rootProject.file('.scorix/widgets/res')
 }
 
 // Permissions and intent filters that follow from scorix.yaml, merged over app/src/main's manifest.

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="scorix_widget_bg">#F21F1F1F</color>
+    <color name="scorix_widget_fg">#FFF2F2F2</color>
+    <color name="scorix_widget_muted">#FFA8A8A8</color>
+    <color name="scorix_widget_accent">#FFFF8A80</color>
+</resources>

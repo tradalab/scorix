@@ -37,6 +37,9 @@ const (
 	// Rewritten into android/.scorix by every `scorix mobile sync`.
 	MobileGradle   = "static/mobile/gen/scorix.gradle"
 	MobileManifest = "static/mobile/gen/AndroidManifest.xml"
+	// One provider class and one info file per android.widgets entry.
+	MobileWidgets    = "static/mobile/gen/ScorixWidgets.kt"
+	MobileWidgetInfo = "static/mobile/gen/scorix_widget_info.xml"
 
 	// The image and SDK installer behind `scorix mobile build --docker`.
 	MobileDockerfile = "static/mobile/docker/Dockerfile"

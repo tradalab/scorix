@@ -82,7 +82,7 @@ object ScorixHost {
     private var hidden = false
 
     init {
-        for (p in listOf(KeystorePlugin(), BiometricPlugin(), ClipboardPlugin(), DialogPlugin(), ScannerPlugin(), BrowserPlugin(), SharePlugin(), BluetoothPlugin(), NotificationPlugin())) plugins[p.name] = p
+        for (p in listOf(KeystorePlugin(), BiometricPlugin(), ClipboardPlugin(), DialogPlugin(), ScannerPlugin(), BrowserPlugin(), SharePlugin(), BluetoothPlugin(), NotificationPlugin(), WidgetPlugin())) plugins[p.name] = p
     }
 
     internal fun currentActivity(): Activity? = activity

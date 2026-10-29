@@ -24,6 +24,7 @@ var builtinModules = map[string]builtinModule{
 	"store":        {"github.com/tradalab/scorix/module/store", "store"},
 	"template":     {"github.com/tradalab/scorix/module/template", "template"},
 	"updater":      {"github.com/tradalab/scorix/module/updater", "updater"},
+	"widget":       {"github.com/tradalab/scorix/module/widget", "widget"},
 }
 
 // A section enables its module only with `enabled: true`, the same test the runtime makes.

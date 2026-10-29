@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="scorix_widget_bg">#F2FFFFFF</color>
+    <color name="scorix_widget_fg">#FF1F1F1F</color>
+    <color name="scorix_widget_muted">#FF6B6B6B</color>
+    <color name="scorix_widget_accent">#FFC62828</color>
+    <!-- An app overrides these with strings of the same name to translate the grid's buttons. -->
+    <string name="scorix_widget_prev">‹</string>
+    <string name="scorix_widget_next">›</string>
+    <string name="scorix_widget_prev_desc">Previous</string>
+    <string name="scorix_widget_next_desc">Next</string>
+    <string name="scorix_widget_back_desc">Back to today</string>
+</resources>

@@ -201,6 +201,21 @@ internal abstract class NotificationPluginBase : ScorixPlugin {
     }
 }
 
+/** The `widget` plugin, implemented as WidgetPlugin. */
+internal abstract class WidgetPluginBase : ScorixPlugin {
+    final override val name = "widget"
+
+    /** Replaces the kind's timeline and redraws every placed widget of it now. */
+    abstract fun setTimeline(req: WidgetTimeline, reply: Reply<Empty>)
+
+    final override fun call(method: String, args: JSONObject, call: PluginCall) {
+        when (method) {
+            "setTimeline" -> setTimeline(WidgetTimeline.fromJson(args), Reply(call) { it.toJson() })
+            else -> call.reject("no_method", "widget has no method $method")
+        }
+    }
+}
+
 internal data class AuthenticateRequest(
     val title: String = "",
     val subtitle: String = "",
@@ -707,6 +722,109 @@ internal data class TreeFile(
             name = o.optString("name"),
             mime = o.optString("mime"),
             data = if (o.isNull("data")) ByteArray(0) else Base64.decode(o.optString("data"), Base64.DEFAULT),
+        )
+    }
+}
+
+internal data class WidgetCell(
+    val text: String = "",
+    val sub: String = "",
+    val atMs: Long = 0L,
+    val muted: Boolean = false,
+    val accent: Boolean = false,
+    val url: String = "",
+) {
+    fun toJson(): JSONObject = JSONObject()
+        .put("text", text)
+        .put("sub", sub)
+        .put("at_ms", atMs)
+        .put("muted", muted)
+        .put("accent", accent)
+        .put("url", url)
+
+    companion object {
+        fun fromJson(o: JSONObject) = WidgetCell(
+            text = o.optString("text"),
+            sub = o.optString("sub"),
+            atMs = o.optLong("at_ms"),
+            muted = o.optBoolean("muted"),
+            accent = o.optBoolean("accent"),
+            url = o.optString("url"),
+        )
+    }
+}
+
+internal data class WidgetEntry(
+    val atMs: Long = 0L,
+    val caption: String = "",
+    val title: String = "",
+    val text: String = "",
+    val accent: Boolean = false,
+    val rows: List<WidgetRow> = emptyList(),
+    val cells: List<WidgetCell> = emptyList(),
+) {
+    fun toJson(): JSONObject = JSONObject()
+        .put("at_ms", atMs)
+        .put("caption", caption)
+        .put("title", title)
+        .put("text", text)
+        .put("accent", accent)
+        .put("rows", JSONArray().apply { rows.forEach { put(it.toJson()) } })
+        .put("cells", JSONArray().apply { cells.forEach { put(it.toJson()) } })
+
+    companion object {
+        fun fromJson(o: JSONObject) = WidgetEntry(
+            atMs = o.optLong("at_ms"),
+            caption = o.optString("caption"),
+            title = o.optString("title"),
+            text = o.optString("text"),
+            accent = o.optBoolean("accent"),
+            rows = o.optJSONArray("rows")?.let { a -> List(a.length()) { WidgetRow.fromJson(a.getJSONObject(it)) } } ?: emptyList(),
+            cells = o.optJSONArray("cells")?.let { a -> List(a.length()) { WidgetCell.fromJson(a.getJSONObject(it)) } } ?: emptyList(),
+        )
+    }
+}
+
+internal data class WidgetRow(
+    val label: String = "",
+    val value: String = "",
+    val accent: Boolean = false,
+) {
+    fun toJson(): JSONObject = JSONObject()
+        .put("label", label)
+        .put("value", value)
+        .put("accent", accent)
+
+    companion object {
+        fun fromJson(o: JSONObject) = WidgetRow(
+            label = o.optString("label"),
+            value = o.optString("value"),
+            accent = o.optBoolean("accent"),
+        )
+    }
+}
+
+internal data class WidgetTimeline(
+    val url: String = "",
+    val entries: List<WidgetEntry> = emptyList(),
+    val expiresMs: Long = 0L,
+    val fallback: WidgetEntry = WidgetEntry(),
+    val kind: String = "",
+) {
+    fun toJson(): JSONObject = JSONObject()
+        .put("url", url)
+        .put("entries", JSONArray().apply { entries.forEach { put(it.toJson()) } })
+        .put("expires_ms", expiresMs)
+        .put("fallback", fallback.toJson())
+        .put("kind", kind)
+
+    companion object {
+        fun fromJson(o: JSONObject) = WidgetTimeline(
+            url = o.optString("url"),
+            entries = o.optJSONArray("entries")?.let { a -> List(a.length()) { WidgetEntry.fromJson(a.getJSONObject(it)) } } ?: emptyList(),
+            expiresMs = o.optLong("expires_ms"),
+            fallback = WidgetEntry.fromJson(o.optJSONObject("fallback") ?: JSONObject()),
+            kind = o.optString("kind"),
         )
     }
 }
