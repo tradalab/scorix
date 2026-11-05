@@ -7,7 +7,6 @@ import (
 	"testing"
 )
 
-// Why Theme.Scorix has a night variant: values/themes.xml in the host library, which every sync copies.
 func TestAndroidThemeFollowsTheSystem(t *testing.T) {
 	dir := t.TempDir()
 	if err := writeTemplateFS("static/mobile/android", dir, map[string]any{"Name": "demo"}); err != nil {
@@ -32,7 +31,6 @@ func TestAndroidThemeFollowsTheSystem(t *testing.T) {
 	}
 }
 
-// The app's build.gradle.kts only applies scorix.gradle; what goes in it is checked here.
 func TestAndroidGradleIsGenerated(t *testing.T) {
 	dir := t.TempDir()
 	if err := writeTemplateFS("static/mobile/android", dir, map[string]any{"Name": "demo"}); err != nil {
@@ -93,7 +91,6 @@ func TestAndroidGradleIsGenerated(t *testing.T) {
 	}
 }
 
-// auth's shape: the launcher is an alias named dev.scorix.ScorixActivity.
 const aliasManifest = `<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application>
 <activity android:name=".MainActivity" android:exported="false" />
 <activity-alias android:name="dev.scorix.ScorixActivity" android:targetActivity=".MainActivity" android:exported="true">
@@ -185,8 +182,11 @@ func TestAndroidWidgetsAreWritten(t *testing.T) {
 	if err := os.WriteFile(stale, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	widgets, err := androidWidgets(&ProjectConfig{Android: &AndroidConfig{Widgets: []AndroidWidget{
-		{ID: "today", Label: "Today"}, {ID: "month", Label: "Month", Layout: "grid"}, {ID: "hour", Label: "Hour", Size: "2x1"}, {ID: "clock", Label: "Clock", Layout: "clock", Size: "4x2"},
+	if err := os.WriteFile(filepath.Join(root, "today.png"), append(pngSignature, "today"...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	widgets, err := androidWidgets(root, &ProjectConfig{Android: &AndroidConfig{Widgets: []AndroidWidget{
+		{ID: "today", Label: "Today", Preview: "today.png"}, {ID: "month", Label: "Month", Layout: "grid"}, {ID: "hour", Label: "Hour", Size: "2x1"}, {ID: "clock", Label: "Clock", Layout: "clock", Size: "4x2"},
 	}}}, true)
 	if err != nil {
 		t.Fatal(err)
@@ -197,6 +197,12 @@ func TestAndroidWidgetsAreWritten(t *testing.T) {
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {
 		t.Error("a widget gone from scorix.yaml kept its info file")
 	}
+	if got := readGenerated(t, dir, ".scorix/widgets/res/drawable-nodpi/scorix_widget_preview_today.png"); got != string(pngSignature)+"today" {
+		t.Errorf("the today preview was copied as %q", got)
+	}
+	if got := readGenerated(t, dir, ".scorix/widgets/res/xml/scorix_widget_today.xml"); strings.Contains(got, "previewLayout") {
+		t.Errorf("a widget with a preview image keeps previewLayout, which wins over it from Android 12:\n%s", got)
+	}
 	kt := readGenerated(t, dir, ".scorix/widgets/kotlin/dev/scorix/app/ScorixWidgets.kt")
 	for _, w := range []string{"class TodayWidget : dev.scorix.ScorixWidget()", "class MonthWidget", "class HourWidget", "class ClockWidget"} {
 		if !strings.Contains(kt, w) {
@@ -204,8 +210,8 @@ func TestAndroidWidgetsAreWritten(t *testing.T) {
 		}
 	}
 	for file, want := range map[string][]string{
-		"today": {`@layout/scorix_widget_card"`, `android:minWidth="110dp"`, `android:targetCellWidth="2"`},
-		"month": {`@layout/scorix_widget_grid"`, `android:minWidth="250dp"`, `android:minResizeWidth="180dp"`},
+		"today": {`android:initialLayout="@layout/scorix_widget_card"`, `android:previewImage="@drawable/scorix_widget_preview_today"`, `android:minWidth="110dp"`, `android:targetCellWidth="2"`},
+		"month": {`android:previewLayout="@layout/scorix_widget_grid"`, `android:minWidth="250dp"`, `android:minResizeWidth="180dp"`},
 		"hour":  {`android:minHeight="40dp"`, `android:targetCellHeight="1"`},
 		"clock": {`@layout/scorix_widget_clock"`, `android:minWidth="250dp"`, `android:minResizeWidth="40dp"`},
 	} {
@@ -232,8 +238,14 @@ func TestAndroidWidgetsRefuseABadEntry(t *testing.T) {
 		"no label":   {[]AndroidWidget{{ID: "a"}}, true, "label"},
 		"layout":     {[]AndroidWidget{{ID: "a", Label: "A", Layout: "list"}}, true, `"list"`},
 		"size":       {[]AndroidWidget{{ID: "a", Label: "A", Size: "9x9"}}, true, `"9x9"`},
+		"preview":    {[]AndroidWidget{{ID: "a", Label: "A", Preview: "missing.png"}}, true, `"missing.png"`},
+		"not a png":  {[]AndroidWidget{{ID: "a", Label: "A", Preview: "fake.png"}}, true, `"fake.png"`},
 	} {
-		_, err := androidWidgets(&ProjectConfig{Android: &AndroidConfig{Widgets: c.widgets}}, c.on)
+		root := t.TempDir()
+		if err := os.WriteFile(filepath.Join(root, "fake.png"), []byte("png"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := androidWidgets(root, &ProjectConfig{Android: &AndroidConfig{Widgets: c.widgets}}, c.on)
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: err = %v, want it to mention %s", name, err, c.want)
 		}

@@ -18,12 +18,13 @@ type Module struct{}
 func New() *Module { return &Module{} }
 
 func (m *Module) Name() string       { return "widget" }
-func (m *Module) Version() string    { return "1.0.0" }
+func (m *Module) Version() string    { return "1.1.0" }
 func (m *Module) Capability() string { return "widget" }
 
 func (m *Module) OnLoad(ctx *module.Context) error {
 	logger.Info(fmt.Sprintf("[widget] loading (v%s)", m.Version()))
 	module.Expose(m, "SetTimeline", ctx.IPC)
+	module.Expose(m, "RequestPin", ctx.IPC)
 	return nil
 }
 
@@ -76,7 +77,6 @@ type Timeline struct {
 	URL string `json:"url,omitempty"`
 }
 
-// Stored whole in the host's preferences and parsed on every redraw.
 const maxEntries = 400
 
 // What the layouts have room for: a large card shows four rows, a grid seven rows of seven.
@@ -93,7 +93,7 @@ func (m *Module) SetTimeline(ctx context.Context, t Timeline) (string, error) {
 		return "", fault.New("invalid_request", "kind is required: the id of an android.widgets entry in scorix.yaml")
 	}
 	if len(t.Entries) > maxEntries {
-		return "", fault.New("invalid_request", fmt.Sprintf("%d entries, over the %d limit", len(t.Entries), maxEntries))
+		return "", fault.New("invalid_request", fmt.Sprintf("%d entries, over the %d limit: the host stores a timeline whole and parses it on every redraw", len(t.Entries), maxEntries))
 	}
 	for _, e := range append([]Entry{t.Fallback}, t.Entries...) {
 		if len(e.Rows) > maxRows || len(e.Cells) > maxCells {
@@ -105,6 +105,23 @@ func (m *Module) SetTimeline(ctx context.Context, t Timeline) (string, error) {
 		w.Entries = append(w.Entries, entry(e))
 	}
 	if _, err := hostapi.Widget.SetTimeline(ctx, w); err != nil {
+		return "", mapErr(err)
+	}
+	return "ok", nil
+}
+
+type Pin struct {
+	Kind string `json:"kind"`
+}
+
+// RequestPin opens the launcher's dialog for placing a widget of the kind; "ok" means the dialog was
+// shown, not that the user placed it. A launcher without the dialog, or Android before 8, gives unavailable.
+// JS: scorix.invoke("mod:widget:RequestPin", { kind: "today" })
+func (m *Module) RequestPin(ctx context.Context, p Pin) (string, error) {
+	if p.Kind == "" {
+		return "", fault.New("invalid_request", "kind is required: the id of an android.widgets entry in scorix.yaml")
+	}
+	if _, err := hostapi.Widget.RequestPin(ctx, &hostapi.WidgetKind{Kind: p.Kind}); err != nil {
 		return "", mapErr(err)
 	}
 	return "ok", nil

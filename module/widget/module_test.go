@@ -23,3 +23,13 @@ func TestSetTimeline(t *testing.T) {
 		t.Fatalf("SetTimeline err = %v, want code unavailable", err)
 	}
 }
+
+func TestRequestPin(t *testing.T) {
+	m := New()
+	if _, err := m.RequestPin(context.Background(), Pin{}); fault.CodeOf(err) != "invalid_request" {
+		t.Errorf("no kind: err = %v, want invalid_request", err)
+	}
+	if _, err := m.RequestPin(context.Background(), Pin{Kind: "today"}); fault.CodeOf(err) != fault.CodeUnavailable {
+		t.Fatalf("RequestPin err = %v, want code unavailable", err)
+	}
+}

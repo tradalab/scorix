@@ -253,6 +253,13 @@ message NotificationButton {
 service Widget {
   // Replaces the kind's timeline and redraws every placed widget of it now.
   rpc SetTimeline(WidgetTimeline) returns (Empty);
+  // Asks the launcher to place one widget of the kind; the user confirms in the launcher's own dialog.
+  rpc RequestPin(WidgetKind) returns (Empty);
+}
+
+message WidgetKind {
+  // The id of an android.widgets entry in scorix.yaml.
+  string kind = 1;
 }
 
 message WidgetTimeline {

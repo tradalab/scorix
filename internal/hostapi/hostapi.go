@@ -189,6 +189,10 @@ type WidgetEntry struct {
 	Cells   []WidgetCell `json:"cells"`
 }
 
+type WidgetKind struct {
+	Kind string `json:"kind"`
+}
+
 type WidgetRow struct {
 	Label  string `json:"label"`
 	Value  string `json:"value"`
@@ -489,6 +493,15 @@ type widgetPlugin struct{}
 func (widgetPlugin) SetTimeline(ctx context.Context, req *WidgetTimeline) (*Empty, error) {
 	out := new(Empty)
 	if err := native.Call(ctx, "widget", "setTimeline", req, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// Asks the launcher to place one widget of the kind; the user confirms in the launcher's own dialog.
+func (widgetPlugin) RequestPin(ctx context.Context, req *WidgetKind) (*Empty, error) {
+	out := new(Empty)
+	if err := native.Call(ctx, "widget", "requestPin", req, out); err != nil {
 		return nil, err
 	}
 	return out, nil

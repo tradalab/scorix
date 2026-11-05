@@ -3,7 +3,11 @@
 <!-- updatePeriodMillis 0: the provider arms its own tick for the next timeline entry. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:initialLayout="@layout/scorix_widget_{{ .Layout }}"
+{{- if .Preview }}
+    android:previewImage="@drawable/scorix_widget_preview_{{ .ID }}"
+{{- else }}
     android:previewLayout="@layout/scorix_widget_{{ .Layout }}"
+{{- end }}
     android:minWidth="{{ .MinWidth }}dp"
     android:minHeight="{{ .MinHeight }}dp"
     android:minResizeWidth="{{ .MinResize }}dp"

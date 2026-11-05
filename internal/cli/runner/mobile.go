@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/xml"
@@ -27,17 +28,17 @@ import (
 // JNI contract between it and the app's c-shared lib has no version of its own.
 const (
 	androidMinSDK        = 24
-	androidActivity      = "dev.scorix.ScorixActivity" // the template's launcher, when the device cannot say
-	androidGradleVersion = "8.10.2"                    // the wrapper init writes; AGP 8.7 needs 8.9 or newer
+	androidActivity      = "dev.scorix.ScorixActivity"
+	androidGradleVersion = "8.10.2"
 	androidLibName       = "libscorixapp.so"
 	scorixModule         = "github.com/tradalab/scorix"
 )
 
 type androidABI struct {
-	Name   string // jniLibs directory and Android's own name for it
+	Name   string
 	GOARCH string
 	GOARM  string
-	Triple string // NDK clang prefix, before the API level
+	Triple string
 }
 
 var androidABIs = []androidABI{
@@ -47,7 +48,6 @@ var androidABIs = []androidABI{
 	{Name: "x86", GOARCH: "386", Triple: "i686-linux-android"},
 }
 
-// Phones are arm64, PC emulators x86_64; the 32-bit pair would cost two more Go builds.
 var defaultAndroidABIs = []string{"arm64-v8a", "x86_64"}
 
 type MobileOptions struct {
@@ -55,11 +55,11 @@ type MobileOptions struct {
 	Platform     string
 	ABIs         []string
 	Release      bool
-	Bundle       bool // AAB instead of APK; release only
+	Bundle       bool
 	SkipFrontend bool
-	Device       string // adb serial or a remembered device; empty: the only one, else the default
-	DevURL       string // dev only: an already-running frontend dev server
-	Docker       bool   // build only: inside scorix's Android image instead of the local SDK
+	Device       string
+	DevURL       string
+	Docker       bool
 	JSONOut      io.Writer
 }
 
@@ -125,7 +125,6 @@ func mobileInit(ctx context.Context, opt MobileOptions, res *MobileResult) error
 	}
 	dir := filepath.Join(bc.Root, "android")
 	res.Project = dir
-	// Never rewritten: the app owns these files after init and a rerun would undo its edits.
 	if _, err := os.Stat(dir); err == nil {
 		return exitErrorf(ExitFailed, "exists", "%s already exists and belongs to the app now; delete it to start over", dir)
 	}
@@ -216,7 +215,6 @@ func mobileSync(ctx context.Context, opt MobileOptions, res *MobileResult) (*Bui
 	}
 	warnUnpinnedAssets(bc.DistDir)
 
-	// Cleared first: a lib left from a wider ABI list would ship a stale build in the APK.
 	jni := filepath.Join(dir, "app", "src", "main", "jniLibs")
 	if err := os.RemoveAll(jni); err != nil {
 		return nil, err
@@ -236,14 +234,12 @@ func goBuildAndroid(ctx context.Context, bc *BuildContext, ndk string, abi andro
 	if err != nil {
 		return err
 	}
-	// Always stripped: size is paid per install, and Go keeps its own symbols for panic traces.
 	ld := append([]string{"-s", "-w"}, bc.Ldflags...)
 	args := []string{"build", "-buildmode=c-shared", "-trimpath", "-ldflags", strings.Join(ld, " ")}
 	if len(bc.Tags) > 0 {
 		args = append(args, "-tags", strings.Join(bc.Tags, ","))
 	}
 	args = append(args, "-o", out, ".")
-	// Play requires 16 KB pages. CGO_LDFLAGS, not -extldflags: an app's own -extldflags would replace it.
 	cgoLD := strings.TrimSpace(os.Getenv("CGO_LDFLAGS") + " -Wl,-z,max-page-size=16384")
 	env := append(os.Environ(), "GOOS=android", "GOARCH="+abi.GOARCH, "CGO_ENABLED=1", "CC="+cc, "CGO_LDFLAGS="+cgoLD)
 	if abi.GOARM != "" {
@@ -259,7 +255,6 @@ func goBuildAndroid(ctx context.Context, bc *BuildContext, ndk string, abi andro
 	if err := cmd.Run(); err != nil {
 		return toolchainError(err, stderr.String())
 	}
-	// c-shared leaves a C header beside the lib when main exports anything; Gradle would pack it.
 	if err := os.Remove(strings.TrimSuffix(out, ".so") + ".h"); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
@@ -285,7 +280,6 @@ func mobileBuild(ctx context.Context, opt MobileOptions, res *MobileResult) erro
 	} else {
 		signed := os.Getenv("SCORIX_ANDROID_KEYSTORE") != ""
 		res.Signed = &signed
-		// Named apart so an unsigned build never overwrites, and passes for, a signed one.
 		if !signed {
 			name += "-unsigned"
 			fmt.Println("warning: release build is unsigned - set SCORIX_ANDROID_KEYSTORE, SCORIX_ANDROID_KEYSTORE_PASSWORD, SCORIX_ANDROID_KEY_ALIAS and SCORIX_ANDROID_KEY_PASSWORD to sign it")
@@ -331,7 +325,6 @@ func gradleAssemble(ctx context.Context, dir string, opt MobileOptions) (string,
 	return filepath.Join(dir, out), nil
 }
 
-// The project's own wrapper wins: it pins the Gradle the project was made for.
 func gradleCommand(dir string) (string, error) {
 	wrapper := "gradlew"
 	if runtime.GOOS == "windows" {
@@ -357,7 +350,6 @@ func mobileDev(ctx context.Context, opt MobileOptions, res *MobileResult) error 
 		return err
 	}
 	opt.Device = target.Serial
-	// One device runs one ABI; building the others too costs a Go cross-compile each.
 	if len(opt.ABIs) == 0 && slices.ContainsFunc(androidABIs, func(a androidABI) bool { return a.Name == target.ABI }) {
 		opt.ABIs = []string{target.ABI}
 	}
@@ -398,7 +390,6 @@ func mobileDev(ctx context.Context, opt MobileOptions, res *MobileResult) error 
 	}
 	start := []string{"shell", "am", "start", "-n", launcherActivity(dev, appID)}
 	if devURL != "" {
-		// localhost on the device is the device; reverse makes it this machine.
 		port := devURL[strings.LastIndexByte(devURL, ':')+1:]
 		port = strings.TrimRight(port, "/")
 		if err := dev("reverse", "tcp:"+port, "tcp:"+port).Run(); err != nil {
@@ -432,7 +423,6 @@ func installAPK(dev func(args ...string) *exec.Cmd, apk, appID string) error {
 	install.Stdout = io.MultiWriter(os.Stdout, &installOut)
 	install.Stderr = io.MultiWriter(os.Stderr, &installOut)
 	if err := install.Run(); err != nil {
-		// Not uninstalled for the user: that wipes app data they may be testing with.
 		if strings.Contains(installOut.String(), "INSTALL_FAILED_UPDATE_INCOMPATIBLE") {
 			return fmt.Errorf("%s is already installed with another signing key (a release build?) - `adb uninstall %s` removes it and its data, then run again; or set applicationIdSuffix for debug in android/app/build.gradle.kts so both fit on the phone", appID, appID)
 		}
@@ -485,8 +475,6 @@ func selectAndroidABIs(names []string) ([]androidABI, error) {
 	return out, nil
 }
 
-// app.identifier is usually close to a Java package name (com.example.my-app),
-// so dashes become underscores rather than an error.
 func androidAppID(identifier string) (string, error) {
 	if identifier == "" {
 		return "", fmt.Errorf("app.identifier is empty in scorix.yaml - Android needs it as the application ID (e.g. com.example.myapp)")
@@ -505,8 +493,6 @@ func androidAppID(identifier string) (string, error) {
 	return id, nil
 }
 
-// Written on every sync, not into build.gradle.kts at init: the app owns that file,
-// so a version bump would keep the old versionCode, which the store rejects.
 func writeAndroidVersion(dir, version string) error {
 	p := filepath.Join(dir, ".scorix", "version.properties")
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -518,8 +504,6 @@ func writeAndroidVersion(dir, version string) error {
 
 var javaSegment = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
 
-// MAJOR*1e6 + MINOR*1e3 + PATCH keeps the order of the version and stays under
-// Play's 2.1e9 ceiling up to major 2100; anything unparsable starts at 1.
 func androidVersionCode(version string) int {
 	core := strings.SplitN(strings.TrimPrefix(version, "v"), "-", 2)[0]
 	parts := strings.Split(core, ".")
@@ -537,8 +521,6 @@ func androidVersionCode(version string) int {
 	return max(code, 1)
 }
 
-// Read from the APK itself: an app may set its own applicationIdSuffix or ID below the
-// generated scorix.gradle. Without aapt2 it is worked out from scorix.yaml as that file does.
 func apkAppID(ctx context.Context, apk, root string, debug bool) (string, error) {
 	if aapt2 := findAAPT2(); aapt2 != "" {
 		b, err := exec.CommandContext(ctx, aapt2, "dump", "packagename", apk).Output()
@@ -565,7 +547,6 @@ func apkAppID(ctx context.Context, apk, root string, debug bool) (string, error)
 	return id, nil
 }
 
-// Asked of the device, not assumed: an app may launch from its own Activity rather than ScorixActivity.
 func launcherActivity(dev func(args ...string) *exec.Cmd, appID string) string {
 	c := dev("shell", "cmd", "package", "resolve-activity", "--brief",
 		"-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER", appID)
@@ -619,20 +600,23 @@ type AndroidWidget struct {
 	Layout string `yaml:"layout"`
 	// Size is the cells the widget takes when placed, as WxH: 2x2 unless set, 4x4 for a grid.
 	Size string `yaml:"size"`
+	// Preview is a PNG, relative to scorix.yaml, that the launcher's widget list shows. Without it the
+	// list shows the layout with no text, except where Android 15 takes the one SetTimeline draws.
+	Preview string `yaml:"preview"`
 }
 
-// What the templates need of an android.widgets entry; Label is XML-escaped.
 type androidWidget struct {
-	ID, Label, Layout, Class                      string
+	ID, Label, Layout, Class, Preview             string
 	Width, Height, MinWidth, MinHeight, MinResize int
 }
 
 var (
 	widgetIDRe   = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 	widgetSizeRe = regexp.MustCompile(`^([1-6])x([1-6])$`)
+	pngSignature = []byte("\x89PNG\r\n\x1a\n")
 )
 
-func androidWidgets(cfg *ProjectConfig, on bool) ([]androidWidget, error) {
+func androidWidgets(root string, cfg *ProjectConfig, on bool) ([]androidWidget, error) {
 	var decl []AndroidWidget
 	if cfg != nil && cfg.Android != nil {
 		decl = cfg.Android.Widgets
@@ -646,7 +630,6 @@ func androidWidgets(cfg *ProjectConfig, on bool) ([]androidWidget, error) {
 	if len(decl) == 0 {
 		return nil, UsageError(fmt.Errorf("the widget module is on but android.widgets declares none, e.g.\n  android:\n    widgets:\n      - { id: today, label: Today }"))
 	}
-	// By class, not id: "a_b" and "a__b" would name the same provider class.
 	seen := map[string]bool{}
 	var out []androidWidget
 	for _, d := range decl {
@@ -662,7 +645,6 @@ func androidWidgets(cfg *ProjectConfig, on bool) ([]androidWidget, error) {
 		case "", "card", "clock":
 			w.Layout, w.Width, w.Height = cmp.Or(w.Layout, "card"), 2, 2
 		case "grid":
-			// Seven columns of day numbers stop being legible below about three cells.
 			w.Width, w.Height, w.MinResize = 4, 4, 180
 		default:
 			return nil, UsageError(fmt.Errorf("android.widgets %s layout %q must be card, clock or grid", d.ID, d.Layout))
@@ -674,8 +656,16 @@ func androidWidgets(cfg *ProjectConfig, on bool) ([]androidWidget, error) {
 			}
 			w.Width, w.Height = int(m[1][0]-'0'), int(m[2][0]-'0')
 		}
-		// The launcher's legacy rule for n cells, which still sizes the widget below Android 12.
 		w.MinWidth, w.MinHeight = 70*w.Width-30, 70*w.Height-30
+		if d.Preview != "" {
+			w.Preview = d.Preview
+			if !filepath.IsAbs(w.Preview) {
+				w.Preview = filepath.Join(root, w.Preview)
+			}
+			if png, err := os.ReadFile(w.Preview); err != nil || !bytes.HasPrefix(png, pngSignature) || !strings.EqualFold(filepath.Ext(d.Preview), ".png") {
+				return nil, UsageError(fmt.Errorf("android.widgets %s preview %q must be a PNG file, relative to scorix.yaml", d.ID, d.Preview))
+			}
+		}
 		var label strings.Builder
 		if err := xml.EscapeText(&label, []byte(d.Label)); err != nil {
 			return nil, err
@@ -696,7 +686,6 @@ func widgetClass(id string) string {
 	return b.String() + "Widget"
 }
 
-// Cleared on every sync, so a widget dropped from scorix.yaml leaves no class or info file behind.
 func writeAndroidWidgets(dir string, widgets []androidWidget) error {
 	out := filepath.Join(dir, ".scorix", "widgets")
 	if err := os.RemoveAll(out); err != nil || len(widgets) == 0 {
@@ -727,11 +716,23 @@ func writeAndroidWidgets(dir string, widgets []androidWidget) error {
 		if err := render(template.MobileWidgetInfo, filepath.Join(out, "res", "xml", "scorix_widget_"+w.ID+".xml"), w); err != nil {
 			return err
 		}
+		if w.Preview != "" {
+			png, err := os.ReadFile(w.Preview)
+			if err != nil {
+				return err
+			}
+			drawable := filepath.Join(out, "res", "drawable-nodpi")
+			if err := os.MkdirAll(drawable, 0o755); err != nil {
+				return err
+			}
+			if err := os.WriteFile(filepath.Join(drawable, "scorix_widget_preview_"+w.ID+".png"), png, 0o644); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
 
-// Dot-led segments only: AGP adds no dot of its own, and anything else makes an invalid ID.
 var idSuffixRe = regexp.MustCompile(`^(\.[A-Za-z][A-Za-z0-9_]*)+$`)
 
 func checkIDSuffix(cfg *ProjectConfig) error {
@@ -748,7 +749,6 @@ func debugIDSuffix(cfg *ProjectConfig) string {
 	return ".dev"
 }
 
-// Rewritten on every sync like version.properties, so a template change reaches apps made before it.
 func writeAndroidGradle(dir string, bc *BuildContext) error {
 	appID, err := androidAppID(bc.Identifier)
 	if err != nil {
@@ -779,7 +779,6 @@ func writeAndroidGradle(dir string, bc *BuildContext) error {
 	return os.WriteFile(filepath.Join(dir, ".scorix", "scorix.gradle"), []byte(out.String()), 0o644)
 }
 
-// Android matches schemes case-sensitively and only ever delivers them lowercase.
 var schemeRe = regexp.MustCompile(`^[a-z][a-z0-9+.-]*$`)
 
 type androidComponent struct {
@@ -794,7 +793,6 @@ type androidName struct {
 	Name string `xml:"http://schemas.android.com/apk/res/android name,attr"`
 }
 
-// Links must reach what the launcher starts, which may be an alias (auth's dev.scorix.ScorixActivity).
 func launcherComponent(manifest string) (tag, name string, err error) {
 	b, err := os.ReadFile(manifest)
 	if err != nil {
@@ -823,7 +821,6 @@ func launcherComponent(manifest string) (tag, name string, err error) {
 	return "", "", fmt.Errorf("%s declares no launcher activity for links to open", manifest)
 }
 
-// Rewritten on every sync; scorix.gradle merges it over the app's own manifest.
 func writeAndroidManifest(dir string, bc *BuildContext) error {
 	meta, err := loadAppMetadata(bc.Root)
 	if err != nil {
@@ -858,7 +855,7 @@ func writeAndroidManifest(dir string, bc *BuildContext) error {
 		return err
 	}
 	var out strings.Builder
-	widgets, err := androidWidgets(bc.cfg, mods["widget"])
+	widgets, err := androidWidgets(bc.Root, bc.cfg, mods["widget"])
 	if err != nil {
 		return err
 	}
@@ -872,7 +869,6 @@ func writeAndroidManifest(dir string, bc *BuildContext) error {
 	return os.WriteFile(filepath.Join(dir, ".scorix", "AndroidManifest.xml"), []byte(out.String()), 0o644)
 }
 
-// For a single-quoted Groovy string, which a quote or a line break would end; $ is literal there.
 func groovyString(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `'`, `\'`, "\n", `\n`, "\r", `\r`, "\t", `\t`).Replace(s)
 }
@@ -925,7 +921,6 @@ func newestNDK(dir string) string {
 	return filepath.Join(dir, vers[len(vers)-1])
 }
 
-// Numeric per part: a string sort puts 27.10.1 before 27.2.12479018.
 func versionLess(a, b string) bool {
 	pa, pb := strings.Split(a, "."), strings.Split(b, ".")
 	for i := 0; i < len(pa) && i < len(pb); i++ {
@@ -992,7 +987,6 @@ func scorixModuleDir(ctx context.Context, root string) (string, error) {
 	return dir, nil
 }
 
-// Skips build/ and caches, which a development checkout carries next to the source.
 func copySourceTree(src, dst string) error {
 	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {

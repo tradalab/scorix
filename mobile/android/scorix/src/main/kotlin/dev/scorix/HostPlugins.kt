@@ -208,9 +208,13 @@ internal abstract class WidgetPluginBase : ScorixPlugin {
     /** Replaces the kind's timeline and redraws every placed widget of it now. */
     abstract fun setTimeline(req: WidgetTimeline, reply: Reply<Empty>)
 
+    /** Asks the launcher to place one widget of the kind; the user confirms in the launcher's own dialog. */
+    abstract fun requestPin(req: WidgetKind, reply: Reply<Empty>)
+
     final override fun call(method: String, args: JSONObject, call: PluginCall) {
         when (method) {
             "setTimeline" -> setTimeline(WidgetTimeline.fromJson(args), Reply(call) { it.toJson() })
+            "requestPin" -> requestPin(WidgetKind.fromJson(args), Reply(call) { it.toJson() })
             else -> call.reject("no_method", "widget has no method $method")
         }
     }
@@ -781,6 +785,19 @@ internal data class WidgetEntry(
             accent = o.optBoolean("accent"),
             rows = o.optJSONArray("rows")?.let { a -> List(a.length()) { WidgetRow.fromJson(a.getJSONObject(it)) } } ?: emptyList(),
             cells = o.optJSONArray("cells")?.let { a -> List(a.length()) { WidgetCell.fromJson(a.getJSONObject(it)) } } ?: emptyList(),
+        )
+    }
+}
+
+internal data class WidgetKind(
+    val kind: String = "",
+) {
+    fun toJson(): JSONObject = JSONObject()
+        .put("kind", kind)
+
+    companion object {
+        fun fromJson(o: JSONObject) = WidgetKind(
+            kind = o.optString("kind"),
         )
     }
 }

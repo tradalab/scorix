@@ -17,17 +17,16 @@ import android.widget.RemoteViews
 import org.json.JSONException
 import org.json.JSONObject
 
-// Subclassed per android.widgets entry by scorix mobile sync, since the launcher lists one widget per
-// receiver class. Draws from the stored timeline alone: Go is not loaded in this process.
+/**
+ * Subclassed per android.widgets entry by scorix mobile sync. Draws from the stored timeline alone:
+ * Go is not loaded in this process.
+ */
 open class ScorixWidget : AppWidgetProvider() {
-    // The tick, a reboot, a clock change and every widget event land here; each needs only a
-    // redraw, after a grid's step button has moved that one widget.
     override fun onReceive(context: Context, intent: Intent) {
         val self = ComponentName(context, javaClass)
         val id = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
         when (intent.action) {
             STEP -> step(context, self, id, intent.getIntExtra(DELTA, 0))
-            // Ids are not reused, so a removed widget's page would otherwise stay in prefs for good.
             AppWidgetManager.ACTION_APPWIDGET_DELETED -> forget(context, self, id)
         }
         refresh(context, self)
@@ -46,7 +45,6 @@ open class ScorixWidget : AppWidgetProvider() {
 
         private class Card(val w: Float, val h: Float, val layout: Int, val text: Boolean = true, val rows: Boolean = false)
 
-        // By android.widgets layout, in dp; the first of each is the smallest.
         private val SIZES = mapOf(
             "card" to listOf(
                 Card(0f, 0f, R.layout.scorix_widget_card_small, text = false),
@@ -62,7 +60,6 @@ open class ScorixWidget : AppWidgetProvider() {
             ),
         )
 
-        // By the meta-data mobile sync writes on each receiver, so no class name is shared with Go.
         fun component(c: Context, kind: String): ComponentName? {
             @Suppress("DEPRECATION")
             val receivers = c.packageManager.getPackageInfo(c.packageName, PackageManager.GET_RECEIVERS or PackageManager.GET_META_DATA).receivers
@@ -89,18 +86,14 @@ open class ScorixWidget : AppWidgetProvider() {
             val wm = AppWidgetManager.getInstance(c)
             val open = Notifications.open(c, t.url)
             val sizes = SIZES[meta.getString(LAYOUT)]
-            // The picker's previewLayout is blank, since its text comes only from here. From Android 15
-            // it shows this instead; on SetTimeline alone, as the system rate-limits the call.
             if (preview && Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
                 val views = if (sizes == null) grid(c, self, 0, sorted, due, due, entry, now, open) else sized(c, sizes, entry, open)
                 wm.setWidgetPreview(self, AppWidgetProviderInfo.WIDGET_CATEGORY_HOME_SCREEN, views)
             }
             val ids = wm.getAppWidgetIds(self)
-            // The last widget removed leaves nothing to draw or tick for.
             if (ids.isEmpty()) return arm(c, self, null)
             val drawn = mutableListOf(entry)
             if (sizes == null) {
-                // Per widget, since each one steps through the entries on its own.
                 for (id in ids) {
                     val shown = if (due < 0) -1 else due + offset(prefs(c, kind), id, sorted[due].atMs).coerceIn(-due, sorted.size - 1 - due)
                     val e = if (shown < 0) entry else sorted[shown]
@@ -108,7 +101,6 @@ open class ScorixWidget : AppWidgetProvider() {
                     wm.updateAppWidget(id, grid(c, self, id, sorted, due, shown, e, now, open))
                 }
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                // The launcher picks among these as the widget is resized, with no redraw from here.
                 wm.updateAppWidget(self, sized(c, sizes, entry, open))
             } else {
                 for (id in ids) {
@@ -117,7 +109,6 @@ open class ScorixWidget : AppWidgetProvider() {
                     wm.updateAppWidget(id, card(c, size, entry, open))
                 }
             }
-            // A grid also moves its today mark at each day's end, on whatever page each widget shows.
             val ends = drawn.flatMap { e -> e.cells.filter { it.atMs > 0 }.map { it.atMs + DAY_MS } }
             val nextAt = (t.entries.map { it.atMs } + t.expiresMs + ends)
                 .filter { it > now }.minOrNull()
@@ -142,25 +133,19 @@ open class ScorixWidget : AppWidgetProvider() {
             prefs(c, kind).edit().remove("step.$id").commit()
         }
 
-        // Unreadable reads as empty, the same as never set, rather than a crash at every boot.
         private fun load(c: Context, kind: String) = prefs(c, kind).getString(KEY, null)
             ?.let { try { WidgetTimeline.fromJson(JSONObject(it)) } catch (_: JSONException) { null } } ?: WidgetTimeline()
 
-        // The index of the entry shown now, or -1 for the fallback.
         private fun due(t: WidgetTimeline, sorted: List<WidgetEntry>, now: Long) =
             if (t.expiresMs != 0L && now >= t.expiresMs) -1 else sorted.indexOfLast { it.atMs <= now }
 
-        // Kept against the entry due when it was stepped, so the next entry falling due shows itself
-        // rather than a page the user left a month ago.
         private fun offset(p: SharedPreferences, id: Int, dueAt: Long): Int {
             val parts = p.getString("step.$id", null)?.split(':') ?: return 0
             return if (parts.size == 2 && parts[0].toLongOrNull() == dueAt) parts[1].toIntOrNull() ?: 0 else 0
         }
 
-        // A file per kind: Android reads a whole file on first use, in each process a tick starts.
         private fun prefs(c: Context, kind: String) = c.getSharedPreferences("scorix.widget.$kind", Context.MODE_PRIVATE)
 
-        // The rule Android 12 applies to sized RemoteViews: the nearest that fits, else the smallest.
         private fun pick(sizes: List<Card>, w: Float, h: Float) = sizes.filter { it.w <= w && it.h <= h }
             .minByOrNull { (it.w - w) * (it.w - w) + (it.h - h) * (it.h - h) } ?: sizes[0]
 
@@ -174,7 +159,6 @@ open class ScorixWidget : AppWidgetProvider() {
             titles(c, v, e)
             show(v, R.id.scorix_widget_text, if (size.text) e.text else "")
             if (size.rows) {
-                // Cleared first: the launcher may apply this over the views it already shows.
                 v.removeAllViews(R.id.scorix_widget_rows)
                 for (r in e.rows) {
                     val row = RemoteViews(c.packageName, if (r.accent) R.layout.scorix_widget_row_accent else R.layout.scorix_widget_row)
@@ -191,7 +175,6 @@ open class ScorixWidget : AppWidgetProvider() {
             val v = RemoteViews(c.packageName, R.layout.scorix_widget_grid)
             titles(c, v, e)
             show(v, R.id.scorix_widget_text, e.text)
-            // Invisible rather than gone, so the title does not shift as the ends are reached.
             val steps = listOf(R.id.scorix_widget_prev to (shown > 0), R.id.scorix_widget_next to (shown in 0 until sorted.size - 1))
             for ((view, on) in steps) v.setViewVisibility(view, if (on) View.VISIBLE else View.INVISIBLE)
             v.setOnClickPendingIntent(R.id.scorix_widget_prev, stepIntent(c, self, id, -1))
@@ -204,10 +187,8 @@ open class ScorixWidget : AppWidgetProvider() {
             }
             v.removeAllViews(R.id.scorix_widget_cells)
             for (week in e.cells.chunked(7)) {
-                // A row of headers, such as weekday names, takes only its text's height.
                 val header = week.all { it.atMs == 0L }
                 val row = RemoteViews(c.packageName, if (header) R.layout.scorix_widget_grid_header else R.layout.scorix_widget_grid_row)
-                // Padded so a short last row keeps the columns of the rows above.
                 for (cell in week + List(7 - week.size) { WidgetCell() }) row.addView(R.id.scorix_widget_grid_row, cellView(c, cell, now))
                 v.addView(R.id.scorix_widget_cells, row)
             }
@@ -215,8 +196,6 @@ open class ScorixWidget : AppWidgetProvider() {
             return v
         }
 
-        // A layout per look rather than setTextColor: a color set from here would keep its
-        // light or dark value when the theme flips, while a layout's resolves on each apply.
         private fun cellView(c: Context, cell: WidgetCell, now: Long): RemoteViews {
             val layout = when {
                 cell.atMs > 0 && now >= cell.atMs && now < cell.atMs + DAY_MS -> R.layout.scorix_widget_cell_today
@@ -231,9 +210,7 @@ open class ScorixWidget : AppWidgetProvider() {
             return v
         }
 
-        // Two title views for the same reason as cellView's layouts; one of them is always gone.
         private fun titles(c: Context, v: RemoteViews, e: WidgetEntry) {
-            // Never blank: a widget with nothing to say still names the app it opens.
             val title = e.title.ifEmpty { c.applicationInfo.loadLabel(c.packageManager).toString() }
             show(v, R.id.scorix_widget_title, if (e.accent) "" else title)
             show(v, R.id.scorix_widget_title_accent, if (e.accent) title else "")
@@ -244,8 +221,6 @@ open class ScorixWidget : AppWidgetProvider() {
             v.setViewVisibility(id, if (text.isEmpty()) View.GONE else View.VISIBLE)
         }
 
-        // RTC, not RTC_WAKEUP: nobody sees a redraw with the screen off. A plain set may lag an
-        // hour; ten minutes is the shortest window Android grants.
         private fun arm(c: Context, self: ComponentName, at: Long?) {
             val am = c.getSystemService(AlarmManager::class.java)
             val pi = PendingIntent.getBroadcast(
@@ -255,7 +230,6 @@ open class ScorixWidget : AppWidgetProvider() {
             if (at == null) am.cancel(pi) else am.setWindow(AlarmManager.RTC, at, WINDOW_MS, pi)
         }
 
-        // A request code per widget and direction: one shared code would leave every button the last extras set.
         private fun stepIntent(c: Context, self: ComponentName, id: Int, delta: Int) = PendingIntent.getBroadcast(
             c, id * 3 + delta + 1,
             Intent(STEP).setComponent(self).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id).putExtra(DELTA, delta),
@@ -272,6 +246,19 @@ internal class WidgetPlugin : WidgetPluginBase() {
             "the app's manifest has no widget of kind \"${req.kind}\": declare it under android.widgets in scorix.yaml and run scorix mobile sync",
         )
         ScorixWidget.replace(c, self, req)
+        reply.resolve(Empty())
+    }
+
+    override fun requestPin(req: WidgetKind, reply: Reply<Empty>) {
+        val c = ScorixHost.appContext ?: return reply.reject("unavailable", "the app is not started")
+        val self = ScorixWidget.component(c, req.kind) ?: return reply.reject(
+            "unavailable",
+            "the app's manifest has no widget of kind \"${req.kind}\": declare it under android.widgets in scorix.yaml and run scorix mobile sync",
+        )
+        val wm = AppWidgetManager.getInstance(c)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || !wm.isRequestPinAppWidgetSupported || !wm.requestPinAppWidget(self, null, null)) {
+            return reply.reject("unavailable", "the launcher cannot place widgets for an app: add it from the launcher's widget list")
+        }
         reply.resolve(Empty())
     }
 }
