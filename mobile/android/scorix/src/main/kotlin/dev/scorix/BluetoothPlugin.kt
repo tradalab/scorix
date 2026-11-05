@@ -25,16 +25,11 @@ import android.os.Looper
 import android.os.ParcelUuid
 import java.util.UUID
 
-/**
- * LE GATT through CompanionDeviceManager's chooser (no scan or location permission) and RFCOMM to
- * bonded devices. The app declares BLUETOOTH_CONNECT itself, as with CAMERA.
- */
-@SuppressLint("MissingPermission") // checked by needConnect before any GATT call
+@SuppressLint("MissingPermission")
 internal class BluetoothPlugin : BluetoothPluginBase() {
     private val main = Handler(Looper.getMainLooper())
     private val links = HashMap<String, Link>()
     private val sockets = HashMap<String, Classic>()
-    // RFCOMM sockets block, so exchanges run off the main thread, one at a time per socket.
     private val io = java.util.concurrent.Executors.newCachedThreadPool()
 
     override fun connect(req: BtAddress, reply: Reply<Empty>) = needConnect(reply.call) { connect(req.address, reply.call) }
@@ -93,8 +88,6 @@ internal class BluetoothPlugin : BluetoothPluginBase() {
         cdm.associate(request, cb, main)
     }
 
-    // The app's CompanionDeviceService hears when the device comes in range: for a computer that
-    // advertises only while it asks, that is the ask. The app declares the service and permission.
     override fun observe(req: BtObserve, reply: Reply<Empty>) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             return reply.reject("unavailable", "presence needs Android 12")
@@ -123,7 +116,6 @@ internal class BluetoothPlugin : BluetoothPluginBase() {
         reply.resolve(BtDevices(devices = a.bondedDevices.map { BtDevice(address = it.address, name = it.name ?: "") }))
     }
 
-    /** A bonded device's RFCOMM service, kept open between exchanges. */
     private class Classic(val socket: android.bluetooth.BluetoothSocket) {
         val reader = socket.inputStream.bufferedReader()
         val writer = socket.outputStream
@@ -146,18 +138,24 @@ internal class BluetoothPlugin : BluetoothPluginBase() {
             synchronized(sockets) { sockets.remove(address) }?.close()
         }
         io.execute {
-            // Only a socket kept from before may have died quietly with the other side; it gets one
-            // fresh try. A new socket failing, or Go giving up, ends the call.
             for (attempt in 0..1) {
                 if (cancelled.get()) return@execute
                 val kept = synchronized(sockets) { sockets[address] }
+                var opened: android.bluetooth.BluetoothSocket? = null
                 val s = kept ?: try {
-                    val sock = a.getRemoteDevice(address).createRfcommSocketToServiceRecord(uuid)
-                    a.cancelDiscovery()
+                    val sock = a.getRemoteDevice(address).createRfcommSocketToServiceRecord(uuid).also { opened = it }
                     sock.connect()
                     Classic(sock).also { synchronized(sockets) { sockets[address] = it } }
                 } catch (e: java.io.IOException) {
+                    opened?.runCatching { close() }
                     main.post { call.reject("failed", e.message ?: "could not connect") }
+                    return@execute
+                } catch (e: SecurityException) {
+                    opened?.runCatching { close() }
+                    main.post { call.reject("denied", e.message ?: "the user did not allow nearby devices") }
+                    return@execute
+                } catch (e: IllegalArgumentException) {
+                    main.post { call.reject("failed", e.message ?: "not a bluetooth address: $address") }
                     return@execute
                 }
                 try {
@@ -181,7 +179,6 @@ internal class BluetoothPlugin : BluetoothPluginBase() {
         }
     }
 
-    // An LE filter hands back a ScanResult; EXTRA_DEVICE still carries it on API 33+.
     private fun deviceOf(data: Intent): BluetoothDevice? {
         @Suppress("DEPRECATION")
         return when (val x = data.getParcelableExtra<android.os.Parcelable>(CompanionDeviceManager.EXTRA_DEVICE)) {
@@ -205,7 +202,6 @@ internal class BluetoothPlugin : BluetoothPluginBase() {
         }
     }
 
-    /** One connection, one operation in flight: GATT itself refuses a second until the first ends. */
     private inner class Link(val address: String) : BluetoothGattCallback() {
         var gatt: BluetoothGatt? = null
         var ready: PluginCall? = null
@@ -214,7 +210,6 @@ internal class BluetoothPlugin : BluetoothPluginBase() {
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, state: Int) {
             main.post {
                 if (state == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) {
-                    // 517 so a whole message fits one write: BlueZ delivers prepared writes in pieces.
                     if (!g.requestMtu(517)) g.discoverServices()
                     return@post
                 }
