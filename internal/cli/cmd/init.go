@@ -20,7 +20,7 @@ var (
 func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().StringVarP(&initDir, "dir", "d", ".", "project root directory")
-	initCmd.Flags().StringVar(&initShell, "shell", "", "frontend scaffold: nextjs | vite-react (default nextjs)")
+	initCmd.Flags().StringVar(&initShell, "shell", "", "frontend scaffold: nextjs | vite-react | vanilla-ts (default nextjs)")
 	jsonCommand(initCmd, func(cmd *cobra.Command, out io.Writer) error {
 		var name string
 		if args := cmd.Flags().Args(); len(args) > 0 {
