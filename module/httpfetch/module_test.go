@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/tradalab/scorix/fault"
+	"github.com/tradalab/scorix/module/moduletest"
 )
 
 func newTestModule(t *testing.T, allow ...string) (*HTTPModule, *httptest.Server) {
@@ -35,13 +36,11 @@ func newTestModule(t *testing.T, allow ...string) (*HTTPModule, *httptest.Server
 			allow[i] = u.Host
 		}
 	}
-	m.cfg = Config{Allow: allow}
-	m.client = &http.Client{CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		if !m.hostAllowed(req.URL.Host) {
-			return fault.Errorf(fault.CodeDenied, "redirect to %q is outside modules.http.allow", req.URL.Host)
-		}
-		return nil
-	}}
+	hosts := make([]any, len(allow))
+	for i, a := range allow {
+		hosts[i] = a
+	}
+	moduletest.Load(t, m, map[string]any{"allow": hosts})
 	return m, ts
 }
 

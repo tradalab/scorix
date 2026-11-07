@@ -2,47 +2,23 @@ package browser
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 
-	"github.com/tradalab/scorix/config"
 	"github.com/tradalab/scorix/fault"
 	"github.com/tradalab/scorix/module"
+	"github.com/tradalab/scorix/module/moduletest"
 )
 
 type opened struct{ revealed, launched []string }
 
-type nullCore struct{}
-
-func (nullCore) Register(string, module.Permission, func(context.Context, json.RawMessage) (any, error)) {
-}
-func (nullCore) Invoke(context.Context, string, json.RawMessage) (json.RawMessage, error) {
-	return nil, errors.New("not used")
-}
-func (nullCore) Emit(context.Context, string, json.RawMessage) error { return nil }
-
-const testApp = "scorix-browser-test"
-
 func load(t *testing.T, cfg map[string]any) (*BrowserModule, error) {
 	t.Helper()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
-	t.Setenv("APPDATA", filepath.Join(home, "data"))
-	section := map[string]any{"enabled": true}
-	for k, v := range cfg {
-		section[k] = v
-	}
 	m := New()
-	cfg2 := &config.Config{Modules: map[string]any{"browser": section}}
-	cfg2.App.Name = testApp
-	mgr := module.NewManager(cfg2, nullCore{}, nil)
-	mgr.Register(m)
-	return m, mgr.LoadAll()
+	_, err := moduletest.TryLoad(t, m, cfg)
+	return m, err
 }
 
 func scoped(t *testing.T, cfg map[string]any) (*BrowserModule, *opened) {
@@ -121,7 +97,7 @@ func TestASymlinkCannotLeadOutOfScope(t *testing.T) {
 
 func TestRootsExpandDataAndHome(t *testing.T) {
 	m, _ := scoped(t, map[string]any{"paths": []any{"$DATA/exports"}})
-	data := module.DataDir(testApp)
+	data := module.DataDir(moduletest.AppName)
 	file := touch(t, filepath.Join(data, "exports", "x.csv"), 0o600)
 	if _, err := m.RevealPath(context.Background(), PathRequest{Path: file}); err != nil {
 		t.Errorf("$DATA/exports did not cover a file under the data dir: %v", err)
@@ -249,7 +225,7 @@ func TestARootCreatedAfterLoadStillMatchesThroughASymlinkedParent(t *testing.T) 
 
 func TestRootsTakeTheHostSeparatorAfterAVariable(t *testing.T) {
 	m, _ := scoped(t, map[string]any{"paths": []any{"$DATA" + string(filepath.Separator) + "exports"}})
-	file := touch(t, filepath.Join(module.DataDir(testApp), "exports", "x.csv"), 0o600)
+	file := touch(t, filepath.Join(module.DataDir(moduletest.AppName), "exports", "x.csv"), 0o600)
 	if _, err := m.RevealPath(context.Background(), PathRequest{Path: file}); err != nil {
 		t.Errorf("$DATA%cexports did not load as a root: %v", filepath.Separator, err)
 	}
