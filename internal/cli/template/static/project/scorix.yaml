@@ -53,13 +53,12 @@ window:
 security:
   csp: default
   allow_right_click: true
-  # strict_modules: true # refuse modules that don't declare module.Capable
-  # keys = capability names declared by modules (built-ins: fs shell clipboard notification db store tray biometric share)
+  strict_modules: true # refuse modules that don't declare module.Capable
+  # keys = capability names declared by modules (built-ins: fs shell clipboard notification db
+  # store tray template env http log llm biometric camera share widget). Grant only what a
+  # registered module declares; this scaffold registers none.
   allowlist:
-    fs: true
-    shell: true
-    clipboard: true
-    notification: true
+  #   notification: true
 
 # Offers the rpcs marked `// @mcp` to an MCP client, which launches this binary with
 # --mcp. Sealed, and the user must still turn it on in the app.
