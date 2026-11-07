@@ -99,7 +99,7 @@ jobs:
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os, re, sys
 
-          RUNNER = {"windows": "windows-2022", "darwin": "macos-14", "linux": "ubuntu-22.04"}
+          RUNNER = {"windows": "windows-2022", "darwin": "macos-15", "linux": "ubuntu-22.04"}
           src = open("scorix.yaml", encoding="utf-8").read()
 
           def die(msg):
