@@ -59,10 +59,6 @@ func (m *HTTPModule) OnLoad(ctx *module.Context) error {
 	return nil
 }
 
-func (m *HTTPModule) OnStart() error  { return nil }
-func (m *HTTPModule) OnStop() error   { return nil }
-func (m *HTTPModule) OnUnload() error { return nil }
-
 type FetchRequest struct {
 	URL       string            `json:"url"`
 	Method    string            `json:"method"` // default GET

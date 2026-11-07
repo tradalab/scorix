@@ -51,10 +51,6 @@ func (m *DialogModule) OnLoad(ctx *module.Context) error {
 	return nil
 }
 
-func (m *DialogModule) OnStart() error  { return nil }
-func (m *DialogModule) OnStop() error   { return nil }
-func (m *DialogModule) OnUnload() error { return nil }
-
 type OpenFileRequest struct {
 	Title  string `json:"title"`
 	Filter string `json:"filter"`

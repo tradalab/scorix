@@ -163,6 +163,33 @@ func TestAHandlerMayReturnOnlyAnError(t *testing.T) {
 	}
 }
 
+type bare struct{}
+
+func (bare) Name() string                     { return "bare" }
+func (bare) OnLoad(ctx *module.Context) error { return nil }
+
+type counted struct {
+	bare
+	started, stopped, unloaded int
+}
+
+func (c *counted) Name() string    { return "counted" }
+func (c *counted) OnStart() error  { c.started++; return nil }
+func (c *counted) OnStop() error   { c.stopped++; return nil }
+func (c *counted) OnUnload() error { c.unloaded++; return nil }
+
+func TestAModuleNeedsOnlyANameAndOnLoad(t *testing.T) {
+	Load(t, bare{}, nil).Lifecycle()
+}
+
+func TestEachLifecycleHookRunsWhenTheModuleHasIt(t *testing.T) {
+	c := &counted{}
+	Load(t, c, nil).Lifecycle()
+	if c.started != 1 || c.stopped != 1 || c.unloaded != 1 {
+		t.Fatalf("start %d stop %d unload %d, want each once", c.started, c.stopped, c.unloaded)
+	}
+}
+
 type mode struct{ raw map[string]any }
 
 func (m *mode) UnmarshalJSON(b []byte) error { return json.Unmarshal(b, &m.raw) }
@@ -173,11 +200,7 @@ type custom struct {
 	}
 }
 
-func (c *custom) Name() string    { return "custom" }
-func (c *custom) Version() string { return "0.0.1" }
-func (c *custom) OnStart() error  { return nil }
-func (c *custom) OnStop() error   { return nil }
-func (c *custom) OnUnload() error { return nil }
+func (c *custom) Name() string { return "custom" }
 func (c *custom) OnLoad(ctx *module.Context) error {
 	return ctx.Decode(&c.cfg)
 }

@@ -40,10 +40,6 @@ func (m *FSModule) OnLoad(ctx *module.Context) error {
 	return nil
 }
 
-func (m *FSModule) OnStart() error  { return nil }
-func (m *FSModule) OnStop() error   { return nil }
-func (m *FSModule) OnUnload() error { return nil }
-
 // ConfigDir: scorix.invoke("mod:fs:ConfigDir", null)
 func (m *FSModule) ConfigDir(ctx context.Context) (string, error) {
 	if dir, err := os.UserConfigDir(); err == nil {

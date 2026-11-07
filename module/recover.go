@@ -32,7 +32,10 @@ func safeOnStart(mod Module) (err error) {
 			err = fmt.Errorf("panic: %v", r)
 		}
 	}()
-	return mod.OnStart()
+	if s, ok := mod.(Starter); ok {
+		return s.OnStart()
+	}
+	return nil
 }
 
 func safeOnStop(mod Module) {
@@ -43,7 +46,11 @@ func safeOnStop(mod Module) {
 			logger.Error(fmt.Sprintf("[module] %s OnStop panic: %v\n%s", mod.Name(), r, stack))
 		}
 	}()
-	if err := mod.OnStop(); err != nil {
+	s, ok := mod.(Stopper)
+	if !ok {
+		return
+	}
+	if err := s.OnStop(); err != nil {
 		logger.Error(fmt.Sprintf("[module] %s OnStop: %v", mod.Name(), err))
 	}
 }
@@ -56,7 +63,11 @@ func safeOnUnload(mod Module) {
 			logger.Error(fmt.Sprintf("[module] %s OnUnload panic: %v\n%s", mod.Name(), r, stack))
 		}
 	}()
-	if err := mod.OnUnload(); err != nil {
+	u, ok := mod.(Unloader)
+	if !ok {
+		return
+	}
+	if err := u.OnUnload(); err != nil {
 		logger.Error(fmt.Sprintf("[module] %s OnUnload: %v", mod.Name(), err))
 	}
 }

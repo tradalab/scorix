@@ -38,10 +38,6 @@ func (m *Module) OnLoad(ctx *module.Context) error {
 	return nil
 }
 
-func (m *Module) OnStart() error  { return nil }
-func (m *Module) OnStop() error   { return nil }
-func (m *Module) OnUnload() error { return nil }
-
 type Status struct {
 	Biometric        bool `json:"biometric"`
 	DeviceCredential bool `json:"deviceCredential"`

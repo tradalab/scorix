@@ -38,10 +38,6 @@ func (m *Module) OnLoad(ctx *module.Context) error {
 	return nil
 }
 
-func (m *Module) OnStart() error  { return nil }
-func (m *Module) OnStop() error   { return nil }
-func (m *Module) OnUnload() error { return nil }
-
 // ScanImage covers what the camera cannot: a code already on this phone's own screen.
 // JS: scorix.invoke("mod:scanner:ScanImage") -> "otpauth://totp/..."
 func (m *Module) ScanImage(ctx context.Context, _ struct{}) (string, error) {

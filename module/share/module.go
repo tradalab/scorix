@@ -28,10 +28,6 @@ func (m *Module) OnLoad(ctx *module.Context) error {
 	return nil
 }
 
-func (m *Module) OnStart() error  { return nil }
-func (m *Module) OnStop() error   { return nil }
-func (m *Module) OnUnload() error { return nil }
-
 type Request struct {
 	Title       string `json:"title,omitempty"`
 	Text        string `json:"text,omitempty"`

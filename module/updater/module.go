@@ -126,10 +126,6 @@ func (m *UpdaterModule) OnLoad(ctx *module.Context) error {
 	return nil
 }
 
-func (m *UpdaterModule) OnStart() error  { return nil }
-func (m *UpdaterModule) OnStop() error   { return nil }
-func (m *UpdaterModule) OnUnload() error { return nil }
-
 func defaultClient() *http.Client {
 	return &http.Client{
 		Timeout: 30 * time.Second,

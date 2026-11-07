@@ -26,10 +26,6 @@ func (m *EnvModule) OnLoad(ctx *module.Context) error {
 	return nil
 }
 
-func (m *EnvModule) OnStart() error  { return nil }
-func (m *EnvModule) OnStop() error   { return nil }
-func (m *EnvModule) OnUnload() error { return nil }
-
 type Info struct {
 	Platform   string `json:"platform"` // windows | darwin | linux
 	Arch       string `json:"arch"`

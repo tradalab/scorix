@@ -30,10 +30,4 @@ func (m *SystemTrayModule) OnLoad(ctx *module.Context) error {
 	return nil
 }
 
-func (m *SystemTrayModule) OnStart() error { return nil }
-
-func (m *SystemTrayModule) OnStop() error { return nil }
-
-func (m *SystemTrayModule) OnUnload() error { return nil }
-
 func (m *SystemTrayModule) Capability() string { return "tray" }

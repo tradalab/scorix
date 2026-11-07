@@ -46,10 +46,6 @@ func (m *ClipboardModule) OnLoad(ctx *module.Context) error {
 	return nil
 }
 
-func (m *ClipboardModule) OnStart() error  { return nil }
-func (m *ClipboardModule) OnStop() error   { return nil }
-func (m *ClipboardModule) OnUnload() error { return nil }
-
 // Read: scorix.invoke("mod:clipboard:Read")
 func (m *ClipboardModule) Read(ctx context.Context, _ struct{}) (string, error) {
 	return readText(ctx)

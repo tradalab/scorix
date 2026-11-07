@@ -21,10 +21,6 @@ func (m *LogModule) OnLoad(ctx *module.Context) error {
 	return nil
 }
 
-func (m *LogModule) OnStart() error  { return nil }
-func (m *LogModule) OnStop() error   { return nil }
-func (m *LogModule) OnUnload() error { return nil }
-
 type WriteRequest struct {
 	Level   string         `json:"level"` // debug | info | warn | error
 	Message string         `json:"message"`

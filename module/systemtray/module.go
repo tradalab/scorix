@@ -86,8 +86,6 @@ func (m *SystemTrayModule) nodes() []node {
 	return resolveTray(items, m.ctx.App, 0)
 }
 
-func (m *SystemTrayModule) OnUnload() error { return nil }
-
 type SetIconRequest struct {
 	Icon []byte `json:"icon"`
 }

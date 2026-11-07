@@ -47,6 +47,7 @@ type Rig struct {
 	t    testing.TB
 	mod  module.Module
 	core *core
+	mgr  *module.Manager
 }
 
 // Load fails the test when LoadAll does; cfg is the module's section of scorix.yaml.
@@ -74,7 +75,7 @@ func TryLoad(t testing.TB, m module.Module, cfg map[string]any) (*Rig, error) {
 	appCfg.App.Name = AppName
 	mgr := module.NewManager(appCfg, c, nil)
 	mgr.Register(m)
-	return &Rig{t: t, mod: m, core: c}, mgr.LoadAll()
+	return &Rig{t: t, mod: m, core: c, mgr: mgr}, mgr.LoadAll()
 }
 
 func (r *Rig) topic(method string) string { return "mod:" + r.mod.Name() + ":" + method }
@@ -117,3 +118,13 @@ func (r *Rig) Needs(method string) module.Permission {
 
 // DataDir is the directory $DATA expands to for this load.
 func (r *Rig) DataDir() string { return module.DataDir(AppName) }
+
+// Lifecycle starts, stops and unloads the module the way an app's Run does.
+func (r *Rig) Lifecycle() {
+	r.t.Helper()
+	if err := r.mgr.StartAll(); err != nil {
+		r.t.Fatalf("moduletest: start %s: %v", r.mod.Name(), err)
+	}
+	r.mgr.StopAll()
+	r.mgr.UnloadAll()
+}

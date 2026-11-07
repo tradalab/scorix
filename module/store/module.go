@@ -64,8 +64,6 @@ func (m *StoreModule) OnLoad(ctx *module.Context) error {
 	return nil
 }
 
-func (m *StoreModule) OnStart() error { return nil }
-
 func (m *StoreModule) OnStop() error {
 	logger.Info("[store] stopping, saving data...")
 	if err := m.saveToFile(); err != nil {
@@ -76,8 +74,6 @@ func (m *StoreModule) OnStop() error {
 	m.mu.Unlock()
 	return nil
 }
-
-func (m *StoreModule) OnUnload() error { return nil }
 
 func (m *StoreModule) loadFromFile() error {
 	if m.filePath == "" {

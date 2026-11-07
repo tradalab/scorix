@@ -181,8 +181,6 @@ func (m *Module) OnLoad(ctx *module.Context) error {
 	return nil
 }
 
-func (m *Module) OnStart() error { return nil }
-
 func (m *Module) OnStop() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -191,8 +189,6 @@ func (m *Module) OnStop() error {
 	}
 	return nil
 }
-
-func (m *Module) OnUnload() error { return nil }
 
 // A saved provider that no longer opens stays in the file and on screen with
 // its error, so the user can fix it instead of finding it gone.

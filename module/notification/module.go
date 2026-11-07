@@ -72,9 +72,6 @@ func (m *NotificationModule) OnStart() error {
 	return nil
 }
 
-func (m *NotificationModule) OnStop() error   { return nil }
-func (m *NotificationModule) OnUnload() error { return nil }
-
 type Action struct {
 	Key   string `json:"key"`
 	Label string `json:"label"`

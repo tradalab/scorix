@@ -28,10 +28,6 @@ func (m *Module) OnLoad(ctx *module.Context) error {
 	return nil
 }
 
-func (m *Module) OnStart() error  { return nil }
-func (m *Module) OnStop() error   { return nil }
-func (m *Module) OnUnload() error { return nil }
-
 // Entry is three lines, top to bottom; Title is the large one. A clock widget draws the time above
 // them instead. A grid widget draws Title and Text above its Cells, with arrows that step through
 // the entries; a card or clock sized large enough adds Rows below.

@@ -57,10 +57,6 @@ func (m *BrowserModule) OnLoad(ctx *module.Context) error {
 	return nil
 }
 
-func (m *BrowserModule) OnStart() error  { return nil }
-func (m *BrowserModule) OnStop() error   { return nil }
-func (m *BrowserModule) OnUnload() error { return nil }
-
 type OpenUrlRequest struct {
 	URL string `json:"url"`
 }
