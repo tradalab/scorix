@@ -54,6 +54,7 @@ security:
   csp: default
   allow_right_click: true
   strict_modules: true # refuse modules that don't declare module.Capable
+  # webview_sandbox: false # Linux: web content runs in bubblewrap whenever bwrap works on the host
   # keys = capability names declared by modules (built-ins: fs shell clipboard notification db
   # store tray template env http log llm biometric camera share widget). Grant only what a
   # registered module declares; this scaffold registers none.

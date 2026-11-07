@@ -39,6 +39,7 @@ func (driver) NewRuntime(cfg window.RuntimeConfig) (window.Runtime, error) {
 	}
 	r := &rt{
 		identifier: cfg.Identifier,
+		noSandbox:  cfg.NoWebviewSandbox,
 		manager:    &manager{byID: map[window.ID]*win{}},
 		events:     map[window.RuntimeEvent][]func(){},
 		schemes:    map[string]webview.SchemeHandler{},
@@ -65,6 +66,7 @@ type rt struct {
 	mu         sync.Mutex
 	events     map[window.RuntimeEvent][]func()
 	identifier string
+	noSandbox  bool
 	schemes    map[string]webview.SchemeHandler
 }
 
@@ -87,6 +89,7 @@ func (r *rt) Run() error {
 	}
 	initDispatch()
 	nativeclip.Install(gtkClipboard{})
+	enableSandbox(r.noSandbox)
 	registerSchemes(r)
 
 	r.fire(window.RuntimeReady)

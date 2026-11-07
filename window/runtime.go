@@ -4,6 +4,9 @@ import "github.com/tradalab/scorix/webview"
 
 type RuntimeConfig struct {
 	Identifier string
+	// Keeps web content out of the OS sandbox the driver would put it in
+	// (bubblewrap on Linux). Drivers without one ignore it.
+	NoWebviewSandbox bool
 }
 
 type RuntimeEvent string

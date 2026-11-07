@@ -102,6 +102,7 @@ type SandboxConfig struct {
 	CSP             string    `yaml:"csp" json:"csp"` // "none", "default", "strict", or a literal policy
 	AllowRightClick bool      `yaml:"allow_right_click" json:"allow_right_click"`
 	StrictModules   bool      `yaml:"strict_modules" json:"strict_modules"`
+	WebviewSandbox  *bool     `yaml:"webview_sandbox" json:"webview_sandbox"`
 	Allowlist       Allowlist `yaml:"allowlist" json:"allowlist"`
 }
 

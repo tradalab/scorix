@@ -469,7 +469,10 @@ func (a *App) Run() error {
 
 	a.registerOSHandlers()
 	installDesktopEntry(a.opts.Identifier)
-	rt, err := newDriver().NewRuntime(window.RuntimeConfig{Identifier: a.opts.Identifier})
+	rt, err := newDriver().NewRuntime(window.RuntimeConfig{
+		Identifier:       a.opts.Identifier,
+		NoWebviewSandbox: a.cfg.Security.WebviewSandbox != nil && !*a.cfg.Security.WebviewSandbox,
+	})
 	if err != nil {
 		return err
 	}
