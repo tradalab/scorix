@@ -11,6 +11,8 @@ import (
 
 	"github.com/ebitengine/purego/objc"
 
+	"github.com/tradalab/scorix/internal/origin"
+	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/webview"
 	"github.com/tradalab/scorix/window"
 )
@@ -23,12 +25,15 @@ type view struct {
 
 	mu    sync.Mutex
 	onMsg func(raw []byte)
+
+	guard origin.Guard
 }
 
 var viewByWK sync.Map // WKWebView objc.ID -> *view
 
 func newView(r *rt, opts window.Options) (*view, error) {
 	v := &view{}
+	v.guard.Trust("")
 
 	cfg := objc.ID(cls("WKWebViewConfiguration")).Send(sel("alloc")).Send(sel("init"))
 	ucc := cfg.Send(sel("userContentController"))
@@ -116,6 +121,7 @@ func addUserScript(ucc objc.ID, js string) {
 }
 
 func (v *view) Navigate(url string) {
+	v.guard.Trust(url)
 	dispatchMain(func() {
 		req := objc.ID(cls("NSURLRequest")).Send(sel("requestWithURL:"), nsURL(url))
 		v.wk.Send(sel("loadRequest:"), req)
@@ -123,6 +129,7 @@ func (v *view) Navigate(url string) {
 }
 
 func (v *view) LoadHTML(html string) {
+	v.guard.Trust("")
 	dispatchMain(func() {
 		v.wk.Send(sel("loadHTMLString:baseURL:"), nsString(html), objc.ID(0))
 	})
@@ -185,6 +192,14 @@ func newScriptHandler() objc.ID {
 						raw := nsStringToGo(body)
 						if vv, ok := viewByWK.Load(wk); ok {
 							v := vv.(*view)
+							frame := message.Send(sel("frameInfo"))
+							doc := nsStringToGo(frame.Send(sel("request")).Send(sel("URL")).Send(sel("absoluteString")))
+							if !objc.Send[bool](frame, sel("isMainFrame")) || !v.guard.Allows(doc) {
+								if v.guard.FirstRefusal(doc) {
+									logger.Warn("wkwebview: dropped IPC from a frame outside the origin the app loaded", "origin", origin.Of(doc))
+								}
+								return
+							}
 							v.mu.Lock()
 							fn := v.onMsg
 							v.mu.Unlock()

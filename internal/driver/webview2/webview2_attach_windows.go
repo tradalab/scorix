@@ -12,6 +12,8 @@ import (
 
 	"golang.org/x/sys/windows"
 
+	"github.com/tradalab/scorix/internal/origin"
+	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/webview"
 )
 
@@ -45,6 +47,7 @@ const (
 	cwvAddWebResourceReqFilter    = 57
 	settingsPutAreDevToolsEnabled = 12
 	// ICoreWebView2WebMessageReceivedEventArgs
+	argsGetSource                = 3
 	argsTryGetWebMessageAsString = 5
 	// ICoreWebView2WebResourceRequestedEventArgs
 	argsGetRequest  = 3
@@ -217,12 +220,16 @@ type webview2View struct {
 	initJS    []string
 	startURL  string
 	startHTML string
+
+	guard origin.Guard
 }
 
 var _ webview.View = (*webview2View)(nil)
 
 func newView(dispatch func(func())) *webview2View {
-	return &webview2View{dispatch: dispatch}
+	v := &webview2View{dispatch: dispatch}
+	v.guard.Trust("")
+	return v
 }
 
 // ready wires the live core (UI thread): replays init scripts, the initial
@@ -251,7 +258,13 @@ func (v *webview2View) ready(core unsafe.Pointer) {
 }
 
 // deliver pushes a JS->Go message to the registered sink (UI thread).
-func (v *webview2View) deliver(raw []byte) {
+func (v *webview2View) deliver(source string, raw []byte) {
+	if !v.guard.Allows(source) {
+		if v.guard.FirstRefusal(source) {
+			logger.Warn("webview2: dropped IPC from a document outside the origin the app loaded", "origin", origin.Of(source))
+		}
+		return
+	}
 	v.mu.Lock()
 	fn := v.onMsg
 	v.mu.Unlock()
@@ -261,6 +274,7 @@ func (v *webview2View) deliver(raw []byte) {
 }
 
 func (v *webview2View) Navigate(url string) {
+	v.guard.Trust(url)
 	v.dispatch(func() {
 		v.mu.Lock()
 		core := v.core
@@ -275,6 +289,7 @@ func (v *webview2View) Navigate(url string) {
 }
 
 func (v *webview2View) LoadHTML(html string) {
+	v.guard.Trust("")
 	v.dispatch(func() {
 		v.mu.Lock()
 		core := v.core

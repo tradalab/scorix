@@ -602,6 +602,7 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 	}
 	if opts.URL != "" {
 		w.view.startURL = opts.URL
+		w.view.guard.Trust(opts.URL)
 	}
 
 	m.mu.Lock()
@@ -775,11 +776,16 @@ func (w *win) startAttach(identifier string) error {
 		}
 
 		msgHandler := w.handlers.add(newHandler(func(_ /*sender*/, args unsafe.Pointer) {
+			var source string
+			if src, _ := comCallOut(args, argsGetSource); src != nil {
+				source = windows.UTF16PtrToString((*uint16)(src))
+				coTaskMemFree(src)
+			}
 			p, _ := comCallOut(args, argsTryGetWebMessageAsString)
 			if p != nil {
 				s := windows.UTF16PtrToString((*uint16)(p))
 				coTaskMemFree(p)
-				w.view.deliver([]byte(s))
+				w.view.deliver(source, []byte(s))
 			}
 		}))
 		token := new(int64) // heap: GC-stable address for the out-param

@@ -10,6 +10,8 @@ import (
 
 	"github.com/ebitengine/purego"
 
+	"github.com/tradalab/scorix/internal/origin"
+	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/webview"
 	"github.com/tradalab/scorix/window"
 )
@@ -24,6 +26,9 @@ type view struct {
 
 	mu    sync.Mutex
 	onMsg func(raw []byte)
+
+	guard     origin.Guard
+	committed string
 }
 
 var (
@@ -34,10 +39,13 @@ var (
 	schemeOnce sync.Once
 	permCB     uintptr
 	permOnce   sync.Once
+	loadCB     uintptr
+	loadOnce   sync.Once
 )
 
 func newView(r *rt, opts window.Options) (*view, error) {
 	v := &view{}
+	v.guard.Trust("")
 
 	v.ucm = wkUcmNew()
 	viewByUcm.Store(v.ucm, v)
@@ -53,6 +61,15 @@ func newView(r *rt, opts window.Options) (*view, error) {
 				raw := goString(cstr)
 				gFree(cstr)
 				view := vv.(*view)
+				view.mu.Lock()
+				committed := view.committed
+				view.mu.Unlock()
+				if doc := goString(wkViewGetURI(view.wk)); !view.guard.Allows(doc) || !view.guard.Allows(committed) {
+					if view.guard.FirstRefusal(doc) {
+						logger.Warn("webkitgtk: dropped IPC from a document outside the origin the app loaded", "origin", origin.Of(doc))
+					}
+					return 0
+				}
 				view.mu.Lock()
 				fn := view.onMsg
 				view.mu.Unlock()
@@ -95,6 +112,24 @@ func newView(r *rt, opts window.Options) (*view, error) {
 		})
 	})
 	signalConnect(v.wk, "permission-request", permCB, 0)
+
+	loadOnce.Do(func() {
+		loadCB = purego.NewCallback(func(wk, event, ucm uintptr) uintptr {
+			defer recoverCB("load-changed")
+			if int32(event) != webkitLoadCommitted {
+				return 0
+			}
+			if vv, ok := viewByUcm.Load(ucm); ok {
+				view := vv.(*view)
+				doc := goString(wkViewGetURI(wk))
+				view.mu.Lock()
+				view.committed = doc
+				view.mu.Unlock()
+			}
+			return 0
+		})
+	})
+	signalConnect(v.wk, "load-changed", loadCB, v.ucm)
 
 	return v, nil
 }
@@ -166,9 +201,15 @@ func (v *view) addUserScript(js string) {
 	wkUcmAddScript(v.ucm, script)
 }
 
-func (v *view) Navigate(url string) { dispatchMain(func() { wkViewLoadURI(v.wk, url) }) }
+func (v *view) Navigate(url string) {
+	v.guard.Trust(url)
+	dispatchMain(func() { wkViewLoadURI(v.wk, url) })
+}
 
-func (v *view) LoadHTML(html string) { dispatchMain(func() { wkViewLoadHTML(v.wk, html, 0) }) }
+func (v *view) LoadHTML(html string) {
+	v.guard.Trust("")
+	dispatchMain(func() { wkViewLoadHTML(v.wk, html, 0) })
+}
 
 func (v *view) InitScript(js string) { dispatchMain(func() { v.addUserScript(js) }) }
 

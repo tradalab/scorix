@@ -71,9 +71,11 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	a.Serve("scorix", fstest.MapFS{
-		"index.html": &fstest.MapFile{Data: []byte(page)},
-		"hello.txt":  &fstest.MapFile{Data: []byte("served-by-go")},
+		"index.html":    &fstest.MapFile{Data: []byte(page)},
+		"hello.txt":     &fstest.MapFile{Data: []byte("served-by-go")},
+		"nav-home.html": &fstest.MapFile{Data: []byte(homePage)},
 	})
+	a.Serve("other", foreignSite)
 	a.Command("e2e:report", func(_ context.Context, data json.RawMessage, _ app.ChunkStream) (any, error) {
 		var ans answer
 		if err := json.Unmarshal(data, &ans); err != nil {

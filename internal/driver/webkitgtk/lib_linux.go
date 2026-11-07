@@ -28,6 +28,7 @@ const (
 
 	webkitInjectAllFrames     int32 = 0 // WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES
 	webkitInjectDocumentStart int32 = 0 // WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START
+	webkitLoadCommitted       int32 = 2
 )
 
 var (
@@ -122,6 +123,7 @@ var (
 	wkCtxDefault        func() uintptr
 	wkCtxRegisterScheme func(uintptr, string, uintptr, uintptr, uintptr)
 	wkCtxSetSandbox     func(uintptr, int32)
+	wkViewGetURI        func(uintptr) uintptr
 	wkSchemeReqGetURI   func(uintptr) uintptr
 	wkSchemeReqFinish   func(uintptr, uintptr, int64, string)
 	wkJSResultGetValue  func(uintptr) uintptr
@@ -303,6 +305,7 @@ func initLibs() error {
 		purego.RegisterLibFunc(&wkCtxDefault, webkit, "webkit_web_context_get_default")
 		purego.RegisterLibFunc(&wkCtxRegisterScheme, webkit, "webkit_web_context_register_uri_scheme")
 		purego.RegisterLibFunc(&wkCtxSetSandbox, webkit, "webkit_web_context_set_sandbox_enabled")
+		purego.RegisterLibFunc(&wkViewGetURI, webkit, "webkit_web_view_get_uri")
 		purego.RegisterLibFunc(&wkSchemeReqGetURI, webkit, "webkit_uri_scheme_request_get_uri")
 		purego.RegisterLibFunc(&wkSchemeReqFinish, webkit, "webkit_uri_scheme_request_finish")
 		purego.RegisterLibFunc(&wkJSResultGetValue, webkit, "webkit_javascript_result_get_js_value")
