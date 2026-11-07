@@ -75,24 +75,24 @@ func (r *OpenUrlRequest) UnmarshalJSON(b []byte) error {
 }
 
 // JS: scorix.invoke("mod:browser:OpenUrl", { url: "https://example.com" })
-func (m *BrowserModule) OpenUrl(ctx context.Context, req OpenUrlRequest) (interface{}, error) {
+func (m *BrowserModule) OpenUrl(ctx context.Context, req OpenUrlRequest) error {
 	url := req.URL
 	// Validate before shelling out.
 	if url == "" {
-		return nil, fmt.Errorf("url is empty")
+		return fmt.Errorf("url is empty")
 	}
 	parsed, err := neturl.Parse(url)
 	if err != nil {
-		return nil, fmt.Errorf("invalid url: %w", err)
+		return fmt.Errorf("invalid url: %w", err)
 	}
 	if !parsed.IsAbs() {
-		return nil, fmt.Errorf("url must be absolute with an allowed scheme (http, https, mailto)")
+		return fmt.Errorf("url must be absolute with an allowed scheme (http, https, mailto)")
 	}
 	if !allowedSchemes[parsed.Scheme] {
-		return nil, fmt.Errorf("url scheme %q is not allowed (only http, https, mailto)", parsed.Scheme)
+		return fmt.Errorf("url scheme %q is not allowed (only http, https, mailto)", parsed.Scheme)
 	}
 
-	return nil, openURL(ctx, url)
+	return openURL(ctx, url)
 }
 
 func (m *BrowserModule) Capability() string { return "browser" }
@@ -108,29 +108,29 @@ type PathRequest struct {
 	Path string `json:"path"`
 }
 
-func (m *BrowserModule) RevealPath(_ context.Context, req PathRequest) (interface{}, error) {
+func (m *BrowserModule) RevealPath(_ context.Context, req PathRequest) error {
 	clean, err := m.scopedPath(req.Path)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if m.reveal == nil {
-		return nil, reveal(clean)
+		return reveal(clean)
 	}
-	return nil, m.reveal(clean)
+	return m.reveal(clean)
 }
 
-func (m *BrowserModule) OpenPath(_ context.Context, req PathRequest) (interface{}, error) {
+func (m *BrowserModule) OpenPath(_ context.Context, req PathRequest) error {
 	clean, err := m.scopedPath(req.Path)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if err := refuseLaunch(clean); err != nil {
-		return nil, err
+		return err
 	}
 	if m.open == nil {
-		return nil, openPath(clean)
+		return openPath(clean)
 	}
-	return nil, m.open(clean)
+	return m.open(clean)
 }
 
 func (m *BrowserModule) scopedPath(p string) (string, error) {

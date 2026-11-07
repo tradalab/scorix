@@ -132,6 +132,37 @@ func TestKeysForAModuleThatReadsNoConfigAreReported(t *testing.T) {
 	}
 }
 
+type quiet struct{ got string }
+
+func (q *quiet) Name() string       { return "quiet" }
+func (q *quiet) Capability() string { return "quiet" }
+func (q *quiet) Version() string    { return "0.0.1" }
+func (q *quiet) OnLoad(ctx *module.Context) error {
+	module.Expose(q, "Note", ctx.IPC)
+	module.Expose(q, "Fail", ctx.IPC)
+	return nil
+}
+func (q *quiet) OnStart() error  { return nil }
+func (q *quiet) OnStop() error   { return nil }
+func (q *quiet) OnUnload() error { return nil }
+func (q *quiet) Note(_ context.Context, in echoIn) error {
+	q.got = in.Text
+	return nil
+}
+func (q *quiet) Fail(context.Context) error { return errors.New("no") }
+
+func TestAHandlerMayReturnOnlyAnError(t *testing.T) {
+	q := &quiet{}
+	r := Load(t, q, nil)
+	out, err := r.Call("Note", echoIn{Text: "kept"})
+	if err != nil || string(out) != "null" || q.got != "kept" {
+		t.Fatalf("Note = %s, %v (got %q), want null with the argument delivered", out, err, q.got)
+	}
+	if _, err := r.Call("Fail", nil); err == nil || err.Error() != "no" {
+		t.Fatalf("Fail err = %v, want the handler's own error", err)
+	}
+}
+
 type mode struct{ raw map[string]any }
 
 func (m *mode) UnmarshalJSON(b []byte) error { return json.Unmarshal(b, &m.raw) }

@@ -127,10 +127,10 @@ func (m *StoreModule) saveToFile() error {
 }
 
 // Set: scorix.invoke("mod:store:Set", { key: "foo", value: "bar" })
-func (m *StoreModule) Set(ctx context.Context, req map[string]interface{}) (interface{}, error) {
+func (m *StoreModule) Set(ctx context.Context, req map[string]interface{}) error {
 	key, _ := req["key"].(string)
 	if key == "" {
-		return nil, fmt.Errorf("missing key")
+		return fmt.Errorf("missing key")
 	}
 	value := req["value"]
 
@@ -141,10 +141,10 @@ func (m *StoreModule) Set(ctx context.Context, req map[string]interface{}) (inte
 	// Surface persist failure rather than reporting "ok" (silent data loss).
 	if err := m.saveToFile(); err != nil {
 		logger.Error(fmt.Sprintf("[store] save failed: %v", err))
-		return nil, fmt.Errorf("store: persist failed: %w", err)
+		return fmt.Errorf("store: persist failed: %w", err)
 	}
 
-	return "ok", nil
+	return nil
 }
 
 // Get: scorix.invoke("mod:store:Get", { key: "foo" })
@@ -165,10 +165,10 @@ func (m *StoreModule) Get(ctx context.Context, req map[string]interface{}) (inte
 }
 
 // Delete: scorix.invoke("mod:store:Delete", { key: "foo" })
-func (m *StoreModule) Delete(ctx context.Context, req map[string]interface{}) (interface{}, error) {
+func (m *StoreModule) Delete(ctx context.Context, req map[string]interface{}) error {
 	key, _ := req["key"].(string)
 	if key == "" {
-		return nil, fmt.Errorf("missing key")
+		return fmt.Errorf("missing key")
 	}
 
 	m.mu.Lock()
@@ -178,14 +178,14 @@ func (m *StoreModule) Delete(ctx context.Context, req map[string]interface{}) (i
 	// Surface persist failure rather than reporting "ok" (silent data loss).
 	if err := m.saveToFile(); err != nil {
 		logger.Error(fmt.Sprintf("[store] save failed: %v", err))
-		return nil, fmt.Errorf("store: persist failed: %w", err)
+		return fmt.Errorf("store: persist failed: %w", err)
 	}
 
-	return "ok", nil
+	return nil
 }
 
 // Keys: scorix.invoke("mod:store:Keys", null)
-func (m *StoreModule) Keys(ctx context.Context) (interface{}, error) {
+func (m *StoreModule) Keys(ctx context.Context) ([]string, error) {
 	m.mu.RLock()
 	keys := make([]string, 0, len(m.data))
 	for k := range m.data {

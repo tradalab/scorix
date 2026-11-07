@@ -6,5 +6,5 @@ export interface LogWriteRequest {
 }
 
 export const log = {
-  write: (params?: LogWriteRequest) => scorix.invoke<unknown>("mod:log:Write", params),
+  write: (params?: LogWriteRequest) => scorix.invoke<void>("mod:log:Write", params),
 };

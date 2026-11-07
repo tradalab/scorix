@@ -93,12 +93,12 @@ type SetIconRequest struct {
 }
 
 // JS: scorix.invoke("mod:systemtray:SetIcon", { icon: <base64-encoded-bytes> })
-func (m *SystemTrayModule) SetIcon(_ context.Context, req SetIconRequest) (interface{}, error) {
+func (m *SystemTrayModule) SetIcon(_ context.Context, req SetIconRequest) error {
 	if len(req.Icon) == 0 {
-		return nil, fmt.Errorf("icon data is empty")
+		return fmt.Errorf("icon data is empty")
 	}
 	traySetIcon(req.Icon)
-	return "ok", nil
+	return nil
 }
 
 type SetTooltipRequest struct {
@@ -106,9 +106,9 @@ type SetTooltipRequest struct {
 }
 
 // JS: scorix.invoke("mod:systemtray:SetTooltip", { tooltip: "New tooltip" })
-func (m *SystemTrayModule) SetTooltip(_ context.Context, req SetTooltipRequest) (interface{}, error) {
+func (m *SystemTrayModule) SetTooltip(_ context.Context, req SetTooltipRequest) error {
 	traySetTooltip(req.Tooltip)
-	return "ok", nil
+	return nil
 }
 
 type SetTitleRequest struct {
@@ -116,9 +116,9 @@ type SetTitleRequest struct {
 }
 
 // JS: scorix.invoke("mod:systemtray:SetTitle", { title: "New Title" })
-func (m *SystemTrayModule) SetTitle(_ context.Context, req SetTitleRequest) (interface{}, error) {
+func (m *SystemTrayModule) SetTitle(_ context.Context, req SetTitleRequest) error {
 	traySetTitle(req.Title)
-	return "ok", nil
+	return nil
 }
 
 func (m *SystemTrayModule) Capability() string { return "tray" }

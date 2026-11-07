@@ -14,7 +14,8 @@ var (
 	errType = reflect.TypeOf((*error)(nil)).Elem()
 )
 
-// Expose binds Method([ctx context.Context][, arg T]) (R, error) at "mod:<module>:<Method>" via reflection.
+// Expose binds Method([ctx context.Context][, arg T]) (R, error), or one returning only error, at
+// "mod:<module>:<Method>" via reflection.
 // JS: scorix.invoke("mod:<module>:<Method>", payload).
 //
 // Without Needs the method asks for the module's whole capability, which is what
@@ -64,11 +65,11 @@ func defaultPermission(mod Module) Permission {
 }
 
 func validateReturnSignature(method string, mt reflect.Type) {
-	if mt.NumOut() != 2 {
-		panic(fmt.Sprintf("module expose: method %q must return (T, error), got %d return values", method, mt.NumOut()))
-	}
-	if !mt.Out(1).Implements(errType) {
-		panic(fmt.Sprintf("module expose: method %q second return must be error", method))
+	switch {
+	case mt.NumOut() == 1 && mt.Out(0).Implements(errType):
+	case mt.NumOut() == 2 && mt.Out(1).Implements(errType):
+	default:
+		panic(fmt.Sprintf("module expose: method %q must return (T, error) or error, got %d return values", method, mt.NumOut()))
 	}
 }
 
@@ -80,9 +81,12 @@ func buildHandler(m reflect.Value, mt reflect.Type) func(context.Context, json.R
 		}
 
 		res := m.Call(args)
-
-		if !res[1].IsNil() {
-			return nil, res[1].Interface().(error)
+		last := res[len(res)-1]
+		if !last.IsNil() {
+			return nil, last.Interface().(error)
+		}
+		if len(res) == 1 {
+			return nil, nil
 		}
 		return res[0].Interface(), nil
 	}

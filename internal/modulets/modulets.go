@@ -197,12 +197,16 @@ func Fragment(dir, name string, t reflect.Type) (string, error) {
 				param = "params: " + ts
 			}
 		}
-		res, err := w.ts(mm.Type.Out(0), false)
-		if err != nil {
-			return "", fmt.Errorf("%s: %w", m.name, err)
-		}
-		if mm.Type.Out(0).Kind() == reflect.Pointer {
-			res += " | null"
+		res := "void"
+		if mm.Type.NumOut() == 2 {
+			ts, err := w.ts(mm.Type.Out(0), false)
+			if err != nil {
+				return "", fmt.Errorf("%s: %w", m.name, err)
+			}
+			res = ts
+			if mm.Type.Out(0).Kind() == reflect.Pointer {
+				res += " | null"
+			}
 		}
 		if doc := jsdoc(m.doc); doc != "" {
 			calls.WriteString("  /** " + doc + " */\n")

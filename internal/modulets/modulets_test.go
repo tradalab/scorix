@@ -3,6 +3,7 @@ package modulets
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -24,5 +25,15 @@ func TestExposedCountsAMethodOnceAcrossPlatformFiles(t *testing.T) {
 	got, err := exposed(dir)
 	if err != nil || len(got) != 1 || got[0].name != "Open" {
 		t.Fatalf("err %v, methods %+v", err, got)
+	}
+}
+
+func TestAHandlerReturningOnlyAnErrorIsVoidInTypeScript(t *testing.T) {
+	raw, err := os.ReadFile("../cli/template/static/codegen/shell/modules/browser.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `scorix.invoke<void>("mod:browser:OpenUrl"`) {
+		t.Fatalf("browser.ts types OpenUrl as something other than void:\n%s", raw)
 	}
 }

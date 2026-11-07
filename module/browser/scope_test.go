@@ -47,10 +47,10 @@ func touch(t *testing.T, path string, mode os.FileMode) string {
 func TestNoPathsDeclaredMeansNoPathIsTouched(t *testing.T) {
 	file := touch(t, filepath.Join(t.TempDir(), "report.csv"), 0o600)
 	m, got := scoped(t, nil)
-	if _, err := m.RevealPath(context.Background(), PathRequest{Path: file}); fault.CodeOf(err) != fault.CodeDenied {
+	if err := m.RevealPath(context.Background(), PathRequest{Path: file}); fault.CodeOf(err) != fault.CodeDenied {
 		t.Errorf("RevealPath with no modules.browser.paths: err = %v, want denied", err)
 	}
-	if _, err := m.OpenPath(context.Background(), PathRequest{Path: file}); fault.CodeOf(err) != fault.CodeDenied {
+	if err := m.OpenPath(context.Background(), PathRequest{Path: file}); fault.CodeOf(err) != fault.CodeDenied {
 		t.Errorf("OpenPath with no modules.browser.paths: err = %v, want denied", err)
 	}
 	if len(got.revealed)+len(got.launched) != 0 {
@@ -63,15 +63,15 @@ func TestPathsOutsideTheDeclaredRootsAreDenied(t *testing.T) {
 	outside := t.TempDir()
 	m, got := scoped(t, map[string]any{"paths": []any{inside}})
 	ok := touch(t, filepath.Join(inside, "sub", "a.csv"), 0o600)
-	if _, err := m.RevealPath(context.Background(), PathRequest{Path: ok}); err != nil {
+	if err := m.RevealPath(context.Background(), PathRequest{Path: ok}); err != nil {
 		t.Fatalf("a file under a declared root was refused: %v", err)
 	}
 	far := touch(t, filepath.Join(outside, "b.csv"), 0o600)
-	if _, err := m.RevealPath(context.Background(), PathRequest{Path: far}); fault.CodeOf(err) != fault.CodeDenied {
+	if err := m.RevealPath(context.Background(), PathRequest{Path: far}); fault.CodeOf(err) != fault.CodeDenied {
 		t.Errorf("a file outside every root: err = %v, want denied", err)
 	}
 	sibling := touch(t, inside+"-evil/c.csv", 0o600)
-	if _, err := m.RevealPath(context.Background(), PathRequest{Path: sibling}); fault.CodeOf(err) != fault.CodeDenied {
+	if err := m.RevealPath(context.Background(), PathRequest{Path: sibling}); fault.CodeOf(err) != fault.CodeDenied {
 		t.Errorf("a sibling sharing the root's prefix: err = %v, want denied", err)
 	}
 	if len(got.revealed) != 1 {
@@ -90,7 +90,7 @@ func TestASymlinkCannotLeadOutOfScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	m, _ := scoped(t, map[string]any{"paths": []any{inside}})
-	if _, err := m.OpenPath(context.Background(), PathRequest{Path: link}); fault.CodeOf(err) != fault.CodeDenied {
+	if err := m.OpenPath(context.Background(), PathRequest{Path: link}); fault.CodeOf(err) != fault.CodeDenied {
 		t.Errorf("a link inside the root pointing outside it: err = %v, want denied", err)
 	}
 }
@@ -99,11 +99,11 @@ func TestRootsExpandDataAndHome(t *testing.T) {
 	m, _ := scoped(t, map[string]any{"paths": []any{"$DATA/exports"}})
 	data := module.DataDir(moduletest.AppName)
 	file := touch(t, filepath.Join(data, "exports", "x.csv"), 0o600)
-	if _, err := m.RevealPath(context.Background(), PathRequest{Path: file}); err != nil {
+	if err := m.RevealPath(context.Background(), PathRequest{Path: file}); err != nil {
 		t.Errorf("$DATA/exports did not cover a file under the data dir: %v", err)
 	}
 	other := touch(t, filepath.Join(data, "db.sqlite"), 0o600)
-	if _, err := m.RevealPath(context.Background(), PathRequest{Path: other}); fault.CodeOf(err) != fault.CodeDenied {
+	if err := m.RevealPath(context.Background(), PathRequest{Path: other}); fault.CodeOf(err) != fault.CodeDenied {
 		t.Errorf("$DATA/exports also let through the rest of the data dir: %v", err)
 	}
 }
@@ -111,7 +111,7 @@ func TestRootsExpandDataAndHome(t *testing.T) {
 func TestAStarDeclaresEveryPath(t *testing.T) {
 	file := touch(t, filepath.Join(t.TempDir(), "a.csv"), 0o600)
 	m, _ := scoped(t, map[string]any{"paths": []any{"*"}})
-	if _, err := m.RevealPath(context.Background(), PathRequest{Path: file}); err != nil {
+	if err := m.RevealPath(context.Background(), PathRequest{Path: file}); err != nil {
 		t.Errorf(`paths: ["*"] refused a path: %v`, err)
 	}
 }
@@ -127,13 +127,13 @@ func TestOpenPathNeverLaunchesAProgram(t *testing.T) {
 	m, got := scoped(t, map[string]any{"paths": []any{"*"}})
 	for _, name := range []string{"setup.exe", "run.BAT", "x.ps1", "y.lnk", "z.desktop", "w.command", "v.jar", "u.msi", "help.chm", "c.msc", "e.scf", "f.application", "g.appref-ms", "h.settingcontent-ms", "i.inf", "j.xll", "disk.iso", "disk.img", "disk.vhdx", "k.mpkg"} {
 		p := touch(t, filepath.Join(dir, name), 0o600)
-		if _, err := m.OpenPath(context.Background(), PathRequest{Path: p}); fault.CodeOf(err) != fault.CodeDenied {
+		if err := m.OpenPath(context.Background(), PathRequest{Path: p}); fault.CodeOf(err) != fault.CodeDenied {
 			t.Errorf("OpenPath(%s): err = %v, want denied", name, err)
 		}
 	}
 	if runtime.GOOS != "windows" {
 		p := touch(t, filepath.Join(dir, "tool"), 0o700)
-		if _, err := m.OpenPath(context.Background(), PathRequest{Path: p}); fault.CodeOf(err) != fault.CodeDenied {
+		if err := m.OpenPath(context.Background(), PathRequest{Path: p}); fault.CodeOf(err) != fault.CodeDenied {
 			t.Errorf("OpenPath on a file with the execute bit: err = %v, want denied", err)
 		}
 	}
@@ -141,14 +141,14 @@ func TestOpenPathNeverLaunchesAProgram(t *testing.T) {
 	if err := os.MkdirAll(bundle, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.OpenPath(context.Background(), PathRequest{Path: bundle}); fault.CodeOf(err) != fault.CodeDenied {
+	if err := m.OpenPath(context.Background(), PathRequest{Path: bundle}); fault.CodeOf(err) != fault.CodeDenied {
 		t.Errorf("OpenPath on an .app bundle: err = %v, want denied", err)
 	}
 	doc := touch(t, filepath.Join(dir, "report.pdf"), 0o600)
-	if _, err := m.OpenPath(context.Background(), PathRequest{Path: doc}); err != nil {
+	if err := m.OpenPath(context.Background(), PathRequest{Path: doc}); err != nil {
 		t.Errorf("OpenPath refused a document: %v", err)
 	}
-	if _, err := m.RevealPath(context.Background(), PathRequest{Path: filepath.Join(dir, "setup.exe")}); err != nil {
+	if err := m.RevealPath(context.Background(), PathRequest{Path: filepath.Join(dir, "setup.exe")}); err != nil {
 		t.Errorf("RevealPath refused an executable, but showing it in a folder launches nothing: %v", err)
 	}
 	if len(got.launched) != 1 || got.launched[0] != doc {
@@ -167,7 +167,7 @@ func TestOpenPathJudgesWhatALinkPointsAt(t *testing.T) {
 	if err := os.Symlink(prog, link); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.OpenPath(context.Background(), PathRequest{Path: link}); fault.CodeOf(err) != fault.CodeDenied {
+	if err := m.OpenPath(context.Background(), PathRequest{Path: link}); fault.CodeOf(err) != fault.CodeDenied {
 		t.Errorf("report.pdf -> setup.exe: err = %v, want denied", err)
 	}
 	bundle := filepath.Join(dir, "Evil.app")
@@ -178,7 +178,7 @@ func TestOpenPathJudgesWhatALinkPointsAt(t *testing.T) {
 	if err := os.Symlink(bundle, folder); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.OpenPath(context.Background(), PathRequest{Path: folder}); fault.CodeOf(err) != fault.CodeDenied {
+	if err := m.OpenPath(context.Background(), PathRequest{Path: folder}); fault.CodeOf(err) != fault.CodeDenied {
 		t.Errorf("Documents -> Evil.app: err = %v, want denied", err)
 	}
 	if len(got.launched) != 0 {
@@ -194,7 +194,7 @@ func TestOpenPathSeesTheNameWindowsWillRun(t *testing.T) {
 		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
 			t.Skipf("this filesystem refuses %q: %v", name, err)
 		}
-		if _, err := m.OpenPath(context.Background(), PathRequest{Path: p}); fault.CodeOf(err) != fault.CodeDenied {
+		if err := m.OpenPath(context.Background(), PathRequest{Path: p}); fault.CodeOf(err) != fault.CodeDenied {
 			t.Errorf("OpenPath(%q): err = %v, want denied: Windows drops the trailing dots and spaces and runs setup.exe", name, err)
 		}
 	}
@@ -218,7 +218,7 @@ func TestARootCreatedAfterLoadStillMatchesThroughASymlinkedParent(t *testing.T) 
 	}
 	m, _ := scoped(t, map[string]any{"paths": []any{filepath.Join(alias, "exports")}})
 	file := touch(t, filepath.Join(alias, "exports", "x.csv"), 0o600)
-	if _, err := m.RevealPath(context.Background(), PathRequest{Path: file}); err != nil {
+	if err := m.RevealPath(context.Background(), PathRequest{Path: file}); err != nil {
 		t.Errorf("a root that did not exist at load, under a symlinked parent, refused its own file: %v", err)
 	}
 }
@@ -226,7 +226,7 @@ func TestARootCreatedAfterLoadStillMatchesThroughASymlinkedParent(t *testing.T) 
 func TestRootsTakeTheHostSeparatorAfterAVariable(t *testing.T) {
 	m, _ := scoped(t, map[string]any{"paths": []any{"$DATA" + string(filepath.Separator) + "exports"}})
 	file := touch(t, filepath.Join(module.DataDir(moduletest.AppName), "exports", "x.csv"), 0o600)
-	if _, err := m.RevealPath(context.Background(), PathRequest{Path: file}); err != nil {
+	if err := m.RevealPath(context.Background(), PathRequest{Path: file}); err != nil {
 		t.Errorf("$DATA%cexports did not load as a root: %v", filepath.Separator, err)
 	}
 }

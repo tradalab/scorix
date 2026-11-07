@@ -31,7 +31,7 @@ type WriteRequest struct {
 	Fields  map[string]any `json:"fields"`
 }
 
-func (m *LogModule) Write(_ context.Context, req WriteRequest) (any, error) {
+func (m *LogModule) Write(_ context.Context, req WriteRequest) error {
 	kv := make([]any, 0, len(req.Fields)*2+2)
 	for k, v := range req.Fields {
 		kv = append(kv, k, v)
@@ -47,5 +47,5 @@ func (m *LogModule) Write(_ context.Context, req WriteRequest) (any, error) {
 	default:
 		logger.Info(msg, kv...)
 	}
-	return nil, nil
+	return nil
 }
