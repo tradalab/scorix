@@ -159,6 +159,7 @@ func (m *Manager) Load(name string) error {
 	if err := safeOnLoad(mod, ctx); err != nil {
 		return fmt.Errorf("module %s OnLoad: %w", name, err)
 	}
+	ctx.warnIfNothingRead()
 
 	m.mu.Lock()
 	m.states[name] = StateLoaded

@@ -3,6 +3,8 @@ package module
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/tradalab/scorix/config"
@@ -32,6 +34,7 @@ type Context struct {
 	App           AppController // nil in web/server mode
 
 	name        string
+	read        bool
 	rawConfig   map[string]any // embedded modules.<name> (trusted)
 	fileOverlay map[string]any // runtime-file modules.<name> (untrusted; env-tagged fields only)
 }
@@ -52,6 +55,7 @@ func newContext(name string, ipcCore Core, appName, appVersion, appID, protocol,
 }
 
 func (c *Context) GetConfig(path string) (any, bool) {
+	c.read = true
 	if c.rawConfig == nil {
 		return nil, false
 	}
@@ -93,11 +97,100 @@ func (c *Context) GetConfigBool(path string, def bool) bool {
 }
 
 func (c *Context) Decode(out any) error {
+	c.read = true
 	b, err := json.Marshal(c.rawConfig)
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(b, out)
+	if err := json.Unmarshal(b, out); err != nil {
+		return err
+	}
+	for _, key := range unknownKeys(c.rawConfig, reflect.TypeOf(out), "") {
+		logger.Warn(fmt.Sprintf("modules.%s: unknown key %q, nothing reads it (typo?)", c.name, key))
+	}
+	return nil
+}
+
+func (c *Context) warnIfNothingRead() {
+	if c.read {
+		return
+	}
+	var keys []string
+	for key := range c.rawConfig {
+		if key != "enabled" {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		logger.Warn(fmt.Sprintf("modules.%s: unknown key %q, this module reads no config (typo?)", c.name, key))
+	}
+}
+
+var unmarshalerType = reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()
+
+func unknownKeys(raw map[string]any, t reflect.Type, prefix string) []string {
+	for t != nil && t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t == nil || t.Kind() != reflect.Struct || reflect.PointerTo(t).Implements(unmarshalerType) {
+		return nil
+	}
+	fields := map[string]reflect.Type{}
+	jsonFields(t, fields)
+	var out []string
+	for key, val := range raw {
+		if prefix == "" && key == "enabled" {
+			continue
+		}
+		ft, ok := fields[strings.ToLower(key)]
+		if !ok {
+			out = append(out, prefix+key)
+			continue
+		}
+		for ft.Kind() == reflect.Pointer {
+			ft = ft.Elem()
+		}
+		if sub, ok := toStringMap(val); ok {
+			out = append(out, unknownKeys(sub, ft, prefix+key+".")...)
+		} else if list, ok := val.([]any); ok && (ft.Kind() == reflect.Slice || ft.Kind() == reflect.Array) {
+			for i, item := range list {
+				if sub, ok := toStringMap(item); ok {
+					out = append(out, unknownKeys(sub, ft.Elem(), fmt.Sprintf("%s%s[%d].", prefix, key, i))...)
+				}
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func jsonFields(t reflect.Type, into map[string]reflect.Type) {
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		tag := f.Tag.Get("json")
+		name, _, _ := strings.Cut(tag, ",")
+		if tag == "-" {
+			continue
+		}
+		if f.Anonymous && name == "" {
+			et := f.Type
+			if et.Kind() == reflect.Pointer {
+				et = et.Elem()
+			}
+			if et.Kind() == reflect.Struct {
+				jsonFields(et, into)
+				continue
+			}
+		}
+		if !f.IsExported() {
+			continue
+		}
+		if name == "" {
+			name = f.Name
+		}
+		into[strings.ToLower(name)] = f.Type
+	}
 }
 
 // ApplyOverrides applies env + runtime-file overrides via `env` tags. Call AFTER

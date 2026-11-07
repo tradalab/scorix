@@ -5,14 +5,23 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/module"
 )
 
 type echoConfig struct {
-	Prefix string `json:"prefix"`
+	Prefix string    `json:"prefix"`
+	Limits echoLimit `json:"limits"`
+	Hidden string    `json:"-"`
+	Plain  string
+}
+
+type echoLimit struct {
+	Max int `json:"max"`
 }
 
 type echoIn struct {
@@ -67,5 +76,90 @@ func TestDataDirLivesUnderTheTestsTempHome(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	if !strings.HasPrefix(r.DataDir(), home) || !strings.Contains(home, os.TempDir()) {
 		t.Fatalf("DataDir %q, HOME %q: a module under test could write into the real home", r.DataDir(), home)
+	}
+}
+
+func warned(key string) bool {
+	return slices.ContainsFunc(logger.Tail(), func(line string) bool {
+		return strings.Contains(line, "modules.echo") && strings.Contains(line, key) && strings.Contains(line, "unknown key")
+	})
+}
+
+func TestAKeyNoFieldReadsIsReported(t *testing.T) {
+	Load(t, &echo{}, map[string]any{
+		"prefix": "> ",
+		"prefx":  "typo",
+		"limits": map[string]any{"max": 3, "maxx": 4},
+		"Plain":  "untagged fields read their Go name",
+	})
+	if !warned(`"prefx"`) {
+		t.Error("a misspelled top-level key went unreported")
+	}
+	if !warned(`"limits.maxx"`) {
+		t.Error("a misspelled nested key went unreported")
+	}
+	for _, ok := range []string{`"prefix"`, `"enabled"`, `"limits"`, `"limits.max"`, `"Plain"`} {
+		if warned(ok) {
+			t.Errorf("%s is read, but was reported as unknown", ok)
+		}
+	}
+}
+
+func TestAFieldTaggedDashIsNotAKeyTheManifestCanSet(t *testing.T) {
+	Load(t, &echo{}, map[string]any{"Hidden": "x"})
+	if !warned(`"Hidden"`) {
+		t.Error(`a key that only matches a json:"-" field went unreported`)
+	}
+}
+
+type silent struct{}
+
+func (silent) Name() string                     { return "silent" }
+func (silent) Version() string                  { return "0.0.1" }
+func (silent) Capability() string               { return "silent" }
+func (silent) OnLoad(ctx *module.Context) error { return nil }
+func (silent) OnStart() error                   { return nil }
+func (silent) OnStop() error                    { return nil }
+func (silent) OnUnload() error                  { return nil }
+
+func TestKeysForAModuleThatReadsNoConfigAreReported(t *testing.T) {
+	Load(t, silent{}, map[string]any{"title": "x"})
+	found := slices.ContainsFunc(logger.Tail(), func(line string) bool {
+		return strings.Contains(line, "modules.silent") && strings.Contains(line, `"title"`) && strings.Contains(line, "unknown key")
+	})
+	if !found {
+		t.Error("a key under a module that never decodes its section went unreported")
+	}
+}
+
+type mode struct{ raw map[string]any }
+
+func (m *mode) UnmarshalJSON(b []byte) error { return json.Unmarshal(b, &m.raw) }
+
+type custom struct {
+	cfg struct {
+		Mode mode `json:"mode"`
+	}
+}
+
+func (c *custom) Name() string    { return "custom" }
+func (c *custom) Version() string { return "0.0.1" }
+func (c *custom) OnStart() error  { return nil }
+func (c *custom) OnStop() error   { return nil }
+func (c *custom) OnUnload() error { return nil }
+func (c *custom) OnLoad(ctx *module.Context) error {
+	return ctx.Decode(&c.cfg)
+}
+
+func TestAFieldThatDecodesItselfOwnsItsKeys(t *testing.T) {
+	c := &custom{}
+	Load(t, c, map[string]any{"mode": map[string]any{"anything": 1}})
+	if c.cfg.Mode.raw["anything"] == nil {
+		t.Fatal("the custom decoder never saw its key")
+	}
+	if slices.ContainsFunc(logger.Tail(), func(line string) bool {
+		return strings.Contains(line, "modules.custom") && strings.Contains(line, "unknown key")
+	}) {
+		t.Error("a key read by the field's own UnmarshalJSON was reported as unknown")
 	}
 }
