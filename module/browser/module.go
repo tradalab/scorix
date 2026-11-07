@@ -23,10 +23,14 @@ var allowedSchemes = map[string]bool{
 	"mailto": true,
 }
 
-type BrowserModule struct{}
+type BrowserModule struct {
+	scope  pathScope
+	reveal func(string) error
+	open   func(string) error
+}
 
 func New() *BrowserModule {
-	return &BrowserModule{}
+	return &BrowserModule{reveal: reveal, open: openPath}
 }
 
 func (m *BrowserModule) Name() string    { return "browser" }
@@ -34,6 +38,15 @@ func (m *BrowserModule) Version() string { return "1.0.0" }
 
 func (m *BrowserModule) OnLoad(ctx *module.Context) error {
 	logger.Info(fmt.Sprintf("[browser] loading (v%s)", m.Version()))
+	var cfg Config
+	if err := ctx.Decode(&cfg); err != nil {
+		return fmt.Errorf("decode config: %w", err)
+	}
+	scope, err := resolveScope(cfg.Paths, ctx.DataDir)
+	if err != nil {
+		return err
+	}
+	m.scope = scope
 
 	module.Expose(m, "OpenUrl", ctx.IPC)
 	module.Expose(m, "RevealPath", ctx.IPC)
@@ -87,19 +100,39 @@ type PathRequest struct {
 }
 
 func (m *BrowserModule) RevealPath(_ context.Context, req PathRequest) (interface{}, error) {
-	clean, err := validateLocalPath(req.Path)
+	clean, err := m.scopedPath(req.Path)
 	if err != nil {
 		return nil, err
 	}
-	return nil, reveal(clean)
+	if m.reveal == nil {
+		return nil, reveal(clean)
+	}
+	return nil, m.reveal(clean)
 }
 
 func (m *BrowserModule) OpenPath(_ context.Context, req PathRequest) (interface{}, error) {
-	clean, err := validateLocalPath(req.Path)
+	clean, err := m.scopedPath(req.Path)
 	if err != nil {
 		return nil, err
 	}
-	return nil, openPath(clean)
+	if err := refuseLaunch(clean); err != nil {
+		return nil, err
+	}
+	if m.open == nil {
+		return nil, openPath(clean)
+	}
+	return nil, m.open(clean)
+}
+
+func (m *BrowserModule) scopedPath(p string) (string, error) {
+	clean, err := validateLocalPath(p)
+	if err != nil {
+		return "", err
+	}
+	if err := m.scope.admits(clean); err != nil {
+		return "", err
+	}
+	return clean, nil
 }
 
 func validateLocalPath(p string) (string, error) {

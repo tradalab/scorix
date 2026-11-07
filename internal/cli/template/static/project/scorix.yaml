@@ -73,6 +73,9 @@ security:
 #   http:
 #     enabled: true
 #     allow: ["api.example.com", "*.example.org"] # mod:http:Fetch denies everything else
+#   browser:
+#     enabled: true
+#     paths: ["$DATA/exports"] # roots RevealPath/OpenPath may touch: absolute, $HOME, $DATA, $CACHE, $TEMP, or "*"; none by default
 
 logger:
   level: info
