@@ -12,6 +12,7 @@ import (
 	"github.com/ebitengine/purego"
 	"golang.org/x/sys/unix"
 
+	"github.com/tradalab/scorix/internal/nativeclip"
 	"github.com/tradalab/scorix/logger"
 
 	"github.com/tradalab/scorix/webview"
@@ -85,10 +86,12 @@ func (r *rt) Run() error {
 		return fmt.Errorf("webkitgtk: gtk_init failed (no display?) - use web mode on headless hosts")
 	}
 	initDispatch()
+	nativeclip.Install(gtkClipboard{})
 	registerSchemes(r)
 
 	r.fire(window.RuntimeReady)
 	gtkMain()
+	nativeclip.Install(nil)
 	return nil
 }
 

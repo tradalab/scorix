@@ -57,6 +57,9 @@ var (
 	gtkWindowSetIcon      func(uintptr, uintptr)
 	gdkPixbufFromStream   func(uintptr, uintptr, uintptr) uintptr
 	gdkAtomIntern         func(string, int32) uintptr
+	gtkClipboardGet       func(uintptr) uintptr
+	gtkClipboardSetText   func(uintptr, string, int32)
+	gtkClipboardWaitText  func(uintptr) uintptr
 	gdkPropertyGet        func(uintptr, uintptr, uintptr, uint64, uint64, int32, *uintptr, *int32, *int32, *uintptr) int32
 	gtkWindowSetDecor     func(uintptr, int32)
 	gtkWindowSetResize    func(uintptr, int32)
@@ -227,6 +230,9 @@ func initLibs() error {
 		purego.RegisterLibFunc(&gtkWindowKeepAbove, gtk, "gtk_window_set_keep_above")
 		purego.RegisterLibFunc(&gtkWindowSetIcon, gtk, "gtk_window_set_icon")
 		purego.RegisterLibFunc(&gdkAtomIntern, gdk, "gdk_atom_intern")
+		purego.RegisterLibFunc(&gtkClipboardGet, gtk, "gtk_clipboard_get")
+		purego.RegisterLibFunc(&gtkClipboardSetText, gtk, "gtk_clipboard_set_text")
+		purego.RegisterLibFunc(&gtkClipboardWaitText, gtk, "gtk_clipboard_wait_for_text")
 		purego.RegisterLibFunc(&gdkPropertyGet, gdk, "gdk_property_get")
 		purego.RegisterLibFunc(&gtkWindowSetDecor, gtk, "gtk_window_set_decorated")
 		purego.RegisterLibFunc(&gtkWindowSetResize, gtk, "gtk_window_set_resizable")
