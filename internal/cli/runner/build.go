@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 
@@ -510,6 +511,11 @@ func buildLdflags(bc *BuildContext) string {
 	var f []string
 	if bc.OS == "windows" && !bc.console {
 		f = append(f, "-H=windowsgui")
+	}
+	for _, strip := range []string{"-s", "-w"} {
+		if !slices.Contains(bc.Ldflags, strip) {
+			f = append(f, strip)
+		}
 	}
 	f = append(f, bc.Ldflags...)
 	return strings.Join(f, " ")
