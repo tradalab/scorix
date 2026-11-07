@@ -216,4 +216,11 @@ func (m *DialogModule) RewriteFile(ctx context.Context, req RewriteFileRequest) 
 	return "ok", nil
 }
 
-func (m *DialogModule) Capability() string { return "shell" }
+func (m *DialogModule) Capability() string { return "dialog" }
+
+func (m *DialogModule) Permissions() module.PermissionSet {
+	return module.PermissionSet{
+		Atoms: []module.Permission{"dialog"},
+		Sets:  map[module.Permission][]module.Permission{"shell": {"dialog"}},
+	}
+}

@@ -686,7 +686,14 @@ func (m *UpdaterModule) FullUpdate(ctx context.Context) (*Result, error) {
 	return res, nil
 }
 
-func (m *UpdaterModule) Capability() string { return "shell" }
+func (m *UpdaterModule) Capability() string { return "updater" }
+
+func (m *UpdaterModule) Permissions() module.PermissionSet {
+	return module.PermissionSet{
+		Atoms: []module.Permission{"updater"},
+		Sets:  map[module.Permission][]module.Permission{"shell": {"updater"}},
+	}
+}
 
 func (m *UpdaterModule) downloadAny(ctx context.Context, urls []string) (string, error) { // separate from the endpoint chain: where the manifest comes from and where the bytes do fail independently
 	if len(urls) == 0 {

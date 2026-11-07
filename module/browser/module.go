@@ -95,7 +95,14 @@ func (m *BrowserModule) OpenUrl(ctx context.Context, req OpenUrlRequest) (interf
 	return nil, openURL(ctx, url)
 }
 
-func (m *BrowserModule) Capability() string { return "shell" }
+func (m *BrowserModule) Capability() string { return "browser" }
+
+func (m *BrowserModule) Permissions() module.PermissionSet {
+	return module.PermissionSet{
+		Atoms: []module.Permission{"browser"},
+		Sets:  map[module.Permission][]module.Permission{"shell": {"browser"}},
+	}
+}
 
 type PathRequest struct {
 	Path string `json:"path"`

@@ -55,9 +55,10 @@ security:
   allow_right_click: true
   strict_modules: true # refuse modules that don't declare module.Capable
   # webview_sandbox: false # Linux: web content runs in bubblewrap whenever bwrap works on the host
-  # keys = capability names declared by modules (built-ins: fs shell clipboard notification db
-  # store tray template env http log llm biometric camera share widget). Grant only what a
-  # registered module declares; this scaffold registers none.
+  # keys = capability names declared by modules (built-ins: fs browser dialog updater clipboard
+  # notification db store tray template env http log llm biometric camera share widget; `shell`
+  # grants browser + dialog + updater). Grant only what a registered module declares; this
+  # scaffold registers none.
   allowlist:
   #   notification: true
   # windows: # per window.Options.ID (the main window is `main`); can only narrow the allowlist above
