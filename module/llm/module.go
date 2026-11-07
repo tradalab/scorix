@@ -24,6 +24,7 @@ import (
 	"github.com/tradalab/scorix/llm/detect"
 	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/module"
+	"github.com/tradalab/scorix/module/scope"
 	"github.com/tradalab/scorix/secrets"
 
 	// The drivers a user can add from the settings screen.
@@ -84,6 +85,7 @@ func (m *Module) Permissions() module.PermissionSet {
 type Module struct {
 	opt   Options
 	cfg   Config
+	pull  scope.Globs
 	reg   *core.Registry
 	ipc   *module.ModuleIPC
 	appID string
@@ -150,6 +152,7 @@ func (m *Module) OnLoad(ctx *module.Context) error {
 	if err := ctx.Decode(&m.cfg); err != nil {
 		return fmt.Errorf("llm: modules.llm: %w", err)
 	}
+	m.pull = scope.NewGlobs("modules.llm.pull_allow", m.cfg.PullAllow)
 	m.path = m.opt.Path
 	if m.path == "" {
 		m.path = filepath.Join(ctx.DataDir, "llm.json")
@@ -837,8 +840,8 @@ type PullEvent struct {
 
 // Returns when the download ends; progress arrives as mod:llm:pull.
 func (m *Module) Pull(ctx context.Context, in ModelInput) (bool, error) {
-	if !m.pullAllowed(in.Provider, in.Model) {
-		return false, fmt.Errorf("llm: %s/%s is outside modules.llm.pull_allow", in.Provider, in.Model)
+	if ref := in.Provider + "/" + in.Model; !m.pull.Allows(ref) {
+		return false, m.pull.Deny(ref)
 	}
 	mm, err := m.manager(in.Provider)
 	if err != nil {
@@ -932,43 +935,6 @@ func (m *Module) Describe(ctx context.Context, in ModelInput) (*core.ModelDetail
 		return &core.ModelDetail{ID: in.Model, Capabilities: slices.Clone(p.Capabilities())}, nil
 	}
 	return d.Describe(ctx, in.Model)
-}
-
-// Globs over "<provider>/<model>", matched whole. A page chooses both halves,
-// so both are in what the manifest bounds.
-func (m *Module) pullAllowed(provider, model string) bool {
-	ref := provider + "/" + model
-	for _, pattern := range m.cfg.PullAllow {
-		pattern = strings.TrimSpace(pattern)
-		if pattern == "" {
-			continue
-		}
-		if globMatch(pattern, ref) {
-			return true
-		}
-	}
-	return false
-}
-
-// Only "*", crossing separators: a model reference is not a path.
-func globMatch(pattern, s string) bool {
-	parts := strings.Split(pattern, "*")
-	if len(parts) == 1 {
-		return pattern == s
-	}
-	if !strings.HasPrefix(s, parts[0]) {
-		return false
-	}
-	s = s[len(parts[0]):]
-	for _, part := range parts[1 : len(parts)-1] {
-		i := strings.Index(s, part)
-		if i < 0 {
-			return false
-		}
-		s = s[i+len(part):]
-	}
-	last := parts[len(parts)-1]
-	return strings.HasSuffix(s, last) && len(s) >= len(last)
 }
 
 // Refused rather than done quietly when the app wired no way to ask.

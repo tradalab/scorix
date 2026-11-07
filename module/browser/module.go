@@ -14,6 +14,7 @@ import (
 	"github.com/tradalab/scorix/fault"
 	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/module"
+	"github.com/tradalab/scorix/module/scope"
 )
 
 // Allow-list for OpenUrl; file://, javascript:, custom protocols are an RCE/local-file surface.
@@ -24,7 +25,7 @@ var allowedSchemes = map[string]bool{
 }
 
 type BrowserModule struct {
-	scope  pathScope
+	paths  scope.Paths
 	reveal func(string) error
 	open   func(string) error
 }
@@ -42,11 +43,12 @@ func (m *BrowserModule) OnLoad(ctx *module.Context) error {
 	if err := ctx.Decode(&cfg); err != nil {
 		return fmt.Errorf("decode config: %w", err)
 	}
-	scope, err := resolveScope(cfg.Paths, ctx.DataDir)
+	paths, err := scope.NewPaths("modules.browser.paths", cfg.Paths, ctx.DataDir)
 	if err != nil {
 		return err
 	}
-	m.scope = scope
+	m.paths = paths
+	logger.Info("[browser] " + paths.String())
 
 	module.Expose(m, "OpenUrl", ctx.IPC)
 	module.Expose(m, "RevealPath", ctx.IPC)
@@ -129,7 +131,7 @@ func (m *BrowserModule) scopedPath(p string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := m.scope.admits(clean); err != nil {
+	if err := m.paths.Admits(clean); err != nil {
 		return "", err
 	}
 	return clean, nil

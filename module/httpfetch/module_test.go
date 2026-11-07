@@ -84,21 +84,9 @@ func TestFetchRedirectOutsideAllowlistBlocked(t *testing.T) {
 	}
 }
 
-func TestHostAllowedWildcard(t *testing.T) {
-	m := New()
-	m.cfg = Config{Allow: []string{"*.example.com", "api.other.io"}}
-	cases := map[string]bool{
-		"a.example.com":     true,
-		"b.c.example.com":   true,
-		"example.com":       true,
-		"evilexample.com":   false,
-		"api.other.io":      true,
-		"api.other.io:8443": true,
-		"sub.api.other.io":  false,
-	}
-	for host, want := range cases {
-		if got := m.hostAllowed(host); got != want {
-			t.Fatalf("hostAllowed(%q) = %v, want %v", host, got, want)
-		}
+func TestAStarAllowsEveryHostLikeEveryOtherScope(t *testing.T) {
+	m, ts := newTestModule(t, "*")
+	if _, err := m.Fetch(context.Background(), FetchRequest{URL: ts.URL + "/json"}); err != nil {
+		t.Fatalf(`modules.http.allow: ["*"] refused a host: %v`, err)
 	}
 }

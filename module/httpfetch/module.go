@@ -5,13 +5,14 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/tradalab/scorix/fault"
+	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/module"
+	"github.com/tradalab/scorix/module/scope"
 )
 
 const (
@@ -26,6 +27,7 @@ type Config struct {
 
 type HTTPModule struct {
 	cfg    Config
+	hosts  scope.Hosts
 	client *http.Client
 }
 
@@ -40,12 +42,14 @@ func (m *HTTPModule) OnLoad(ctx *module.Context) error {
 	if err := ctx.Decode(&m.cfg); err != nil {
 		return fmt.Errorf("decode config: %w", err)
 	}
+	m.hosts = scope.NewHosts("modules.http.allow", m.cfg.Allow)
+	logger.Info("[http] " + m.hosts.String())
 	m.client = &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error { // an allowed host 302ing elsewhere must not become a hole
 			if len(via) >= 5 {
 				return fmt.Errorf("too many redirects")
 			}
-			if !m.hostAllowed(req.URL.Host) {
+			if !m.hosts.Allows(req.URL.Host) {
 				return fault.Errorf(fault.CodeDenied, "redirect to %q is outside modules.http.allow", req.URL.Host)
 			}
 			return nil
@@ -58,30 +62,6 @@ func (m *HTTPModule) OnLoad(ctx *module.Context) error {
 func (m *HTTPModule) OnStart() error  { return nil }
 func (m *HTTPModule) OnStop() error   { return nil }
 func (m *HTTPModule) OnUnload() error { return nil }
-
-func (m *HTTPModule) hostAllowed(host string) bool {
-	h := strings.ToLower(host)
-	bare := h
-	if hp, _, err := net.SplitHostPort(h); err == nil {
-		bare = hp
-	}
-	for _, a := range m.cfg.Allow {
-		a = strings.ToLower(strings.TrimSpace(a))
-		if a == "" {
-			continue
-		}
-		if strings.HasPrefix(a, "*.") {
-			if strings.HasSuffix(bare, a[1:]) || bare == a[2:] {
-				return true
-			}
-			continue
-		}
-		if h == a || bare == a {
-			return true
-		}
-	}
-	return false
-}
 
 type FetchRequest struct {
 	URL       string            `json:"url"`
@@ -125,9 +105,8 @@ func (m *HTTPModule) Fetch(ctx context.Context, req FetchRequest) (*FetchRespons
 	if err != nil {
 		return nil, fault.Wrap("invalid_request", err)
 	}
-	if !m.hostAllowed(hr.URL.Host) {
-		return nil, fault.Errorf(fault.CodeDenied, "host %q is outside modules.http.allow", hr.URL.Host).
-			With("host", hr.URL.Host)
+	if !m.hosts.Allows(hr.URL.Host) {
+		return nil, m.hosts.Deny(hr.URL.Host)
 	}
 	for k, v := range req.Headers {
 		hr.Header.Set(k, v)
