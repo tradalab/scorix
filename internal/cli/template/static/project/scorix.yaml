@@ -60,6 +60,9 @@ security:
   # registered module declares; this scaffold registers none.
   allowlist:
   #   notification: true
+  # windows: # per window.Options.ID (the main window is `main`); can only narrow the allowlist above
+  #   viewer:
+  #     allowlist: {}
 
 # Offers the rpcs marked `// @mcp` to an MCP client, which launches this binary with
 # --mcp. Sealed, and the user must still turn it on in the app.

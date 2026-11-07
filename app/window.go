@@ -12,11 +12,14 @@ import (
 	"github.com/tradalab/scorix/window"
 )
 
+const mainWindowName = "main"
+
 type AppWindow struct {
 	window.Window
 	Client ClientID // targeted-emit id for this window's frontend
 
 	app        *App
+	name       string
 	fullscreen atomic.Bool // last value we asked for; only consulted when the driver cannot answer
 }
 
@@ -77,7 +80,7 @@ func (a *App) OpenWindow(opts window.Options) (*AppWindow, error) {
 	}
 	ch := make(chan result, 1)
 	rt.Dispatch(func() { // Manager.New must run on the UI thread
-		aw, err := a.attachWindow(rt, opts)
+		aw, err := a.attachWindow(rt, opts, string(opts.ID))
 		if err == nil {
 			aw.Show()
 			if hadState && restored.Maximized {
@@ -125,7 +128,7 @@ func (a *App) Show() {
 const contextMenuGuardJS = `document.addEventListener("contextmenu",function(e){e.preventDefault()},true);`
 
 // MUST run on the UI thread (Manager.New contract).
-func (a *App) attachWindow(rt window.Runtime, opts window.Options) (*AppWindow, error) {
+func (a *App) attachWindow(rt window.Runtime, opts window.Options, name string) (*AppWindow, error) {
 	scripts := make([]string, 0, 3)
 	if a.opts.Security != nil && !a.cfg.Security.AllowRightClick {
 		scripts = append(scripts, contextMenuGuardJS)
@@ -155,7 +158,7 @@ func (a *App) attachWindow(rt window.Runtime, opts window.Options) (*AppWindow, 
 	b := &ipc.NativeBridge{Dispatcher: d}
 	sid := a.addSender(func(raw []byte) { _ = send(raw) })
 	b.BindClient(ipc.ClientID(sid))
-	aw := &AppWindow{Window: w, Client: ipc.ClientID(sid), app: a}
+	aw := &AppWindow{Window: w, Client: ipc.ClientID(sid), app: a, name: name}
 	a.mu.Lock()
 	a.bridges = append(a.bridges, b)
 	a.wins[aw.Client] = aw

@@ -295,12 +295,43 @@ func (a *App) permitted(p module.Permission) bool {
 	if p == "" {
 		return true // a module that declares no capability is ungated; Load says so
 	}
-	if v, ok := a.cfg.Security.Allowlist[string(p)]; ok {
+	return a.grants(a.cfg.Security.Allowlist, p)
+}
+
+func (a *App) permittedIn(ctx context.Context, p module.Permission) bool {
+	if !a.permitted(p) {
+		return false
+	}
+	if a.opts.Security == nil || p == "" {
+		return true
+	}
+	own, ok := a.cfg.Security.Windows[a.callerWindowName(ctx)]
+	if !ok {
+		return true
+	}
+	return a.grants(own.Allowlist, p)
+}
+
+func (a *App) callerWindowName(ctx context.Context) string {
+	id, ok := ipc.ClientFrom(ctx)
+	if !ok {
+		return ""
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if aw := a.wins[id]; aw != nil {
+		return aw.name
+	}
+	return ""
+}
+
+func (a *App) grants(list config.Allowlist, p module.Permission) bool {
+	if v, ok := list[string(p)]; ok {
 		return v
 	}
 	a.permMu.RLock()
 	defer a.permMu.RUnlock()
-	for name, granted := range a.cfg.Security.Allowlist {
+	for name, granted := range list {
 		if !granted {
 			continue
 		}
@@ -550,7 +581,7 @@ func (a *App) Run() error {
 		var restored windowState
 		var hadState bool
 		if a.cfg.Window.RememberState {
-			if st, ok := a.loadWindowState("main"); ok {
+			if st, ok := a.loadWindowState(mainWindowName); ok {
 				restored, hadState = st, true
 				mainOpts.Width, mainOpts.Height = st.W, st.H
 				if stateOnScreen(st, screensOf(rt)) {
@@ -560,7 +591,7 @@ func (a *App) Run() error {
 				}
 			}
 		}
-		aw, err := a.attachWindow(rt, mainOpts)
+		aw, err := a.attachWindow(rt, mainOpts, mainWindowName)
 		if err != nil {
 			logger.Error("app: failed to open main window - quitting", "err", err)
 			rt.Quit()
@@ -579,7 +610,7 @@ func (a *App) Run() error {
 		// Before ready, not after: Quit fires before-quit on the CALLER's goroutine,
 		// so a consumer quitting on ready would beat this and lose its state.
 		if a.cfg.Window.RememberState {
-			a.hookWindowState(rt, aw, "main")
+			a.hookWindowState(rt, aw, mainWindowName)
 		}
 		for _, fn := range a.ready {
 			fn(a)

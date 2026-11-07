@@ -95,15 +95,22 @@ type LoggerConfig struct {
 
 type Allowlist map[string]bool
 
+// A window's own allowlist can only narrow security.allowlist, never widen it. The key
+// is the window.Options.ID it was opened with; the main window is "main".
+type WindowSandbox struct {
+	Allowlist Allowlist `yaml:"allowlist" json:"allowlist"`
+}
+
 // SandboxConfig is entirely SEALED (no `env` tags): env/overlay must not loosen
 // CSP or the capability allowlist (RCE/priv-esc vector). Changing it needs a
 // rebuild with a new embedded manifest.
 type SandboxConfig struct {
-	CSP             string    `yaml:"csp" json:"csp"` // "none", "default", "strict", or a literal policy
-	AllowRightClick bool      `yaml:"allow_right_click" json:"allow_right_click"`
-	StrictModules   bool      `yaml:"strict_modules" json:"strict_modules"`
-	WebviewSandbox  *bool     `yaml:"webview_sandbox" json:"webview_sandbox"`
-	Allowlist       Allowlist `yaml:"allowlist" json:"allowlist"`
+	CSP             string                   `yaml:"csp" json:"csp"`
+	AllowRightClick bool                     `yaml:"allow_right_click" json:"allow_right_click"`
+	StrictModules   bool                     `yaml:"strict_modules" json:"strict_modules"`
+	WebviewSandbox  *bool                    `yaml:"webview_sandbox" json:"webview_sandbox"`
+	Windows         map[string]WindowSandbox `yaml:"windows" json:"windows"`
+	Allowlist       Allowlist                `yaml:"allowlist" json:"allowlist"`
 }
 
 func (c *Config) Validate() error {

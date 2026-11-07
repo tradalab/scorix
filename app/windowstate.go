@@ -33,7 +33,7 @@ func (a *App) appDataName() string {
 func (a *App) windowStatePath(key string) string {
 	name := a.appDataName()
 	file := "window-state.json" // the main window keeps the pre-keyed filename
-	if key != "main" {
+	if key != mainWindowName {
 		file = "window-state-" + stateKeyClean.ReplaceAllString(key, "-") + ".json"
 	}
 	return filepath.Join(module.DataDir(name), file)

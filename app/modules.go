@@ -160,6 +160,13 @@ func (a *App) auditAllowlist() {
 			logger.Warn("app: security.allowlist enables a capability no registered module declares (typo?)", "capability", capability)
 		}
 	}
+	for win, own := range a.cfg.Security.Windows {
+		for capability, on := range own.Allowlist {
+			if on && !a.permitted(module.Permission(capability)) {
+				logger.Warn("app: a window allowlist grants what security.allowlist does not, and it can only narrow", "window", win, "capability", capability)
+			}
+		}
+	}
 	// Every handler the manifest leaves shut, by name: otherwise the app starts,
 	// the screen draws, and only the click comes back denied.
 	for _, g := range gated {
@@ -195,7 +202,7 @@ func (c *moduleCore) Register(name string, needs module.Permission, exec func(ct
 	c.reg.Command(name, func(ctx context.Context, data json.RawMessage, _ ipc.Stream) (any, error) {
 		// Asked every time: a handler registered before the manifest is applied
 		// would otherwise cache a decision made too early.
-		if !c.app.permitted(needs) {
+		if !c.app.permittedIn(ctx, needs) {
 			return nil, fault.Errorf(fault.CodeDenied, "permission %q denied by security.allowlist", needs).
 				With("permission", string(needs))
 		}
