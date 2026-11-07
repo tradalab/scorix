@@ -136,8 +136,13 @@ func (s *Store) Get(ctx context.Context, src Source, snap *Snapshot, files []Fil
 		if progress != nil {
 			opt.Progress = func(p fetch.Progress) { progress(Progress{File: f, Progress: p}) }
 		}
-		open := func(ctx context.Context, offset int64) (*http.Response, error) {
+		var open fetch.Opener = func(ctx context.Context, offset int64) (*http.Response, error) {
 			return src.Open(ctx, snap, f, offset)
+		}
+		if m, ok := src.(interface {
+			Hosts(*Snapshot, File) []fetch.Opener
+		}); ok {
+			open = fetch.Mirrors(m.Hosts(snap, f)...)
 		}
 		release := hold(dst + fetch.PartSuffix)
 		err = fetch.Fetch(ctx, dst, fetch.File{Size: f.Size, Digest: f.Digest}, open, opt)
