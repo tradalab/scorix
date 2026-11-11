@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/tradalab/scorix/idl"
 )
 
 // Declared in or imported into the generated file's package, where a message of the same name
@@ -53,7 +55,7 @@ func kotlinNatives(pf protoFile, appPackage string) (ktFile, error) {
 	out := ktFile{AppPackage: ktPackage(appPackage)}
 	bases := map[string]bool{}
 	for _, svc := range pf.Natives {
-		bases[exportedName(svc.Name)+"PluginBase"] = true
+		bases[idl.ExportedName(svc.Name)+"PluginBase"] = true
 	}
 	byName := map[string]protoMessage{}
 	for _, m := range pf.Messages {
@@ -83,7 +85,7 @@ func kotlinNatives(pf protoFile, appPackage string) (ktFile, error) {
 		return nil
 	}
 	for _, svc := range pf.Natives {
-		p := ktPlugin{Name: svc.Package, Class: exportedName(svc.Name) + "Plugin"}
+		p := ktPlugin{Name: svc.Package, Class: idl.ExportedName(svc.Name) + "Plugin"}
 		for _, rpc := range svc.RPCs {
 			for _, t := range []string{rpc.RequestType, rpc.ResponseType} {
 				if err := visit(t); err != nil {
@@ -95,8 +97,8 @@ func kotlinNatives(pf protoFile, appPackage string) (ktFile, error) {
 				Wire: rpc.NativeMethod,
 				// Kotlin block comments nest, so an opening /* in the text would swallow the file too.
 				Doc: strings.NewReplacer("*/", "* /", "/*", "/ *").Replace(rpc.Doc),
-				Req: exportedName(rpc.RequestType),
-				Res: exportedName(rpc.ResponseType),
+				Req: idl.ExportedName(rpc.RequestType),
+				Res: idl.ExportedName(rpc.ResponseType),
 			})
 		}
 		out.Plugins = append(out.Plugins, p)
@@ -107,10 +109,10 @@ func kotlinNatives(pf protoFile, appPackage string) (ktFile, error) {
 	}
 	sort.Strings(names)
 	for _, n := range names {
-		if ktReserved[exportedName(n)] || bases[exportedName(n)] {
+		if ktReserved[idl.ExportedName(n)] || bases[idl.ExportedName(n)] {
 			return ktFile{}, fmt.Errorf("proto: message %s is used by a @native service, and in Kotlin that name is taken by a type the generated plugins use; rename the message", n)
 		}
-		msg := ktMessage{Name: exportedName(n)}
+		msg := ktMessage{Name: idl.ExportedName(n)}
 		for _, f := range byName[n].Fields {
 			kf := ktFieldOf(f)
 			out.Base64 = out.Base64 || f.Type == "bytes"
@@ -145,11 +147,11 @@ var ktScalars = map[string][4]string{
 // Keys are the JSON names Go's generated types use, so both sides read one shape.
 func ktFieldOf(f protoField) ktField {
 	key := f.JSONName
-	elemType, elemDefault := exportedName(f.Type), exportedName(f.Type)+"()"
-	decodeElem := func(a string) string { return exportedName(f.Type) + ".fromJson(" + a + ".getJSONObject(it))" }
+	elemType, elemDefault := idl.ExportedName(f.Type), idl.ExportedName(f.Type)+"()"
+	decodeElem := func(a string) string { return idl.ExportedName(f.Type) + ".fromJson(" + a + ".getJSONObject(it))" }
 	encodeElem := func(v string) string { return v + ".toJson()" }
 	one := func() string {
-		return exportedName(f.Type) + `.fromJson(o.optJSONObject("` + key + `") ?: JSONObject())`
+		return idl.ExportedName(f.Type) + `.fromJson(o.optJSONObject("` + key + `") ?: JSONObject())`
 	}
 	if s, ok := ktScalars[f.Type]; ok {
 		elemType, elemDefault = s[0], s[1]
@@ -173,7 +175,7 @@ func ktFieldOf(f protoField) ktField {
 			encodeElem = func(v string) string { return "Base64.encodeToString(" + v + ", Base64.NO_WRAP)" }
 		}
 	}
-	name := ktIdent(lowerCamel(f.Name))
+	name := ktIdent(idl.LowerCamel(f.Name))
 	if f.Repeated {
 		return ktField{
 			Name:    name,

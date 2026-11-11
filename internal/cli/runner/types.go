@@ -2,7 +2,8 @@ package runner
 
 import (
 	"io"
-	"time"
+
+	"github.com/tradalab/scorix/idl"
 )
 
 // DriftItem is one generated file that --check found out of sync.
@@ -75,93 +76,13 @@ type GenerateProtoOptions struct {
 	JSONOut io.Writer // non-nil switches the result to one JSON document on this writer
 }
 
-type protoFile struct {
-	Package       string
-	HasEmpty      bool
-	HasMiddleware bool
-	Middlewares   []string
-	Messages      []protoMessage
-	Services      []protoService
-	// Natives are the @native services: Go calls them in the native host. Those marked
-	// `@native expose` are in Services as well, as commands the page calls straight through.
-	Natives []protoService
-}
-
-type protoMessage struct {
-	Name   string
-	GoName string
-	Fields []protoField
-}
-
-type protoField struct {
-	Name     string
-	JSONName string
-	GoName   string
-	Type     string
-	GoType   string
-	TSType   string
-	Repeated bool
-}
-
-type protoService struct {
-	Name         string
-	Package      string
-	Middlewares  []string
-	RPCs         []protoRPC // request/reply commands only (events are split out)
-	Events       []protoRPC // rpcs annotated @event / @event in
-	Native       bool       // `// @native` above the service: a plugin in the native host, not Go logic
-	NativeExpose bool       // `// @native expose`: the page may call it too, through a generated handler
-}
-
-type protoRPC struct {
-	Name          string
-	LogicName     string
-	MethodName    string
-	FileName      string
-	CommandName   string
-	Middlewares   []string
-	RequestType   string
-	ResponseType  string
-	RequestGoType string
-	ResultGoType  string
-	RequestTSType string
-	ResultTSType  string
-
-	// Arity is derived from the proto `stream` keyword on the request/response:
-	// "unary" (1->1, default) or "server-stream" (1->N, response streamed). The
-	// client-stream/bidi arities parse but are rejected by the generator and
-	// reserved for hand-wired app.RegisterDuplex.
-	Arity          string
-	IsServerStream bool
-
-	// Event fields - set when the rpc carries an @event / @broadcast annotation.
-	// The request message is the event payload; the response type is ignored.
-	IsEvent     bool
-	EventDir    string // "out" (Go -> JS push, default) | "in" (JS -> Go one-way)
-	EventName   string // wire topic, e.g. "monitor:message"
-	EventGoName string // service-prefixed identifier, e.g. "MonitorMessage"
-
-	MCP             bool
-	MCPDestructive  bool
-	MCPToolName     string
-	MCPSchema       string
-	MCPOutputSchema string
-	MCPTimeout      time.Duration // zero keeps mcpcore's default
-
-	CLI            bool
-	CLIDestructive bool
-	CLIHeadless    bool
-	CLIExec        bool
-	CLITimeout     time.Duration
-	CLIArg         string // request field given positionally, `@cli arg=<field>`
-	CLIRest        string // repeated string field taking every word after `--`, `@cli rest=<field>`
-	CLISecret      string // string field read from stdin, never from a flag, `@cli secret=<field>`
-	CLISchema      string // request JSON schema; the CLI derives its flags from it
-	// Doc is the rpc's leading comment without its annotation lines.
-	Doc string
-
-	NativeMethod string // the method name a native plugin receives, e.g. "readAll"
-}
+type (
+	protoFile    = idl.File
+	protoMessage = idl.Message
+	protoField   = idl.Field
+	protoService = idl.Service
+	protoRPC     = idl.RPC
+)
 
 type protoTemplateData struct {
 	Module    string

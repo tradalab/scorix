@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/tradalab/scorix/idl"
 	"github.com/tradalab/scorix/internal/cli/runner/dialect"
 )
 
@@ -35,6 +36,8 @@ type ValidateResult struct {
 type ValidateOptions struct {
 	Dir     string
 	JSONOut io.Writer // non-nil switches the result to one JSON document on this writer
+	// Proto validates this one file instead of a project, for an idl repo with no scorix.yaml.
+	Proto string
 }
 
 // Writes nothing. Every failure it reports used to surface somewhere else: as
@@ -51,6 +54,9 @@ func Validate(ctx context.Context, opt ValidateOptions) error {
 }
 
 func validateProject(opt ValidateOptions, res *ValidateResult) error {
+	if opt.Proto != "" {
+		return validateLoneProto(opt.Proto, res)
+	}
 	if opt.Dir == "" {
 		opt.Dir = "."
 	}
@@ -87,6 +93,7 @@ func validateProject(opt ValidateOptions, res *ValidateResult) error {
 		add("error", "proto", protoRel, err.Error(), "")
 	} else {
 		res.Messages, res.Services = len(pf.Messages), len(pf.Services)
+		lint(protoRel, pf, add)
 		if res.Services == 0 {
 			add("warn", "proto", protoRel, "no service declared, so no handler or client is generated",
 				"declare a service, or drop the proto if this app has no IPC")
@@ -179,7 +186,7 @@ func validateMCP(root, protoRel string, cfg *ProjectConfig, pf protoFile, add fu
 			"set mcp.enabled: true in scorix.yaml when the tools should ship")
 	case on && tools == 0:
 		add("warn", "mcp", protoRel, "mcp.enabled is on but no rpc is @mcp, so the app serves nothing",
-			"mark each rpc to offer with a // @mcp line above it")
+			"give each rpc to offer option (scorix.v1.mcp) = {}")
 	}
 	if !on {
 		return
@@ -206,7 +213,7 @@ func validateCLI(root, protoRel string, cfg *ProjectConfig, pf protoFile, add fu
 			"set cli.enabled: true in scorix.yaml when the commands should ship")
 	case on && commands == 0:
 		add("warn", "cli", protoRel, "cli.enabled is on but no rpc is @cli, so the command line offers nothing",
-			"mark each rpc to offer with a // @cli line above it")
+			"give each rpc to offer option (scorix.v1.cli) = {}")
 	}
 	if src, err := os.ReadFile(filepath.Join(root, "main.go")); on && err == nil && !strings.Contains(string(src), "RunCLI(") {
 		add("warn", "cli", "main.go", "cli.enabled is on but main.go never calls app.RunCLI, so `<App> <command>` opens a window instead",
@@ -262,6 +269,44 @@ func moduleRequires(root, importPath string) bool {
 		}
 	}
 	return false
+}
+
+func lint(path string, pf protoFile, add func(sev, source, path, msg, hint string)) {
+	for _, l := range idl.LintFile(pf) {
+		add("warn", "aip", path, l.Where+" "+l.What, "https://google.aip.dev/"+strings.TrimPrefix(l.Rule, "aip-"))
+	}
+	var legacy []string
+	for _, s := range pf.Services {
+		for _, r := range s.RPCs {
+			if len(r.Legacy) > 0 {
+				legacy = append(legacy, s.Name+"."+r.Name+" "+strings.Join(r.Legacy, " "))
+			}
+		}
+	}
+	if len(legacy) > 0 {
+		add("warn", "annotation", path, fmt.Sprintf("%d rpc(s) still annotate with a comment (%s)", len(legacy), strings.Join(legacy, ", ")),
+			"run scorix fix to move each into its (scorix.v1.mcp), (scorix.v1.cli) or (scorix.v1.event) option")
+	}
+}
+
+func validateLoneProto(path string, res *ValidateResult) error {
+	add := func(sev, source, path, msg, hint string) {
+		res.Findings = append(res.Findings, Finding{Severity: sev, Source: source, Path: path, Message: msg, Hint: hint})
+	}
+	res.Proto = path
+	src, err := os.ReadFile(path)
+	if err != nil {
+		add("error", "proto", path, err.Error(), "")
+		return finish(res)
+	}
+	pf, err := idl.Parse(filepath.Base(path), string(src))
+	if err != nil {
+		add("error", "proto", path, err.Error(), "")
+		return finish(res)
+	}
+	res.Messages, res.Services = len(pf.Messages), len(pf.Services)
+	lint(path, pf, add)
+	return finish(res)
 }
 
 func finish(res *ValidateResult) error {

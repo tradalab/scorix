@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 
 	"github.com/tradalab/scorix/internal/cli/template"
+
+	"github.com/tradalab/scorix/idl"
 )
 
 func GenerateProto(ctx context.Context, opt GenerateProtoOptions) error {
@@ -176,12 +178,12 @@ func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateR
 
 	for _, m := range pf.Middlewares {
 		writes = append(writes, generatedFile{
-			Path:     filepath.Join(root, "internal", "middleware", snakeName(m)+"_middleware.go"),
+			Path:     filepath.Join(root, "internal", "middleware", idl.SnakeName(m)+"_middleware.go"),
 			Template: mustRead(template.GoMiddleware),
 			Data: middlewareTemplateData{
 				Module:       modPath,
 				Name:         m,
-				ExportedName: exportedName(m),
+				ExportedName: idl.ExportedName(m),
 			},
 			Go:    true,
 			Force: opt.Force,

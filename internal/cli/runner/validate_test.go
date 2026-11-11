@@ -48,6 +48,13 @@ func project(t *testing.T, manifest, proto, schema string) string {
 
 const manifest = "name: probe\nproto: idl/app.proto\nmodel:\n  schema: idl/schema.sql\n"
 
+func withTrait(trait, value string) string {
+	return strings.NewReplacer(
+		"package probe;\n", "package probe;\nimport \"scorix/v1/annotations.proto\";\n",
+		"  rpc Ping (PingRequest) returns (PingReply);", "  // Reports whether the app is up.\n  rpc Ping (PingRequest) returns (PingReply) { option (scorix.v1."+trait+") = "+value+"; }",
+	).Replace(okProto)
+}
+
 func validate(t *testing.T, dir string) (*ValidateResult, error) {
 	t.Helper()
 	res := &ValidateResult{}
@@ -77,7 +84,7 @@ func TestValidateAcceptsWhatInitProduces(t *testing.T) {
 }
 
 func TestValidateWarnsWhenMCPIsHalfWired(t *testing.T) {
-	mcpProto := strings.Replace(okProto, "  rpc Ping", "  // Reports whether the app is up.\n  // @mcp\n  rpc Ping", 1)
+	mcpProto := withTrait("mcp", "{}")
 	withMain := func(dir, body string) string {
 		if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(body), 0o600); err != nil {
 			t.Fatal(err)
@@ -138,19 +145,17 @@ func TestValidateReportsEachBrokenInput(t *testing.T) {
 		{
 			name:     "message never closed",
 			dir:      project(t, manifest, strings.Replace(okProto, "message PingReply { string status = 1; }", "message PingReply { string status = 1;", 1), okSchema),
-			severity: "error", source: "proto", contains: "never closed",
+			severity: "error", source: "proto", contains: "app.proto:6:17: syntax error",
 		},
 		{
 			name:     "rpc names a message nobody declared",
 			dir:      project(t, manifest, strings.Replace(okProto, "returns (PingReply)", "returns (Nope)", 1), okSchema),
-			severity: "error", source: "proto", contains: "never declares",
+			severity: "error", source: "proto", contains: "unknown response type Nope",
 		},
 		{
-			// The opening brace goes and the header never matches at all, so the
-			// message simply is not there. The rpc type check is what catches it.
 			name:     "message header broken",
 			dir:      project(t, manifest, strings.Replace(okProto, "message PingReply {", "message PingReply ", 1), okSchema),
-			severity: "error", source: "proto", contains: "never declares",
+			severity: "error", source: "proto", contains: "app.proto:5:20: syntax error",
 		},
 		{
 			name:     "schema file missing",
@@ -190,7 +195,7 @@ func TestValidateReportsEachBrokenInput(t *testing.T) {
 }
 
 func TestValidateWarnsWhenCLIIsHalfWired(t *testing.T) {
-	cliProto := strings.Replace(okProto, "  rpc Ping", "  // Reports whether the app is up.\n  // @cli headless\n  rpc Ping", 1)
+	cliProto := withTrait("cli", "{ headless: true }")
 	cases := []struct{ name, want, dir string }{
 		{"commands declared, switch off", "cli.enabled is off", project(t, manifest, cliProto, okSchema)},
 		{"switch on, no command", "no rpc is @cli", project(t, manifest+"cli:\n  enabled: true\n", okProto, okSchema)},
@@ -245,7 +250,7 @@ func TestValidateReportsWhatGenerateWouldRefuse(t *testing.T) {
 }
 
 func TestValidateWarnsWhenTheMSIPredatesTheCLI(t *testing.T) {
-	cliProto := strings.Replace(okProto, "  rpc Ping", "  // Reports whether the app is up.\n  // @cli headless\n  rpc Ping", 1)
+	cliProto := withTrait("cli", "{ headless: true }")
 	dir := project(t, manifest+"cli:\n  enabled: true\n", cliProto, okSchema)
 	wxs := filepath.Join(dir, "installer", "windows", "product.wxs")
 	if err := os.MkdirAll(filepath.Dir(wxs), 0o755); err != nil {
@@ -317,5 +322,52 @@ func TestValidateAcceptsAnAppWithoutTables(t *testing.T) {
 	dir = project(t, manifest, okProto, "")
 	if _, err := validate(t, dir); err == nil {
 		t.Fatal("a declared schema that is missing passed")
+	}
+}
+
+func TestAnAIPStrayIsAWarningThatNamesItsAIP(t *testing.T) {
+	stray := strings.Replace(okProto, "string status = 1;", "string upStatus = 1;", 1)
+	res, err := validate(t, project(t, manifest, stray, okSchema))
+	if err != nil {
+		t.Fatalf("a lint stopped validate: %v", err)
+	}
+	warns := only(t, res, "warn")
+	if len(warns) != 1 || warns[0].Source != "aip" || warns[0].Message != "message PingReply field upStatus is not lower_snake_case" || warns[0].Hint != "https://google.aip.dev/140" {
+		t.Fatalf("warnings = %+v", warns)
+	}
+}
+
+func TestALoneProtoIsValidatedWithoutAManifest(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "rpc.proto")
+	os.WriteFile(p, []byte(strings.Replace(okProto, "string status = 1;", "string upStatus = 1;", 1)), 0o600)
+	res := &ValidateResult{}
+	if err := validateProject(ValidateOptions{Proto: p}, res); err != nil {
+		t.Fatalf("a lone proto with a lint failed: %v %+v", err, res.Findings)
+	}
+	if res.Proto != p || res.Services != 1 || len(only(t, res, "warn")) != 1 || len(res.Findings) != 1 {
+		t.Fatalf("lone proto = %+v", res)
+	}
+	os.WriteFile(p, []byte("syntax = \"proto3\"; message {"), 0o600)
+	res = &ValidateResult{}
+	if err := validateProject(ValidateOptions{Proto: p}, res); err == nil || len(only(t, res, "error")) != 1 {
+		t.Fatalf("a broken lone proto = %v %+v", err, res.Findings)
+	}
+}
+
+func TestACommentAnnotationIsOneWarningPointingAtFix(t *testing.T) {
+	legacy := strings.Replace(okProto, "  rpc Ping", "  // Reports whether the app is up.\n  // @cli headless\n  rpc Ping", 1)
+	res, err := validate(t, project(t, manifest+"cli:\n  enabled: true\n", legacy, okSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []Finding
+	for _, f := range only(t, res, "warn") {
+		if f.Source == "annotation" {
+			got = append(got, f)
+		}
+	}
+	if len(got) != 1 || got[0].Message != "1 rpc(s) still annotate with a comment (Healthz.Ping @cli)" || !strings.Contains(got[0].Hint, "scorix fix") {
+		t.Fatalf("annotation warnings = %+v", got)
 	}
 }

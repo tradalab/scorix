@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/tradalab/scorix/idl"
 )
 
 type SurfaceOptions struct {
@@ -118,8 +120,8 @@ func enrichProto(pf *protoFile) (outEvents, inEvents []protoRPC, err error) {
 	toolOf := map[string]string{}
 	for i := range pf.Services {
 		svc := &pf.Services[i]
-		svc.Package = lowerCamel(svc.Name)
-		svcExported := exportedName(svc.Name)
+		svc.Package = idl.LowerCamel(svc.Name)
+		svcExported := idl.ExportedName(svc.Name)
 		commands := svc.RPCs[:0]
 		for j := range svc.RPCs {
 			rpc := svc.RPCs[j]
@@ -127,7 +129,7 @@ func enrichProto(pf *protoFile) (outEvents, inEvents []protoRPC, err error) {
 				if err := checkNative(svc, rpc); err != nil {
 					return nil, nil, err
 				}
-				rpc.NativeMethod = lowerCamel(rpc.Name)
+				rpc.NativeMethod = idl.LowerCamel(rpc.Name)
 			}
 			// A stream keyword on a one-way event would be silently discarded.
 			if rpc.IsEvent && rpc.Arity != "unary" {
@@ -152,10 +154,10 @@ func enrichProto(pf *protoFile) (outEvents, inEvents []protoRPC, err error) {
 				}
 				cliJSONNames(*pf, &rpc)
 			}
-			rpc.LogicName = exportedName(rpc.Name) + "Logic"
-			rpc.MethodName = exportedName(rpc.Name)
-			rpc.FileName = snakeName(rpc.Name) + "_logic.go"
-			rpc.CommandName = svc.Package + ":" + kebabName(rpc.Name)
+			rpc.LogicName = idl.ExportedName(rpc.Name) + "Logic"
+			rpc.MethodName = idl.ExportedName(rpc.Name)
+			rpc.FileName = idl.SnakeName(rpc.Name) + "_logic.go"
+			rpc.CommandName = svc.Package + ":" + idl.KebabName(rpc.Name)
 			rpc.RequestGoType = typeRef(rpc.RequestType)
 			rpc.ResultGoType = typeRef(rpc.ResponseType)
 			rpc.RequestTSType = tsTypeRef(rpc.RequestType)
@@ -234,9 +236,9 @@ func checkNative(svc *protoService, rpc protoRPC) error {
 	case len(rpc.Middlewares) > 0 || len(svc.Middlewares) > 0:
 		return fmt.Errorf("service %s is @native with @middleware; its exposed commands go straight to the plugin, so check in a Go service instead", svc.Name)
 	}
-	switch lowerCamel(rpc.Name) {
+	switch idl.LowerCamel(rpc.Name) {
 	case "call", "name", "onStart", "onStop":
-		return fmt.Errorf("rpc %s.%s would hide ScorixPlugin.%s in the Kotlin base; rename it", svc.Name, rpc.Name, lowerCamel(rpc.Name))
+		return fmt.Errorf("rpc %s.%s would hide ScorixPlugin.%s in the Kotlin base; rename it", svc.Name, rpc.Name, idl.LowerCamel(rpc.Name))
 	}
 	return nil
 }

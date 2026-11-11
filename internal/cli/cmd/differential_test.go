@@ -217,7 +217,7 @@ func TestBrokenProtoIsNotReportedAsDrift(t *testing.T) {
 	if env["exit"] == float64(3) {
 		t.Fatal("a parse failure was reported as drift")
 	}
-	if msg, _ := env["error"].(string); !strings.Contains(msg, "never declares") {
+	if msg, _ := env["error"].(string); !strings.Contains(msg, "unknown response type Ghost") {
 		t.Fatalf("error did not name the cause: %q", msg)
 	}
 }

@@ -11,6 +11,8 @@ import (
 	"text/template"
 
 	scorix_template "github.com/tradalab/scorix/internal/cli/template"
+
+	"github.com/tradalab/scorix/idl"
 )
 
 // stagedFile is a rendered generatedFile held in memory so a batch can render
@@ -37,8 +39,9 @@ func renderGeneratedFile(f generatedFile) (stagedFile, error) {
 	var buf bytes.Buffer
 	tpl, err := template.New(filepath.Base(f.Path)).Funcs(template.FuncMap{
 		"lower":    strings.ToLower,
-		"kebab":    kebabName,
-		"exported": exportedName,
+		"kebab":    idl.KebabName,
+		"exported": idl.ExportedName,
+		"pbName":   idl.ProtoGoName,
 		"lowerFirst": func(s string) string {
 			if s == "" {
 				return s

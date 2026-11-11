@@ -1,6 +1,9 @@
 package runner
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func findMessage(pf protoFile, name string) *protoMessage {
 	for i := range pf.Messages {
@@ -42,42 +45,7 @@ service S {
 	}
 }
 
-// L9: a nested `{}` (inline option block) must not truncate the body at the first
-// inner `}` - fields after the nested braces must keep parsing.
-func TestParseProto_NestedBracesDoNotTruncateFields(t *testing.T) {
-	src := `
-syntax = "proto3";
-package app;
-
-message Outer {
-  string before = 1 [(validate.rules).string = {min_len: 1, max_len: 5}];
-  int32  after  = 2;
-}
-
-service Svc {
-  rpc Do (Outer) returns (Outer);
-}
-`
-	pf, err := parseProto(src)
-	if err != nil {
-		t.Fatalf("parseProto: %v", err)
-	}
-	outer := findMessage(pf, "Outer")
-	if outer == nil {
-		t.Fatal("Outer message not parsed")
-	}
-	if !hasField(outer, "before") {
-		t.Errorf("field `before` missing; fields=%+v", outer.Fields)
-	}
-	// The load-bearing assertion: the field AFTER the nested `{...}` survived.
-	if !hasField(outer, "after") {
-		t.Errorf("field `after` lost - body truncated at nested brace; fields=%+v", outer.Fields)
-	}
-}
-
-// L9: a message containing a nested message definition still parses the outer
-// fields that follow it.
-func TestParseProto_NestedMessageBody(t *testing.T) {
+func TestANestedMessageIsRefusedNotFlattened(t *testing.T) {
 	src := `
 syntax = "proto3";
 package app;
@@ -87,22 +55,11 @@ message Outer {
     string a = 1;
   }
   Inner inner = 1;
-  string tail = 2;
 }
 `
-	pf, err := parseProto(src)
-	if err != nil {
-		t.Fatalf("parseProto: %v", err)
-	}
-	outer := findMessage(pf, "Outer")
-	if outer == nil {
-		t.Fatal("Outer message not parsed")
-	}
-	if !hasField(outer, "inner") {
-		t.Errorf("field `inner` missing; fields=%+v", outer.Fields)
-	}
-	if !hasField(outer, "tail") {
-		t.Errorf("field `tail` lost after nested message; fields=%+v", outer.Fields)
+	_, err := parseProto(src)
+	if err == nil || !strings.Contains(err.Error(), "Inner is declared inside Outer") {
+		t.Fatalf("parseProto = %v, want the nested message refused by name", err)
 	}
 }
 
@@ -144,11 +101,8 @@ service Healthz {
 	}
 }
 
-// L10: a malformed field line is skipped (good fields still parse, bad one
-// dropped); the warning goes to stdout - here we assert the parse stays robust.
-func TestParseProto_MalformedFieldSkippedNotFatal(t *testing.T) {
-	src := `
-syntax = "proto3";
+func TestAMalformedFieldFailsWithItsLine(t *testing.T) {
+	src := `syntax = "proto3";
 package app;
 
 message Thing {
@@ -157,31 +111,24 @@ message Thing {
   int32  also_ok = 2;
 }
 `
-	pf, err := parseProto(src)
-	if err != nil {
-		t.Fatalf("parseProto must not error on a malformed field: %v", err)
-	}
-	m := findMessage(pf, "Thing")
-	if m == nil {
-		t.Fatal("Thing not parsed")
-	}
-	if !hasField(m, "ok") || !hasField(m, "also_ok") {
-		t.Errorf("valid fields lost around a malformed line; fields=%+v", m.Fields)
-	}
-	if hasField(m, "broken") {
-		t.Errorf("malformed line should not produce a field; fields=%+v", m.Fields)
+	_, err := parseProto(src)
+	if err == nil || !strings.Contains(err.Error(), "app.proto:7:") {
+		t.Fatalf("parseProto = %v, want a fatal error at the line after the broken field", err)
 	}
 }
 
 func TestParseProto_UnsupportedConstructsRejected(t *testing.T) {
-	cases := map[string]string{
-		"enum":  "syntax = \"proto3\";\nenum Color { RED = 0; }\nmessage M { string a = 1; }\nservice S { rpc Do(M) returns (M); }",
-		"oneof": "syntax = \"proto3\";\nmessage M { oneof pick { string a = 1; int32 b = 2; } }\nservice S { rpc Do(M) returns (M); }",
-		"map":   "syntax = \"proto3\";\nmessage M { map<string, string> tags = 1; }\nservice S { rpc Do(M) returns (M); }",
+	cases := map[string]struct{ src, want string }{
+		"enum":        {"syntax = \"proto3\";\nenum Color { RED = 0; }\nmessage M { string a = 1; }\nservice S { rpc Do(M) returns (M); }", `"enum" is not supported`},
+		"nested enum": {"syntax = \"proto3\";\nmessage M { enum Kind { A = 0; } string a = 1; }\nservice S { rpc Do(M) returns (M); }", `"enum" is not supported`},
+		"oneof":       {"syntax = \"proto3\";\nmessage M { oneof pick { string a = 1; int32 b = 2; } }\nservice S { rpc Do(M) returns (M); }", `"oneof" is not supported`},
+		"map":         {"syntax = \"proto3\";\nmessage M { map<string, string> tags = 1; }\nservice S { rpc Do(M) returns (M); }", `"map" is not supported`},
+		"optional":    {"syntax = \"proto3\";\nmessage M { optional string a = 1; }\nservice S { rpc Do(M) returns (M); }", "field M.a is optional"},
+		"first wins":  {"syntax = \"proto3\";\nmessage M { map<string, string> tags = 1; }\nenum Color { RED = 0; }\nservice S { rpc Do(M) returns (M); }", `"map" is not supported`},
 	}
-	for name, src := range cases {
-		if _, err := parseProto(src); err == nil {
-			t.Errorf("%s accepted silently", name)
+	for name, c := range cases {
+		if _, err := parseProto(c.src); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: err = %v, want it to say %q", name, err, c.want)
 		}
 	}
 	ok := "syntax = \"proto3\";\n// enum-like values live in a string; map is stitched in logic\nmessage M { string a = 1; }\nservice S { rpc Do(M) returns (M); }"

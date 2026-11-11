@@ -63,10 +63,10 @@ func builtinTools(s *Server) []tool {
 		{
 			name: "scorix_validate",
 			description: "Check scorix.yaml, the proto and the SQL schema before generating from them. Findings carry severity, source and path: " +
-				"error means generate cannot run, warn means it will run and produce something the author probably did not intend. Nothing is written.",
-			schema: obj(map[string]any{"dir": dirProp()}),
+				"error means generate cannot run, warn means it will run and produce something the author probably did not intend, or that the proto strays from a Google AIP. Nothing is written.",
+			schema: obj(map[string]any{"dir": dirProp(), "proto": strProp("validate and lint this one proto instead of a project, such as an idl repo's rpc.proto")}),
 			run: func(ctx context.Context, a args, out io.Writer) error {
-				return runner.Validate(ctx, runner.ValidateOptions{JSONOut: out, Dir: a.str("dir", ".")})
+				return runner.Validate(ctx, runner.ValidateOptions{JSONOut: out, Dir: a.str("dir", "."), Proto: a.str("proto", "")})
 			},
 		},
 		{

@@ -14,6 +14,8 @@ const (
 	GoMain       = "static/go/main.go.tpl"
 	GoSvc        = "static/go/svc.go.tpl"
 	GoTypes      = "static/go/types.go.tpl"
+	GoServer     = "static/go/server.go.tpl"
+	GoDispatch   = "static/go/dispatch.go.tpl"
 	GoConfig     = "static/go/config.go.tpl"
 	GoMiddleware = "static/go/middleware.go.tpl"
 	GoModel      = "static/go/model.go.tpl"

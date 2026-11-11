@@ -12,15 +12,19 @@ var mcpToolNameRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 // Under the JSON names the generated types decode, so what a client sends is what
 // reg unmarshals. closed is for a request: those types drop a misspelt field.
 func mcpSchema(pf protoFile, message string, closed bool) (string, error) {
+	return schemaOf(pf, message, closed, func(f protoField) string { return f.JSONName })
+}
+
+func schemaOf(pf protoFile, message string, closed bool, key func(protoField) string) (string, error) {
 	byName := make(map[string]protoMessage, len(pf.Messages))
 	for _, m := range pf.Messages {
 		byName[m.Name] = m
 	}
-	b, err := json.Marshal(messageSchema(byName, message, closed, map[string]bool{}))
+	b, err := json.Marshal(messageSchema(byName, message, closed, map[string]bool{}, key))
 	return string(b), err
 }
 
-func messageSchema(byName map[string]protoMessage, name string, closed bool, open map[string]bool) map[string]any {
+func messageSchema(byName map[string]protoMessage, name string, closed bool, open map[string]bool, key func(protoField) string) map[string]any {
 	msg, ok := byName[name]
 	// A message already being described is recursive: stop at "an object", which names
 	// no properties and so cannot be closed either.
@@ -31,11 +35,14 @@ func messageSchema(byName map[string]protoMessage, name string, closed bool, ope
 	defer delete(open, name)
 	props := make(map[string]any, len(msg.Fields))
 	for _, f := range msg.Fields {
-		s := fieldSchema(byName, f.Type, closed, open)
+		s, ok := scalarSchema(f.Type)
+		if !ok {
+			s = messageSchema(byName, f.Type, closed, open, key)
+		}
 		if f.Repeated {
 			s = map[string]any{"type": "array", "items": s}
 		}
-		props[f.JSONName] = s
+		props[key(f)] = s
 	}
 	schema := map[string]any{"type": "object", "properties": props}
 	if closed {
@@ -44,19 +51,18 @@ func messageSchema(byName map[string]protoMessage, name string, closed bool, ope
 	return schema
 }
 
-func fieldSchema(byName map[string]protoMessage, typ string, closed bool, open map[string]bool) map[string]any {
+func scalarSchema(typ string) (map[string]any, bool) {
 	switch typ {
 	case "string":
-		return map[string]any{"type": "string"}
+		return map[string]any{"type": "string"}, true
 	case "bool":
-		return map[string]any{"type": "boolean"}
+		return map[string]any{"type": "boolean"}, true
 	case "double", "float":
-		return map[string]any{"type": "number"}
+		return map[string]any{"type": "number"}, true
 	case "int32", "sint32", "sfixed32", "uint32", "fixed32", "int64", "sint64", "sfixed64", "uint64", "fixed64":
-		return map[string]any{"type": "integer"}
+		return map[string]any{"type": "integer"}, true
 	case "bytes":
-		// encoding/json reads a []byte field from base64 text.
-		return map[string]any{"type": "string", "contentEncoding": "base64"}
+		return map[string]any{"type": "string", "contentEncoding": "base64"}, true
 	}
-	return messageSchema(byName, typ, closed, open)
+	return nil, false
 }

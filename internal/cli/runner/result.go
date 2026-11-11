@@ -17,6 +17,8 @@ const (
 	ExitMissing = 4 // a required tool is absent, nothing was attempted
 )
 
+const ExitBreaking = 5
+
 // Anything not wrapped in ExitError is ExitFailed, so a runner reaches for this
 // only when the caller can act on the difference.
 type ExitError struct {
