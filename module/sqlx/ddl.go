@@ -32,17 +32,19 @@ func HasColumn(ctx context.Context, tx *sql.Tx, table, column string) (bool, err
 	return n > 0, nil
 }
 
-// ddl is the definition without the name, e.g. `TEXT NOT NULL DEFAULT 'manual'`.
-// A missing table is skipped rather than failed: ALTER TABLE would abort the
-// whole chain over a table a later migration is about to create.
+// ddl is the definition without the name, e.g. `TEXT NOT NULL DEFAULT 'manual'`. A column
+// already there is left as it is; a missing table is an error.
 func AddColumn(ctx context.Context, tx *sql.Tx, table, column, ddl string) error {
 	has, err := HasColumn(ctx, tx, table, column)
 	if err != nil || has {
 		return err
 	}
 	exists, err := HasTable(ctx, tx, table)
-	if err != nil || !exists {
+	if err != nil {
 		return err
+	}
+	if !exists {
+		return fmt.Errorf("add %s.%s: no table %s", table, column, table)
 	}
 	if _, err := tx.ExecContext(ctx,
 		fmt.Sprintf("ALTER TABLE %q ADD COLUMN %q %s", table, column, ddl)); err != nil {

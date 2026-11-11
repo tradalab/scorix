@@ -1,0 +1,123 @@
+syntax = "proto3";
+
+package scorix.v1;
+
+import "google/protobuf/descriptor.proto";
+
+option go_package = "github.com/tradalab/scorix/idl/scorixpb";
+
+// Http maps an rpc onto a REST route. Exactly one method field holds the path, a net/http
+// pattern such as "/api/v1/links/{id}"; each {name} in it is a field of the request.
+message Http {
+  string get = 1;
+  string post = 2;
+  string put = 3;
+  string delete = 4;
+  string patch = 5;
+  // body "*" reads the request body into the whole request message; empty reads no body,
+  // and the fields no path segment names come from the query string instead.
+  string body = 6;
+  // anonymous lets the route be called with no signed-in caller.
+  bool anonymous = 7;
+}
+
+// Class is how much harm a field's value does in the wrong hands.
+enum Class {
+  CLASS_UNSPECIFIED = 0;
+  // PII names or traces a person: masked in logs and audit records.
+  PII = 1;
+  // SECRET opens something: cleared from logs, audit records and what an agent is shown.
+  SECRET = 2;
+}
+
+// Field binds one field to something other than the body or the query, and classifies it.
+message Field {
+  // header fills the field from this request header.
+  string header = 1;
+  Class class = 2;
+}
+
+// Effect is what an rpc does to the state behind it. An rpc named Get... or List... reads
+// as READONLY and one named Delete... as DESTRUCTIVE unless it says otherwise.
+enum Effect {
+  EFFECT_UNSPECIFIED = 0;
+  READONLY = 1;
+  // IDEMPOTENT changes state, but calling it twice leaves what calling it once does.
+  IDEMPOTENT = 2;
+  MUTATING = 3;
+  // DESTRUCTIVE removes or overwrites what cannot be had back.
+  DESTRUCTIVE = 4;
+}
+
+// Rpc is what the contract says about an rpc beyond its types.
+message Rpc {
+  Effect effect = 1;
+  // timeout bounds one call, as a Go duration such as "3s"; empty keeps the service's own.
+  string timeout = 2;
+  // permission names what the caller must hold; the service's Policy decides who holds it.
+  string permission = 3;
+  // replay lets a caller retry with an Idempotency-Key header and get the first outcome
+  // instead of a second run; it needs a unary rpc that is not READONLY.
+  bool replay = 4;
+  // audit records every call through the service's Auditor. Unset, an rpc is audited unless
+  // it is READONLY; false turns it off, such as for a public hot path, and true audits a read.
+  optional bool audit = 5;
+}
+
+// List pages an rpc by keyset (AIP-158). Its request has page_size (int32) and page_token,
+// and its response has next_page_token and one repeated message field.
+message List {
+  int32 default_page_size = 1;
+  int32 max_page_size = 2;
+  // order is the sort, such as "created_at desc, id desc"; its last column must be id, the unique tiebreaker.
+  string order = 3;
+}
+
+// Mcp offers an rpc to agents as an MCP tool. The rpc's leading comment is the tool's
+// description; an rpc whose effect is DESTRUCTIVE is marked destructive to the agent.
+message Mcp {
+  // timeout bounds one tool call, as a Go duration such as "10m"; empty keeps the default.
+  string timeout = 1;
+}
+
+// Cli makes an rpc a command of the app's command line, named after its service and rpc.
+// An rpc whose effect is DESTRUCTIVE asks before it runs.
+message Cli {
+  // headless runs the command without opening a window.
+  bool headless = 1;
+  // exec replaces the process with the program the reply names; the rpc must be unary.
+  bool exec = 2;
+  // timeout bounds the command, as a Go duration such as "10m"; empty keeps the default.
+  string timeout = 3;
+  // arg is the request field the first positional word fills.
+  string arg = 4;
+  // rest is the repeated string field the words after -- fill.
+  string rest = 5;
+  // secret is the string field read from stdin instead of the command line.
+  string secret = 6;
+}
+
+// Direction is which way an event travels between Go and the page.
+enum Direction {
+  // OUT is from Go to the page, the default.
+  OUT = 0;
+  IN = 1;
+}
+
+// Event makes an rpc a typed event instead of a call: it has no reply.
+message Event {
+  Direction direction = 1;
+}
+
+extend google.protobuf.MethodOptions {
+  Http http = 51001;
+  Rpc rpc = 51003;
+  List list = 51004;
+  Mcp mcp = 51005;
+  Cli cli = 51006;
+  Event event = 51007;
+}
+
+extend google.protobuf.FieldOptions {
+  Field field = 51002;
+}

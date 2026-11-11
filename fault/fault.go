@@ -12,6 +12,7 @@ const (
 	CodeCanceled    = "canceled"    // call canceled (client cancel, shutdown)
 	CodeOverloaded  = "overloaded"  // concurrency budget exhausted, retry later
 	CodeUnavailable = "unavailable" // transport/peer gone
+	CodeInvalid     = "invalid"
 )
 
 type Error struct {

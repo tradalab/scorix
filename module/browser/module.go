@@ -14,7 +14,7 @@ import (
 	"github.com/tradalab/scorix/fault"
 	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/module"
-	"github.com/tradalab/scorix/module/scope"
+	"github.com/tradalab/scorix/scope"
 )
 
 // Allow-list for OpenUrl; file://, javascript:, custom protocols are an RCE/local-file surface.

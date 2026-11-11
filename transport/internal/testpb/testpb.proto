@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package scorix.resttest;
+
+option go_package = "github.com/tradalab/scorix/transport/internal/testpb";
+
+enum Color {
+  COLOR_UNSPECIFIED = 0;
+  COLOR_RED = 1;
+}
+
+message Nested {
+  string name = 1;
+  int64 count = 2;
+  Nested parent = 3;
+}
+
+message Thing {
+  string id = 1;
+  int32 page = 2;
+  int64 views = 3;
+  bool active = 4;
+  repeated string tags = 5;
+  double score = 6;
+  Nested child = 7;
+  repeated Nested children = 8;
+  bytes blob = 9;
+  string user_agent = 10;
+  uint64 big = 11;
+  Color color = 12;
+  map<string, int64> counts = 13;
+  map<int32, Nested> by_id = 14;
+}

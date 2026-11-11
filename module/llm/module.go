@@ -24,7 +24,7 @@ import (
 	"github.com/tradalab/scorix/llm/detect"
 	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/module"
-	"github.com/tradalab/scorix/module/scope"
+	"github.com/tradalab/scorix/scope"
 	"github.com/tradalab/scorix/secrets"
 
 	// The drivers a user can add from the settings screen.

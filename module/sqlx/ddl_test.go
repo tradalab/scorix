@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -69,11 +70,9 @@ func TestAddColumnIsIdempotent(t *testing.T) {
 	}
 }
 
-// Skipped, not failed: this migration may run before the one that creates the
-// table, and ALTER TABLE would abort the whole chain.
-func TestAddColumnSkipsAMissingTable(t *testing.T) {
-	if err := AddColumn(context.Background(), ddlTx(t), "nope", "c", "TEXT"); err != nil {
-		t.Fatalf("AddColumn on a missing table: %v", err)
+func TestAddColumnOnAMissingTableFailsSoAMisspeltNameIsNeverStampedApplied(t *testing.T) {
+	if err := AddColumn(context.Background(), ddlTx(t), "nope", "c", "TEXT"); err == nil || !strings.Contains(err.Error(), "no table nope") {
+		t.Fatalf("AddColumn on a missing table = %v", err)
 	}
 }
 

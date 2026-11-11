@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package scorix.redacttest;
+
+import "google/protobuf/any.proto";
+import "scorix/v1/annotations.proto";
+
+option go_package = "github.com/tradalab/scorix/internal/redactpb";
+
+message Owner {
+  string email = 1 [(scorix.v1.field) = { class: PII }];
+  string password = 2 [(scorix.v1.field) = { class: SECRET }];
+  string team = 3;
+}
+
+message Account {
+  string name = 1;
+  string api_key = 2 [(scorix.v1.field) = { class: SECRET }];
+  int64 phone = 3 [(scorix.v1.field) = { class: PII }];
+  repeated string aliases = 4 [(scorix.v1.field) = { class: PII }];
+  Owner owner = 5;
+  repeated Owner members = 6;
+  map<string, Owner> by_team = 7;
+  google.protobuf.Any extra = 8;
+  map<string, string> labels = 9 [(scorix.v1.field) = { class: PII }];
+}
