@@ -29,6 +29,22 @@ jobs:
         shell: bash
         run: go test -race -count=1 $(go list ./... | grep -v internal/driver/webview2)
 
+  modules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: brokers for the connector tests
+        run: connector/brokers.sh >> "$GITHUB_ENV"
+      - name: test and vet every nested module
+        run: |
+          for m in $(git ls-files '*/go.mod' | xargs -n1 dirname); do
+            echo "== $m"
+            (cd "$m" && go vet ./... && go test -count=1 ./...) || exit 1
+          done
+
   lint:
     runs-on: ubuntu-latest
     steps:
