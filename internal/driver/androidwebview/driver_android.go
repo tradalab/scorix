@@ -69,9 +69,10 @@ func (driver) Name() string { return "androidwebview" }
 
 func (driver) NewRuntime(cfg window.RuntimeConfig) (window.Runtime, error) {
 	r := &runtime{
-		quit:    make(chan struct{}),
-		events:  map[window.RuntimeEvent][]func(){},
-		schemes: map[string]webview.SchemeHandler{},
+		quit:     make(chan struct{}),
+		events:   map[window.RuntimeEvent][]func(){},
+		schemes:  map[string]webview.SchemeHandler{},
+		external: cfg.OpenExternal,
 	}
 	r.manager = &manager{rt: r}
 	return r, nil
@@ -90,6 +91,8 @@ type runtime struct {
 	tasks   []func()
 	events  map[window.RuntimeEvent][]func()
 	schemes map[string]webview.SchemeHandler
+
+	external func(url string)
 }
 
 // The host's Looper is the event loop; Run only parks main until Quit.
@@ -179,16 +182,19 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 	if id == "" {
 		id = "main"
 	}
+	url := toWebURL(opts.URL)
+	v := &view{home: originOf(url)}
+	v.exits.external = m.rt.external
+	v.exits.guard.Trust(url)
 	w := &win{
 		rt:     m.rt,
 		id:     id,
 		w:      opts.Width,
 		h:      opts.Height,
-		view:   &view{},
+		view:   v,
 		events: map[window.Event][]func(window.EventData){},
 	}
 	m.w = w
-	url := toWebURL(opts.URL)
 	spec, _ := json.Marshal(map[string]any{
 		"url":        url,
 		"origin":     originOf(url),
@@ -312,10 +318,20 @@ func (w *win) Close() {
 type view struct {
 	mu    sync.Mutex
 	onMsg func([]byte)
+
+	home  string
+	exits exits
 }
 
-func (v *view) Navigate(url string)  { toHost(opNavigate, []byte(toWebURL(url))) }
-func (v *view) LoadHTML(html string) { toHost(opLoadHTML, []byte(html)) }
+func (v *view) Navigate(url string) {
+	v.exits.guard.Trust(toWebURL(url))
+	toHost(opNavigate, []byte(toWebURL(url)))
+}
+
+func (v *view) LoadHTML(html string) {
+	v.exits.guard.Trust(v.home)
+	toHost(opLoadHTML, []byte(html))
+}
 func (v *view) InitScript(js string) { toHost(opInitScript, []byte(js)) }
 func (v *view) Eval(js string)       { toHost(opEval, []byte(js)) }
 func (v *view) OpenDevTools()        {}
@@ -446,6 +462,19 @@ func scorixOpenURL(data *C.char, n C.int) {
 	openPending = append(openPending, u)
 	drainOpen()
 	openMu.Unlock()
+}
+
+//export scorixKeepsOut
+func scorixKeepsOut(data *C.char, n C.int, clicked C.int) C.int {
+	r := active.Load()
+	if r == nil {
+		return 0
+	}
+	w := r.manager.current()
+	if w == nil || !w.view.exits.keepsOut(string(C.GoBytes(unsafe.Pointer(data), n)), clicked != 0) {
+		return 0
+	}
+	return 1
 }
 
 //export scorixLifecycle

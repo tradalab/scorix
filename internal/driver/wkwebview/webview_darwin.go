@@ -26,13 +26,14 @@ type view struct {
 	mu    sync.Mutex
 	onMsg func(raw []byte)
 
-	guard origin.Guard
+	guard    origin.Guard
+	external func(url string)
 }
 
 var viewByWK sync.Map // WKWebView objc.ID -> *view
 
 func newView(r *rt, opts window.Options) (*view, error) {
-	v := &view{}
+	v := &view{external: r.external}
 	v.guard.Trust("")
 
 	cfg := objc.ID(cls("WKWebViewConfiguration")).Send(sel("alloc")).Send(sel("init"))
@@ -67,6 +68,7 @@ func newView(r *rt, opts window.Options) (*view, error) {
 	}
 	wk.Send(sel("setAutoresizingMask:"), uint64(2|16)) // NSViewWidthSizable|NSViewHeightSizable
 	wk.Send(sel("setUIDelegate:"), uiDelegate())
+	wk.Send(sel("setNavigationDelegate:"), navigationDelegate())
 
 	v.wk = wk
 	viewByWK.Store(wk, v)
@@ -111,6 +113,57 @@ func uiDelegate() objc.ID {
 		uiDelegateObj = objc.ID(cls("ScorixUIDelegate")).Send(sel("new"))
 	})
 	return uiDelegateObj
+}
+
+var (
+	navigationDelegateOnce sync.Once
+	navigationDelegateObj  objc.ID
+)
+
+func navigationDelegate() objc.ID {
+	navigationDelegateOnce.Do(func() {
+		_, err := objc.RegisterClass(
+			"ScorixNavigationDelegate",
+			cls("NSObject"),
+			[]*objc.Protocol{objc.GetProtocol("WKNavigationDelegate")},
+			nil,
+			[]objc.MethodDef{
+				{
+					Cmd: sel("webView:decidePolicyForNavigationAction:decisionHandler:"),
+					Fn: func(_ objc.ID, _ objc.SEL, wk, action, handler objc.ID) {
+						policy := wkNavigationActionPolicyAllow
+						defer func() { invokeCaptureDecision(handler, policy) }()
+						defer recoverCB("decidePolicyForNavigationAction")
+						if v, ok := viewByWK.Load(wk); ok && v.(*view).keepsOut(action) {
+							policy = wkNavigationActionPolicyCancel
+						}
+					},
+				},
+			},
+		)
+		if err != nil {
+			panic(fmt.Sprintf("wkwebview: register navigation delegate: %v", err))
+		}
+		navigationDelegateObj = objc.ID(cls("ScorixNavigationDelegate")).Send(sel("new"))
+	})
+	return navigationDelegateObj
+}
+
+func (v *view) keepsOut(action objc.ID) bool {
+	if frame := action.Send(sel("targetFrame")); frame != 0 && !objc.Send[bool](frame, sel("isMainFrame")) {
+		return false
+	}
+	target := nsStringToGo(action.Send(sel("request")).Send(sel("URL")).Send(sel("absoluteString")))
+	if !v.guard.KeepsOut(target) {
+		return false
+	}
+	if v.guard.FirstRefusal(target) {
+		logger.Warn("wkwebview: kept a navigation out of the window, it leaves the origin the app loaded", "origin", origin.Of(target))
+	}
+	if v.external != nil && objc.Send[int64](action, sel("navigationType")) == wkNavigationTypeLinkActivated {
+		go v.external(target)
+	}
+	return true
 }
 
 func addUserScript(ucc objc.ID, js string) {

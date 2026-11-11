@@ -7,6 +7,12 @@ type RuntimeConfig struct {
 	// Keeps web content out of the OS sandbox the driver would put it in
 	// (bubblewrap on Linux). Drivers without one ignore it.
 	NoWebviewSandbox bool
+	// OpenExternal gets the URL a person clicked toward when a window refuses to leave its
+	// origin; the window stays where it was. Nil drops such clicks.
+	OpenExternal func(url string)
+	// FrameSources are the CSP frame sources a window may still load from another origin,
+	// since a driver that cannot tell a frame from the window lets them through.
+	FrameSources []string
 }
 
 type RuntimeEvent string

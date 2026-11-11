@@ -29,6 +29,7 @@ type view struct {
 
 	guard     origin.Guard
 	committed string
+	external  func(url string)
 }
 
 var (
@@ -41,10 +42,22 @@ var (
 	permOnce   sync.Once
 	loadCB     uintptr
 	loadOnce   sync.Once
+	policyCB   uintptr
+	policyOnce sync.Once
 )
 
+func (v *view) keepOut(uri string, clicked bool) {
+	if v.guard.FirstRefusal(uri) {
+		logger.Warn("webkitgtk: kept a navigation out of the window, it leaves the origin the app loaded", "origin", origin.Of(uri))
+	}
+	if clicked && v.external != nil {
+		go v.external(uri)
+	}
+}
+
 func newView(r *rt, opts window.Options) (*view, error) {
-	v := &view{}
+	v := &view{external: r.external}
+	v.guard.Frame(r.frames)
 	v.guard.Trust("")
 
 	v.ucm = wkUcmNew()
@@ -130,6 +143,29 @@ func newView(r *rt, opts window.Options) (*view, error) {
 		})
 	})
 	signalConnect(v.wk, "load-changed", loadCB, v.ucm)
+
+	policyOnce.Do(func() {
+		policyCB = purego.NewCallback(func(_, decision, kind, ucm uintptr) uintptr {
+			defer recoverCB("decide-policy")
+			if int32(kind) != webkitPolicyNavigation && int32(kind) != webkitPolicyNewWindow {
+				return 0
+			}
+			vv, ok := viewByUcm.Load(ucm)
+			if !ok {
+				return 0
+			}
+			view := vv.(*view)
+			action := wkNavDecisionAction(decision)
+			uri := goString(wkURIRequestURI(wkNavActionRequest(action)))
+			if !view.guard.KeepsOut(uri) {
+				return 0
+			}
+			wkPolicyIgnore(decision)
+			view.keepOut(uri, wkNavActionGesture(action) != 0)
+			return 1
+		})
+	})
+	signalConnect(v.wk, "decide-policy", policyCB, v.ucm)
 
 	return v, nil
 }

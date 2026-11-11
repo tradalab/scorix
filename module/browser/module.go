@@ -72,8 +72,12 @@ func (r *OpenUrlRequest) UnmarshalJSON(b []byte) error {
 
 // JS: scorix.invoke("mod:browser:OpenUrl", { url: "https://example.com" })
 func (m *BrowserModule) OpenUrl(ctx context.Context, req OpenUrlRequest) error {
-	url := req.URL
-	// Validate before shelling out.
+	return OpenExternal(ctx, req.URL)
+}
+
+// OpenExternal hands url to the OS's default handler when it is absolute http, https or
+// mailto, and refuses anything else, since a file: or app-specific scheme can launch code.
+func OpenExternal(ctx context.Context, url string) error {
 	if url == "" {
 		return fmt.Errorf("url is empty")
 	}

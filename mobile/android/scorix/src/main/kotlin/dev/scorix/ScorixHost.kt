@@ -396,11 +396,19 @@ object ScorixHost {
     private class Client : WebViewClient() {
         // Runs on a WebView worker thread, so the synchronous call into Go does not block the UI.
         override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+            if (request.isForMainFrame && request.method == "POST" &&
+                ScorixNative.keepsOut(request.url.toString().toByteArray(Charsets.UTF_8), false)
+            ) {
+                return WebResourceResponse("text/plain", "utf-8", 204, "No Content", emptyMap(), ByteArrayInputStream(ByteArray(0)))
+            }
             if (request.url.host?.endsWith(".localhost") != true) return null
             val head = StringBuilder("${request.method} ${request.url}\n")
             for ((k, v) in request.requestHeaders) head.append(k).append(": ").append(v).append('\n')
             return toResponse(ScorixNative.handleRequest(head.toString().toByteArray(Charsets.UTF_8)))
         }
+
+        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
+            request.isForMainFrame && ScorixNative.keepsOut(request.url.toString().toByteArray(Charsets.UTF_8), request.hasGesture())
 
         // The renderer is a separate process the system kills under memory
         // pressure; returning false would take the whole app down with it.

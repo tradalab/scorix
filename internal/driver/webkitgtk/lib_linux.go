@@ -29,6 +29,8 @@ const (
 	webkitInjectAllFrames     int32 = 0 // WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES
 	webkitInjectDocumentStart int32 = 0 // WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START
 	webkitLoadCommitted       int32 = 2
+	webkitPolicyNavigation    int32 = 0
+	webkitPolicyNewWindow     int32 = 1
 )
 
 var (
@@ -128,6 +130,11 @@ var (
 	wkSchemeReqFinish   func(uintptr, uintptr, int64, string)
 	wkJSResultGetValue  func(uintptr) uintptr
 	wkViewGetSettings   func(uintptr) uintptr // webkit_web_view_get_settings (borrowed ref)
+	wkNavDecisionAction func(uintptr) uintptr
+	wkNavActionRequest  func(uintptr) uintptr
+	wkNavActionGesture  func(uintptr) int32
+	wkURIRequestURI     func(uintptr) uintptr
+	wkPolicyIgnore      func(uintptr)
 	wkSettingsDevExtras func(uintptr, int32)  // webkit_settings_set_enable_developer_extras
 	wkViewExecEditCmd   func(uintptr, string) // webkit_web_view_execute_editing_command
 	wkViewGetInspector  func(uintptr) uintptr // webkit_web_view_get_inspector (borrowed ref)
@@ -310,6 +317,11 @@ func initLibs() error {
 		purego.RegisterLibFunc(&wkSchemeReqFinish, webkit, "webkit_uri_scheme_request_finish")
 		purego.RegisterLibFunc(&wkJSResultGetValue, webkit, "webkit_javascript_result_get_js_value")
 		purego.RegisterLibFunc(&wkViewGetSettings, webkit, "webkit_web_view_get_settings")
+		purego.RegisterLibFunc(&wkNavDecisionAction, webkit, "webkit_navigation_policy_decision_get_navigation_action")
+		purego.RegisterLibFunc(&wkNavActionRequest, webkit, "webkit_navigation_action_get_request")
+		purego.RegisterLibFunc(&wkNavActionGesture, webkit, "webkit_navigation_action_is_user_gesture")
+		purego.RegisterLibFunc(&wkURIRequestURI, webkit, "webkit_uri_request_get_uri")
+		purego.RegisterLibFunc(&wkPolicyIgnore, webkit, "webkit_policy_decision_ignore")
 		purego.RegisterLibFunc(&wkSettingsDevExtras, webkit, "webkit_settings_set_enable_developer_extras")
 		purego.RegisterLibFunc(&wkViewExecEditCmd, webkit, "webkit_web_view_execute_editing_command")
 		purego.RegisterLibFunc(&wkViewGetInspector, webkit, "webkit_web_view_get_inspector")

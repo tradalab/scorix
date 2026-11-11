@@ -30,10 +30,12 @@ import (
 	"github.com/tradalab/scorix/config"
 	"github.com/tradalab/scorix/diag"
 	"github.com/tradalab/scorix/internal/ipc"
+	"github.com/tradalab/scorix/internal/origin"
 	"github.com/tradalab/scorix/internal/singleinstance"
 	"github.com/tradalab/scorix/logger"
 	"github.com/tradalab/scorix/menu"
 	"github.com/tradalab/scorix/module"
+	"github.com/tradalab/scorix/module/browser"
 	"github.com/tradalab/scorix/webview"
 	"github.com/tradalab/scorix/window"
 )
@@ -64,6 +66,10 @@ type Options struct {
 	WebToken string // non-empty gates web mode behind a shared secret; empty trusts the network (loopback only). No-op in app mode.
 
 	Menu menu.Menu // menu bar of the main window; roles resolve per platform
+
+	// OpenExternal gets each URL a person clicked toward that a window kept out because it
+	// leaves the app's origin. Nil opens http, https and mailto in the system browser.
+	OpenExternal func(url string)
 }
 
 type App struct {
@@ -312,6 +318,16 @@ func (a *App) permittedIn(ctx context.Context, p module.Permission) bool {
 	return a.grants(own.Allowlist, p)
 }
 
+func (a *App) openExternal(url string) {
+	if a.opts.OpenExternal != nil {
+		a.opts.OpenExternal(url)
+		return
+	}
+	if err := browser.OpenExternal(context.Background(), url); err != nil {
+		logger.Warn("a link out of the app's origin was not opened", "err", err)
+	}
+}
+
 func (a *App) callerWindowName(ctx context.Context) string {
 	id, ok := ipc.ClientFrom(ctx)
 	if !ok {
@@ -503,6 +519,8 @@ func (a *App) Run() error {
 	rt, err := newDriver().NewRuntime(window.RuntimeConfig{
 		Identifier:       a.opts.Identifier,
 		NoWebviewSandbox: a.cfg.Security.WebviewSandbox != nil && !*a.cfg.Security.WebviewSandbox,
+		OpenExternal:     a.openExternal,
+		FrameSources:     origin.FrameSources(cspValue(a.cfg.Security.CSP)),
 	})
 	if err != nil {
 		return err

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -49,6 +50,9 @@ func (a *App) OpenWindow(opts window.Options) (*AppWindow, error) {
 		return nil, errors.New("scorix: OpenWindow requires app mode with a running runtime (call after Run has started)")
 	}
 
+	if opts.ID == mainWindowName {
+		return nil, fmt.Errorf("scorix: OpenWindow: ID %q is the main window's; a second window would share its allowlist and saved state", opts.ID)
+	}
 	if opts.Width == 0 {
 		opts.Width = a.opts.Width
 	}
@@ -80,6 +84,10 @@ func (a *App) OpenWindow(opts window.Options) (*AppWindow, error) {
 	}
 	ch := make(chan result, 1)
 	rt.Dispatch(func() { // Manager.New must run on the UI thread
+		if opts.ID != "" && a.windowNamed(string(opts.ID)) {
+			ch <- result{nil, fmt.Errorf("scorix: OpenWindow: a window %q is already open", opts.ID)}
+			return
+		}
 		aw, err := a.attachWindow(rt, opts, string(opts.ID))
 		if err == nil {
 			aw.Show()
@@ -94,6 +102,17 @@ func (a *App) OpenWindow(opts window.Options) (*AppWindow, error) {
 	})
 	r := <-ch
 	return r.w, r.err
+}
+
+func (a *App) windowNamed(name string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, aw := range a.wins {
+		if aw.name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // Quit stops the native event loop (app mode); no-op if none running.

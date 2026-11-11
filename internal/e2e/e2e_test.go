@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/tradalab/scorix/app"
+	"github.com/tradalab/scorix/config"
 )
 
 // AppKit refuses to run its event loop anywhere but the process's first thread,
@@ -59,12 +60,21 @@ func TestMain(m *testing.M) {
 	if os.Getenv("SCORIX_E2E") == "" {
 		os.Exit(m.Run())
 	}
+	framed = newSite()
+	defer framed.Close()
 	a, err := app.New(app.Options{
+		Security:   &config.SandboxConfig{CSP: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; frame-src 'self' " + framed.URL},
 		Title:      "scorix e2e",
 		Width:      640,
 		Height:     480,
 		Identifier: "scorix-e2e",
 		URL:        "scorix://app/index.html",
+		OpenExternal: func(url string) {
+			select {
+			case external <- url:
+			default:
+			}
+		},
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "e2e: build app:", err)
@@ -74,8 +84,10 @@ func TestMain(m *testing.M) {
 		"index.html":    &fstest.MapFile{Data: []byte(page)},
 		"hello.txt":     &fstest.MapFile{Data: []byte("served-by-go")},
 		"nav-home.html": &fstest.MapFile{Data: []byte(homePage)},
+		"nav-link.html": &fstest.MapFile{Data: []byte(linkPage)},
+		"nav-away.html": &fstest.MapFile{Data: []byte(awayPage)},
 	})
-	a.Serve("other", foreignSite)
+	a.Serve("other", foreignScheme)
 	a.Command("e2e:report", func(_ context.Context, data json.RawMessage, _ app.ChunkStream) (any, error) {
 		var ans answer
 		if err := json.Unmarshal(data, &ans); err != nil {

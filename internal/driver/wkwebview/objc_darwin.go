@@ -44,6 +44,10 @@ const (
 	// WKPermissionDecision handed to the media-capture decision handler.
 	wkPermissionGrant int64 = 1
 	wkPermissionDeny  int64 = 2
+
+	wkNavigationActionPolicyCancel int64 = 0
+	wkNavigationActionPolicyAllow  int64 = 1
+	wkNavigationTypeLinkActivated  int64 = 0
 )
 
 var (

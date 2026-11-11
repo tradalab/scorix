@@ -106,6 +106,15 @@ JNIEXPORT void JNICALL Java_dev_scorix_ScorixNative_openURL(JNIEnv *env, jclass 
 	(*env)->ReleaseByteArrayElements(env, url, p, JNI_ABORT);
 }
 
+JNIEXPORT jboolean JNICALL Java_dev_scorix_ScorixNative_keepsOut(JNIEnv *env, jclass cls, jbyteArray url, jboolean clicked) {
+	jsize n = (*env)->GetArrayLength(env, url);
+	jbyte *p = (*env)->GetByteArrayElements(env, url, NULL);
+	if (p == NULL) return JNI_FALSE;
+	int out = scorixKeepsOut((char *)p, (int)n, clicked ? 1 : 0);
+	(*env)->ReleaseByteArrayElements(env, url, p, JNI_ABORT);
+	return out ? JNI_TRUE : JNI_FALSE;
+}
+
 JNIEXPORT void JNICALL Java_dev_scorix_ScorixNative_lifecycle(JNIEnv *env, jclass cls, jint event) {
 	scorixLifecycle((int)event);
 }

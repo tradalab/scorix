@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -67,5 +68,38 @@ func TestWindowAllowlistNarrowsButNeverWidens(t *testing.T) {
 	sec.Allowlist["x"] = false
 	if r := pingFrom(t, a.MainWindow().Window, "w"); r.State != "error" {
 		t.Errorf("a window's own list widened past a global deny: %s", r.State)
+	}
+}
+
+func TestAWindowCannotTakeTheMainWindowsNameOrAnOpenOnesID(t *testing.T) {
+	withHeadlessDriver(t)
+	a, err := New(Options{URL: "scorix://app/index.html", Security: &config.SandboxConfig{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Serve("scorix", fstest.MapFS{"index.html": {Data: []byte("<html></html>")}})
+	errs := make(chan []error, 1)
+	a.OnReady(func(*App) {
+		go func() {
+			var out []error
+			for _, id := range []window.ID{"main", "tools", "tools"} {
+				_, err := a.OpenWindow(window.Options{ID: id, URL: "scorix://app/index.html"})
+				out = append(out, err)
+			}
+			errs <- out
+		}()
+	})
+	done := make(chan error, 1)
+	go func() { done <- a.Run() }()
+	got := <-errs
+	defer func() { a.Quit(); <-done }()
+	if got[0] == nil || !strings.Contains(got[0].Error(), `"main" is the main window's`) {
+		t.Errorf("ID main: %v", got[0])
+	}
+	if got[1] != nil {
+		t.Errorf("a fresh ID was refused: %v", got[1])
+	}
+	if got[2] == nil || !strings.Contains(got[2].Error(), `"tools" is already open`) {
+		t.Errorf("a second window with an open ID: %v", got[2])
 	}
 }

@@ -13,4 +13,5 @@ internal object ScorixNative {
     @JvmStatic external fun runTasks()
     @JvmStatic external fun lifecycle(event: Int)
     @JvmStatic external fun openURL(url: ByteArray)
+    @JvmStatic external fun keepsOut(url: ByteArray, clicked: Boolean): Boolean
 }

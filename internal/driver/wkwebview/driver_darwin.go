@@ -32,9 +32,10 @@ func (driver) NewRuntime(cfg window.RuntimeConfig) (window.Runtime, error) {
 		return nil, fmt.Errorf("wkwebview: load frameworks: %w", err)
 	}
 	r := &rt{
-		manager: &manager{byID: map[window.ID]*win{}},
-		events:  map[window.RuntimeEvent][]func(){},
-		schemes: map[string]webview.SchemeHandler{},
+		manager:  &manager{byID: map[window.ID]*win{}},
+		events:   map[window.RuntimeEvent][]func(){},
+		schemes:  map[string]webview.SchemeHandler{},
+		external: cfg.OpenExternal,
 	}
 	r.manager.rt = r
 
@@ -61,6 +62,8 @@ type rt struct {
 	mu      sync.Mutex
 	events  map[window.RuntimeEvent][]func()
 	schemes map[string]webview.SchemeHandler
+
+	external func(url string)
 }
 
 // Run starts NSApplication's event loop. Must be called from the main

@@ -591,7 +591,7 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 		opts:        opts,
 		hideOnClose: opts.HideOnClose,
 		rt:          m.rt,
-		view:        newView(m.rt.Dispatch),
+		view:        newView(m.rt.Dispatch, m.rt.cfg.OpenExternal),
 		events:      map[window.Event][]func(window.EventData){},
 	}
 	if opts.FileDrop {
@@ -810,6 +810,32 @@ func (w *win) startAttach(identifier string) error {
 		}))
 		permToken := new(int64)
 		comCall(core, cwvAddPermissionRequested, uintptr(unsafe.Pointer(permHandler)), uintptr(unsafe.Pointer(permToken)))
+
+		navHandler := w.handlers.add(newHandler(func(_, args unsafe.Pointer) {
+			if args == nil {
+				return
+			}
+			uri := argString(args, navArgsGetURI)
+			if !w.view.guard.KeepsOut(uri) {
+				return
+			}
+			comCall(args, navArgsPutCancel, 1)
+			w.view.keepOut(uri, argBool(args, navArgsGetUserInitiated))
+		}))
+		navToken := new(int64)
+		comCall(core, cwvAddNavigationStarting, uintptr(unsafe.Pointer(navHandler)), uintptr(unsafe.Pointer(navToken)))
+
+		newWinHandler := w.handlers.add(newHandler(func(_, args unsafe.Pointer) {
+			if args == nil {
+				return
+			}
+			comCall(args, newWinArgsPutHandled, 1)
+			if uri := argString(args, newWinArgsGetURI); w.view.guard.KeepsOut(uri) {
+				w.view.keepOut(uri, argBool(args, newWinArgsGetUserInit))
+			}
+		}))
+		newWinToken := new(int64)
+		comCall(core, cwvAddNewWindowRequested, uintptr(unsafe.Pointer(newWinHandler)), uintptr(unsafe.Pointer(newWinToken)))
 
 		w.view.ready(core)
 	})

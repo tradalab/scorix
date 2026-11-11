@@ -40,6 +40,8 @@ func (driver) NewRuntime(cfg window.RuntimeConfig) (window.Runtime, error) {
 	r := &rt{
 		identifier: cfg.Identifier,
 		noSandbox:  cfg.NoWebviewSandbox,
+		external:   cfg.OpenExternal,
+		frames:     cfg.FrameSources,
 		manager:    &manager{byID: map[window.ID]*win{}},
 		events:     map[window.RuntimeEvent][]func(){},
 		schemes:    map[string]webview.SchemeHandler{},
@@ -67,6 +69,8 @@ type rt struct {
 	events     map[window.RuntimeEvent][]func()
 	identifier string
 	noSandbox  bool
+	external   func(url string)
+	frames     []string
 	schemes    map[string]webview.SchemeHandler
 }
 

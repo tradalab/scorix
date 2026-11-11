@@ -37,11 +37,13 @@ const (
 	cwvGetSettings                = 3
 	cwvNavigate                   = 5
 	cwvNavigateToString           = 6
+	cwvAddNavigationStarting      = 7
 	cwvAddPermissionRequested     = 23
 	cwvAddScriptOnDocCreated      = 27
 	cwvExecuteScript              = 29
 	cwvPostWebMessageString       = 33
 	cwvAddWebMessageReceived      = 34
+	cwvAddNewWindowRequested      = 44
 	cwvOpenDevToolsWindow         = 51
 	cwvAddWebResourceRequested    = 55
 	cwvAddWebResourceReqFilter    = 57
@@ -65,7 +67,13 @@ const (
 	// COREWEBVIEW2_PERMISSION_KIND: microphone (what getUserMedia({audio}) needs).
 	permKindMicrophone = 1
 	// COREWEBVIEW2_PERMISSION_STATE: allow grants without prompting.
-	permStateAllow = 1
+	permStateAllow          = 1
+	navArgsGetURI           = 3
+	navArgsGetUserInitiated = 4
+	navArgsPutCancel        = 8
+	newWinArgsGetURI        = 3
+	newWinArgsPutHandled    = 6
+	newWinArgsGetUserInit   = 8
 )
 
 var (
@@ -221,13 +229,14 @@ type webview2View struct {
 	startURL  string
 	startHTML string
 
-	guard origin.Guard
+	guard    origin.Guard
+	external func(url string)
 }
 
 var _ webview.View = (*webview2View)(nil)
 
-func newView(dispatch func(func())) *webview2View {
-	v := &webview2View{dispatch: dispatch}
+func newView(dispatch func(func()), external func(url string)) *webview2View {
+	v := &webview2View{dispatch: dispatch, external: external}
 	v.guard.Trust("")
 	return v
 }
@@ -271,6 +280,31 @@ func (v *webview2View) deliver(source string, raw []byte) {
 	if fn != nil {
 		fn(raw)
 	}
+}
+
+func (v *webview2View) keepOut(uri string, clicked bool) {
+	if v.guard.FirstRefusal(uri) {
+		logger.Warn("webview2: kept a navigation out of the window because it leaves the app's origin", "origin", origin.Of(uri))
+	}
+	if clicked && v.external != nil {
+		go v.external(uri)
+	}
+}
+
+func argString(args unsafe.Pointer, slot int) string {
+	p, _ := comCallOut(args, slot)
+	if p == nil {
+		return ""
+	}
+	s := windows.UTF16PtrToString((*uint16)(p))
+	coTaskMemFree(p)
+	return s
+}
+
+func argBool(args unsafe.Pointer, slot int) bool {
+	b := new(int32)
+	comCall(args, slot, uintptr(unsafe.Pointer(b)))
+	return *b != 0
 }
 
 func (v *webview2View) Navigate(url string) {
