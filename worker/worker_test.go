@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -553,5 +554,70 @@ func TestPlanningMovesPastTheSlotsItEnqueued(t *testing.T) {
 	w.Tick(bg)
 	if want := time.Date(2026, 11, 11, 10, 0, 0, 0, time.UTC); !w.crons[0].planned.Equal(want) {
 		t.Fatalf("planned = %v, want %v", w.crons[0].planned, want)
+	}
+}
+
+type stored struct {
+	Kind    string  `db:"kind"`
+	Dedup   *string `db:"dedup"`
+	Payload string  `db:"payload"`
+	RunAt   int64   `db:"run_at"`
+	Locked  int64   `db:"locked_until"`
+}
+
+func storedIn(t *testing.T, db *data.DB, table string) []stored {
+	t.Helper()
+	var out []stored
+	if err := db.QueryRowsCtx(bg, &out, `SELECT kind, dedup, payload, run_at, locked_until FROM `+table+` ORDER BY kind, run_at`); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func TestEnqueueWithoutAWorkerWritesTheRowsTheMethodWritesAndWaitsForItsTimeOrNow(t *testing.T) {
+	db, c := open(t), start()
+	worker(t, db, c, Options{})
+	worker(t, db, c, Options{Table: "mirror"})
+	queue, err := New(nil, Options{Table: "jobs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	queue.now = c.now
+	later := At(c.now().Add(time.Minute))
+	for _, enqueue := range []func(kind string, opts ...EnqueueOption) (bool, error){
+		func(kind string, opts ...EnqueueOption) (bool, error) {
+			return queue.Enqueue(bg, db, kind, wrapperspb.String("ana"), opts...)
+		},
+		func(kind string, opts ...EnqueueOption) (bool, error) {
+			return Enqueue(bg, db, "mirror", kind, wrapperspb.String("ana"), append([]EnqueueOption{At(c.now())}, opts...)...)
+		},
+	} {
+		for _, e := range []struct {
+			kind string
+			opts []EnqueueOption
+			want bool
+		}{
+			{"a", nil, true},
+			{"b", []EnqueueOption{Key("k1"), later}, true},
+			{"b", []EnqueueOption{Key("k1")}, false},
+		} {
+			if ok, err := enqueue(e.kind, e.opts...); ok != e.want || err != nil {
+				t.Fatalf("enqueue %s = %v %v, want %v", e.kind, ok, err, e.want)
+			}
+		}
+	}
+	method, free := storedIn(t, db, "jobs"), storedIn(t, db, "mirror")
+	if len(method) != 2 || method[1].Dedup == nil || !reflect.DeepEqual(method, free) {
+		t.Fatalf("the method wrote %+v, Enqueue wrote %+v", method, free)
+	}
+	before := time.Now().UnixMilli()
+	if ok, err := Enqueue(bg, db, "mirror", "now", wrapperspb.String("")); !ok || err != nil {
+		t.Fatalf("Enqueue without At = %v %v", ok, err)
+	}
+	if r := storedIn(t, db, "mirror"); r[len(r)-1].Kind != "now" || r[len(r)-1].RunAt < before || r[len(r)-1].RunAt > time.Now().UnixMilli() {
+		t.Fatalf("a job without At = %+v, want it due now", r[len(r)-1])
+	}
+	if _, err := Enqueue(bg, db, `"mirror"`, "a", wrapperspb.String("")); err == nil {
+		t.Error("a table name with SQL in it")
 	}
 }

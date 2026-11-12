@@ -100,14 +100,14 @@ func Handle[Req, Res any, PReq interface {
 		defer cancel()
 		var req PReq
 		if r.Rule.Audit {
-			defer func() {
+			defer scorixconnect.Settle(func(err error) {
 				p, _ := kernel.PrincipalFrom(ctx)
 				var clean proto.Message
 				if req != nil {
 					clean = redact.Log(req)
 				}
 				m.opt.Audit(ctx, kernel.Audit{Transport: "rest", Procedure: r.Procedure, Principal: p, Request: clean, Duration: time.Since(start), Err: err})
-			}()
+			}, &err)
 		}
 		authed, err := gate.Authenticate(ctx, m.opt.Auth, kernel.Call{Procedure: r.Procedure, Header: hr.Header, Anonymous: r.Anonymous})
 		if err != nil {

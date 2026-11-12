@@ -142,7 +142,7 @@ func (m *Mux) serve(ctx context.Context, procedure string, rule kernel.Rule, h h
 	authed, cancel, err := m.enter(ctx, procedure, rule, h)
 	defer cancel()
 	if rule.Audit {
-		defer func() { m.audit(authed, ctx, procedure, start, req, err) }()
+		defer Settle(func(err error) { m.audit(authed, ctx, procedure, start, req, err) }, &err)
 	}
 	if err != nil {
 		return m.wire(err)

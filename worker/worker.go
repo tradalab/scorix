@@ -182,7 +182,20 @@ func Key(k string) EnqueueOption { return func(e *enqueue) { e.key = k } }
 // Enqueue adds a job of kind through s, which may be the transaction of the write the job
 // follows from. It reports false when Key named a job that already exists.
 func (w *Worker) Enqueue(ctx context.Context, s data.Session, kind string, payload proto.Message, opts ...EnqueueOption) (bool, error) {
-	e := enqueue{at: w.now()}
+	return insert(ctx, s, w.opt.Table, w.now(), kind, payload, opts)
+}
+
+// Enqueue adds a job of kind to table through s as Worker.Enqueue does, for a service that
+// only enqueues and so holds no Worker; a job without At is due now. It fails on a bad table name.
+func Enqueue(ctx context.Context, s data.Session, table, kind string, payload proto.Message, opts ...EnqueueOption) (bool, error) {
+	if !tableRe.MatchString(table) {
+		return false, fmt.Errorf("worker: %q is not a table name", table)
+	}
+	return insert(ctx, s, table, time.Now(), kind, payload, opts)
+}
+
+func insert(ctx context.Context, s data.Session, table string, now time.Time, kind string, payload proto.Message, opts []EnqueueOption) (bool, error) {
+	e := enqueue{at: now}
 	for _, o := range opts {
 		o(&e)
 	}
@@ -194,7 +207,7 @@ func (w *Worker) Enqueue(ctx context.Context, s data.Session, kind string, paylo
 	if e.key != "" {
 		key = e.key
 	}
-	res, err := s.ExecCtx(ctx, `INSERT INTO `+w.opt.Table+` (id, kind, dedup, payload, run_at) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (dedup) DO NOTHING`,
+	res, err := s.ExecCtx(ctx, `INSERT INTO `+table+` (id, kind, dedup, payload, run_at) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (dedup) DO NOTHING`,
 		uuid.NewString(), kind, key, string(body), e.at.UnixMilli())
 	if err != nil {
 		return false, fmt.Errorf("worker: enqueue %s: %w", kind, err)

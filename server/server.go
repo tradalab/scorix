@@ -72,8 +72,15 @@ func New(opt Options) *Server {
 	return s
 }
 
-// Mount serves h for every path under prefix, for example "/shorten.Rpc/".
-func (s *Server) Mount(prefix string, h http.Handler) { s.mux.Handle(prefix, s.shed(h)) }
+// Mount serves h for every path under prefix, for example "/shorten.Rpc/". Each outer wraps it
+// outside shedding, the first outermost, so a CORS outer still answers a preflight and labels a shed 503.
+func (s *Server) Mount(prefix string, h http.Handler, outer ...func(http.Handler) http.Handler) {
+	h = s.shed(h)
+	for i := len(outer) - 1; i >= 0; i-- {
+		h = outer[i](h)
+	}
+	s.mux.Handle(prefix, h)
+}
 
 // Probe serves h at pattern, such as "GET /api/v1/healthz", and never sheds it, so an orchestrator
 // polling it under load does not restart a busy pod. Nothing caps h, so it must stay cheap.

@@ -263,17 +263,23 @@ func (m *Mux) call(ctx context.Context, h http.Header, params json.RawMessage) (
 		return nil, nil, err
 	}
 	principal, _ := kernel.PrincipalFrom(authed)
-	req, err := t.decode(p.Arguments)
 	var args json.RawMessage
-	if err == nil {
-		args, _ = rest.Marshal(redact.Log(req))
-		err = t.Rule.Admit(authed, principal, m.opt.Policy)
-	}
 	var out proto.Message
-	if err == nil {
+	err = func() (err error) {
+		defer scorixconnect.Settle(func(err error) {
+			m.opt.Audit(authed, Event{Tool: t.Name, Procedure: t.Procedure, Principal: principal, Arguments: args, Duration: time.Since(start), Err: err})
+		}, &err)
+		req, err := t.decode(p.Arguments)
+		if err != nil {
+			return err
+		}
+		args, _ = rest.Marshal(redact.Log(req))
+		if err = t.Rule.Admit(authed, principal, m.opt.Policy); err != nil {
+			return err
+		}
 		out, err = t.run(authed, req)
-	}
-	m.opt.Audit(authed, Event{Tool: t.Name, Procedure: t.Procedure, Principal: principal, Arguments: args, Duration: time.Since(start), Err: err})
+		return err
+	}()
 	if bad, ok := errors.AsType[*badArguments](err); ok {
 		return nil, &rpcError{codeInvalidParams, "arguments of " + t.Name + ": " + bad.Error()}, nil
 	}

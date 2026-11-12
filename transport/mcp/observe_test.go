@@ -92,3 +92,17 @@ func TestAPanickingToolIsObservedAsInternalAndStillPanics(t *testing.T) {
 		t.Fatalf("panic %v, observed %+v", p, got)
 	}
 }
+
+func TestAPanickingToolIsAuditedAsInternalAndStillPanics(t *testing.T) {
+	srv, a := serve(t, Options{}, func(context.Context, *testpb.Thing) (*testpb.Thing, error) { panic("boom") })
+	p := func() (p any) {
+		defer func() { p = recover() }()
+		req := httptest.NewRequest("POST", "/", strings.NewReader(call("things_get", `{"id":"a"}`)))
+		req.Header.Set("Authorization", "Bearer ana")
+		srv.Config.Handler.ServeHTTP(httptest.NewRecorder(), req)
+		return nil
+	}()
+	if p != "boom" || len(a.events) != 1 || connect.CodeOf(a.events[0].Err) != connect.CodeInternal || a.events[0].Principal.ID != "ana" || a.events[0].Arguments == nil {
+		t.Fatalf("panic %v, audited %+v", p, a.events)
+	}
+}

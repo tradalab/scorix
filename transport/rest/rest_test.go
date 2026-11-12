@@ -414,6 +414,21 @@ func TestAnAuditedRouteRecordsTheCallAndItsRefusals(t *testing.T) {
 	Handle(m, route, echo)
 }
 
+func TestAPanickingAuditedRouteIsAuditedAsInternalAndStillPanics(t *testing.T) {
+	var seen []kernel.Audit
+	record := func(_ context.Context, a kernel.Audit) { seen = append(seen, a) }
+	route := Route{Method: "POST", Path: "/things/{id}", Procedure: "/test.Things/Save", Body: "*", Rule: kernel.Rule{Audit: true}}
+	srv := serve(t, Options{Audit: record}, route, func(context.Context, *testpb.Thing) (*testpb.Thing, error) { panic("boom") })
+	p := func() (p any) {
+		defer func() { p = recover() }()
+		srv.Config.Handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/things/a", strings.NewReader(`{}`)))
+		return nil
+	}()
+	if p != "boom" || len(seen) != 1 || connect.CodeOf(seen[0].Err) != connect.CodeInternal || seen[0].Request == nil {
+		t.Fatalf("panic %v, audited %+v", p, seen)
+	}
+}
+
 func TestARouteRefusedForWantOfAPermissionIsAuditedWithWhoMadeIt(t *testing.T) {
 	var seen []kernel.Audit
 	record := func(_ context.Context, a kernel.Audit) { seen = append(seen, a) }

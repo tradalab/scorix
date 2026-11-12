@@ -279,6 +279,75 @@ func TestACallOverTheInFlightCapIsShedAsUnavailableButHealthzAndAProbeStillAnswe
 	}
 }
 
+func TestAMountsOutersWrapItOutsideSheddingFirstOutermostSoAShedCallAndAPreflightCarryTheirHeaders(t *testing.T) {
+	tag := func(name string) func(http.Handler) http.Handler {
+		return func(h http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Add("X-Outer", name)
+				h.ServeHTTP(w, r)
+			})
+		}
+	}
+	cors := func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			h.ServeHTTP(w, r)
+		})
+	}
+	entered, release := make(chan struct{}), make(chan struct{})
+	s := New(Options{MaxInFlight: 1})
+	s.Mount("/api/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		close(entered)
+		<-release
+	}), tag("first"), cors, tag("last"))
+	ok := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	s.Mount("/plain/", ok)
+	s.Probe("GET /api/v1/healthz", ok)
+	srv := httptest.NewServer(s.handler())
+	defer srv.Close()
+	held := make(chan error, 1)
+	go func() {
+		res, err := http.Post(srv.URL+"/api/a", "text/plain", nil)
+		if err == nil {
+			res.Body.Close()
+		}
+		held <- err
+	}()
+	<-entered
+	defer func() {
+		close(release)
+		if err := <-held; err != nil {
+			t.Errorf("the call holding the slot = %v", err)
+		}
+	}()
+	for _, c := range []struct {
+		method, path string
+		status       int
+		outers       string
+		cors         bool
+	}{
+		{"POST", "/api/b", http.StatusServiceUnavailable, "[first last]", true},
+		{"OPTIONS", "/api/b", http.StatusNoContent, "[first]", true},
+		{"GET", "/plain/x", http.StatusServiceUnavailable, "[]", false},
+		{"GET", "/healthz", http.StatusNoContent, "[]", false},
+		{"GET", "/api/v1/healthz", http.StatusOK, "[]", false},
+	} {
+		req, _ := http.NewRequest(c.method, srv.URL+c.path, nil)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != c.status || fmt.Sprint(res.Header.Values("X-Outer")) != c.outers || (res.Header.Get("Access-Control-Allow-Origin") == "*") != c.cors {
+			t.Errorf("%s %s under load = %d %v, want %d outers %s CORS %v", c.method, c.path, res.StatusCode, res.Header, c.status, c.outers, c.cors)
+		}
+	}
+}
+
 func TestWithTLSOneRouteAnswersConnectAndGRPCOverTLSAndRefusesCleartext(t *testing.T) {
 	borrowed := httptest.NewUnstartedServer(http.NotFoundHandler())
 	borrowed.EnableHTTP2 = true

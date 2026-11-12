@@ -61,6 +61,23 @@ func TestAnAuditedCallIsRecordedWithItsPrincipalAndARedactedRequest(t *testing.T
 	}
 }
 
+func TestAPanickingAuditedCallIsAuditedAsInternalAndStillPanics(t *testing.T) {
+	var l ledger
+	m := mux(t, Options{Auth: trustAll, Audit: l.record})
+	Unary(m, save, kernel.Rule{Audit: true}, func(context.Context, *redactpb.Account) (*redactpb.Account, error) { panic("boom") })
+	req := httptest.NewRequest("POST", save, strings.NewReader(`{"name":"a"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Who", "u1")
+	p := func() (p any) {
+		defer func() { p = recover() }()
+		m.ServeHTTP(httptest.NewRecorder(), req)
+		return nil
+	}()
+	if p != "boom" || len(l.seen) != 1 || connect.CodeOf(l.seen[0].Err) != connect.CodeInternal || l.seen[0].Principal.ID != "u1" {
+		t.Fatalf("panic %v, audited %+v", p, l.seen)
+	}
+}
+
 func TestARefusedCallIsAuditedTooAndAnUnauditedOneIsNot(t *testing.T) {
 	var l ledger
 	refuse := kernel.AuthenticatorFunc(func(context.Context, kernel.Call) (context.Context, error) {
