@@ -38,6 +38,7 @@ func (m *DialogModule) OnLoad(ctx *module.Context) error {
 	}
 
 	module.Expose(m, "OpenFile", ctx.IPC)
+	module.Expose(m, "OpenFiles", ctx.IPC)
 	module.Expose(m, "OpenDirectory", ctx.IPC)
 	module.Expose(m, "SaveFile", ctx.IPC)
 	module.Expose(m, "Message", ctx.IPC)
@@ -61,6 +62,19 @@ type OpenFileRequest struct {
 // On Android the file is copied into the app cache: os.Open cannot read a content URI.
 func (m *DialogModule) OpenFile(ctx context.Context, req OpenFileRequest) (string, error) {
 	return openFile(ctx, req)
+}
+
+type OpenFilesRequest struct {
+	Title  string `json:"title"`
+	Filter string `json:"filter"`
+	Ext    string `json:"ext"`
+	Dir    string `json:"dir,omitempty"`
+}
+
+// JS: scorix.invoke("mod:dialog:OpenFiles", { title, filter, ext, dir }) -> paths, [] on Cancel
+// Not on Android: a picked document has no path.
+func (m *DialogModule) OpenFiles(ctx context.Context, req OpenFilesRequest) ([]string, error) {
+	return openFiles(ctx, req)
 }
 
 type OpenDirectoryRequest struct {

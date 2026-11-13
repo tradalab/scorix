@@ -4,9 +4,12 @@ package dialog
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/ncruces/zenity"
 
 	"github.com/tradalab/scorix/fault"
 )
@@ -77,5 +80,28 @@ func TestRewriteFileReplacesWholeContent(t *testing.T) {
 	}
 	if _, err := m.PickFile(context.Background(), PickFileRequest{FileName: "../x.json"}); fault.CodeOf(err) != "invalid_request" {
 		t.Fatalf("a file name with a path: %v", err)
+	}
+}
+
+func TestOpenFilesCancelIsAnEmptyListNotAnError(t *testing.T) {
+	for name, tc := range map[string]struct {
+		paths []string
+		err   error
+	}{
+		"cancel":       {nil, zenity.ErrCanceled},
+		"nothing back": {nil, nil},
+	} {
+		got, err := pickedFiles(tc.paths, tc.err)
+		if err != nil || got == nil || len(got) != 0 {
+			t.Errorf("%s: got %#v, %v; want an empty non-nil list and no error", name, got, err)
+		}
+	}
+	boom := errors.New("zenity: no display")
+	if _, err := pickedFiles(nil, boom); !errors.Is(err, boom) {
+		t.Errorf("a real failure came back as %v", err)
+	}
+	want := []string{"/a.txt", "/b.txt"}
+	if got, err := pickedFiles(want, nil); err != nil || len(got) != 2 || got[1] != "/b.txt" {
+		t.Errorf("picked = %v, %v", got, err)
 	}
 }

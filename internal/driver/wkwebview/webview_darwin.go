@@ -61,7 +61,11 @@ func newView(r *rt, opts window.Options) (*view, error) {
 	r.mu.Unlock()
 
 	rect := nsRect{Size: nsSize{W: float64(opts.Width), H: float64(opts.Height)}}
-	wk := msgSendRectCfg(objc.ID(cls("WKWebView")).Send(sel("alloc")),
+	viewClass := cls("WKWebView")
+	if opts.FileDrop {
+		viewClass = dropWebViewClass()
+	}
+	wk := msgSendRectCfg(objc.ID(viewClass).Send(sel("alloc")),
 		sel("initWithFrame:configuration:"), rect, cfg)
 	if wk == 0 {
 		return nil, fmt.Errorf("wkwebview: WKWebView init failed")

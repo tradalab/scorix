@@ -5,6 +5,13 @@ export interface DialogOpenFileRequest {
   ext?: string;
 }
 
+export interface DialogOpenFilesRequest {
+  title?: string;
+  filter?: string;
+  ext?: string;
+  dir?: string;
+}
+
 export interface DialogOpenDirectoryRequest {
   title?: string;
   dir?: string;
@@ -77,6 +84,7 @@ export interface DialogRewriteFileRequest {
 
 export const dialog = {
   openFile: (params?: DialogOpenFileRequest) => scorix.invoke<string>("mod:dialog:OpenFile", params),
+  openFiles: (params?: DialogOpenFilesRequest) => scorix.invoke<string[]>("mod:dialog:OpenFiles", params),
   openDirectory: (params?: DialogOpenDirectoryRequest) => scorix.invoke<string>("mod:dialog:OpenDirectory", params),
   saveFile: (params?: DialogSaveFileRequest) => scorix.invoke<string>("mod:dialog:SaveFile", params),
   message: (params?: DialogMessageRequest) => scorix.invoke<string>("mod:dialog:Message", params),

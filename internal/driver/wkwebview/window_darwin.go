@@ -79,6 +79,9 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 	m.mu.Unlock()
 
 	registerWinDelegate(w)
+	if opts.FileDrop {
+		w.acceptFileDrops()
+	}
 
 	// Before SetSize, which clamps to them: the window must not open outside its limits.
 	if opts.MinWidth > 0 || opts.MinHeight > 0 {
@@ -507,6 +510,7 @@ func registerWinDelegate(w *win) {
 						}
 						w := v.(*win)
 						winByDelegate.Delete(self)
+						w.forgetFileDrops()
 						viewByWK.Delete(w.view.wk)    // drop the Go-side view pin
 						w.nw.Send(sel("autorelease")) // we owned it (setReleasedWhenClosed:false)
 						// PreventDefault was already offered by windowShouldClose: (which

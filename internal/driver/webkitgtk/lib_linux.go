@@ -63,6 +63,15 @@ var (
 	gtkClipboardGet       func(uintptr) uintptr
 	gtkClipboardSetText   func(uintptr, string, int32)
 	gtkClipboardWaitText  func(uintptr) uintptr
+	gtkDragGetData        func(uintptr, uintptr, uintptr, uint32)
+	gtkDragFinish         func(uintptr, int32, int32, uint32)
+	gtkDragSourceWidget   func(uintptr) uintptr
+	gdkDragStatus         func(uintptr, int32, uint32)
+	gdkDragListTargets    func(uintptr) uintptr
+	gdkAtomName           func(uintptr) uintptr
+	gtkSelectionGetURIs   func(uintptr) uintptr
+	gStrfreev             func(uintptr)
+	gSignalStopEmission   func(uintptr, string)
 	gdkPropertyGet        func(uintptr, uintptr, uintptr, uint64, uint64, int32, *uintptr, *int32, *int32, *uintptr) int32
 	gtkWindowSetDecor     func(uintptr, int32)
 	gtkWindowSetResize    func(uintptr, int32)
@@ -243,6 +252,15 @@ func initLibs() error {
 		purego.RegisterLibFunc(&gtkClipboardGet, gtk, "gtk_clipboard_get")
 		purego.RegisterLibFunc(&gtkClipboardSetText, gtk, "gtk_clipboard_set_text")
 		purego.RegisterLibFunc(&gtkClipboardWaitText, gtk, "gtk_clipboard_wait_for_text")
+		purego.RegisterLibFunc(&gtkDragGetData, gtk, "gtk_drag_get_data")
+		purego.RegisterLibFunc(&gtkDragFinish, gtk, "gtk_drag_finish")
+		purego.RegisterLibFunc(&gtkDragSourceWidget, gtk, "gtk_drag_get_source_widget")
+		purego.RegisterLibFunc(&gdkDragStatus, gdk, "gdk_drag_status")
+		purego.RegisterLibFunc(&gdkDragListTargets, gdk, "gdk_drag_context_list_targets")
+		purego.RegisterLibFunc(&gdkAtomName, gdk, "gdk_atom_name")
+		purego.RegisterLibFunc(&gtkSelectionGetURIs, gtk, "gtk_selection_data_get_uris")
+		purego.RegisterLibFunc(&gStrfreev, glib, "g_strfreev")
+		purego.RegisterLibFunc(&gSignalStopEmission, gobject, "g_signal_stop_emission_by_name")
 		purego.RegisterLibFunc(&gdkPropertyGet, gdk, "gdk_property_get")
 		purego.RegisterLibFunc(&gtkWindowSetDecor, gtk, "gtk_window_set_decorated")
 		purego.RegisterLibFunc(&gtkWindowSetResize, gtk, "gtk_window_set_resizable")

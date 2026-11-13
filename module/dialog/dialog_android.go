@@ -101,6 +101,10 @@ func rewriteFile(ctx context.Context, req RewriteFileRequest) error {
 	return err
 }
 
+func openFiles(context.Context, OpenFilesRequest) ([]string, error) {
+	return nil, fault.New(fault.CodeUnavailable, "OpenFiles is not available on Android: a picked document has no path")
+}
+
 func openDirectory(context.Context, OpenDirectoryRequest) (string, error) {
 	return "", fault.New(fault.CodeUnavailable, "OpenDirectory is not available on Android: a picked folder has no path")
 }

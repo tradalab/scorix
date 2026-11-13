@@ -40,6 +40,7 @@ func initWinSignals() {
 				w := v.(*win)
 				winByWidget.Delete(widget)
 				viewByUcm.Delete(w.view.ucm)
+				w.forgetFileDrops()
 				w.releaseMenuRefs()
 				w.mu.Lock()
 				fired := w.closeFired
@@ -156,6 +157,9 @@ func (m *manager) New(opts window.Options) (window.Window, error) {
 	winByWidget.Store(gw, w)
 	signalConnect(gw, "destroy", destroyCB, 0)
 	signalConnect(gw, "delete-event", deleteCB, 0)
+	if opts.FileDrop {
+		w.acceptFileDrops()
+	}
 
 	if opts.URL != "" {
 		v.Navigate(opts.URL)

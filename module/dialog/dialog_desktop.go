@@ -38,6 +38,22 @@ func openFile(_ context.Context, req OpenFileRequest) (string, error) {
 	return canceled(zenity.SelectFile(opts...))
 }
 
+func openFiles(_ context.Context, req OpenFilesRequest) ([]string, error) {
+	opts := []zenity.Option{zenity.Title(req.Title)}
+	opts = append(opts, fileFilters(req.Filter, req.Ext)...)
+	if req.Dir != "" {
+		opts = append(opts, zenity.Filename(req.Dir+string(filepath.Separator)))
+	}
+	return pickedFiles(zenity.SelectFileMultiple(opts...))
+}
+
+func pickedFiles(paths []string, err error) ([]string, error) {
+	if errors.Is(err, zenity.ErrCanceled) || (err == nil && paths == nil) {
+		return []string{}, nil
+	}
+	return paths, err
+}
+
 func openDirectory(_ context.Context, req OpenDirectoryRequest) (string, error) {
 	opts := []zenity.Option{zenity.Title(req.Title), zenity.Directory()}
 	if req.Dir != "" {
