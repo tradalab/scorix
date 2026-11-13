@@ -25,13 +25,15 @@ type Proxy struct {
 	Password string
 }
 
-// SSH is the bastion hop, reached through Proxy when one is set. Password and PrivateKey may both be given.
+// SSH is the bastion hop, reached through Proxy when one is set. Password, PrivateKey and Agent may all be given.
+// Agent is an ssh-agent unix socket (SSH_AUTH_SOCK, not a Windows named pipe); its keys follow PrivateKey's.
 type SSH struct {
 	Addr       string
 	Username   string
 	Password   string
 	PrivateKey string
 	Passphrase string
+	Agent      string
 	HostKey    HostKeyPolicy
 	// KeepAlive is the interval of keepalive@openssh.com probes; zero means 30s, negative turns them off.
 	KeepAlive time.Duration
@@ -93,11 +95,12 @@ func Open(cfg Config) (*Route, error) {
 		}
 	}
 	if cfg.SSH != nil && cfg.SSH.Addr != "" {
-		clientCfg, err := buildSSHClientConfig(*cfg.SSH, r.timeout)
+		clientCfg, keys, err := buildSSHClientConfig(*cfg.SSH, r.timeout)
 		if err != nil {
 			return nil, err
 		}
 		r.tunnel = newTunnel(base, cfg.SSH.Addr, clientCfg, cfg.SSH.KeepAlive, r.timeout)
+		r.tunnel.agent = keys
 	}
 	return r, nil
 }
@@ -155,6 +158,22 @@ func (r *Route) HTTPClient(timeout time.Duration) *http.Client {
 	tr := r.http
 	r.mu.Unlock()
 	return &http.Client{Timeout: timeout, Transport: tr}
+}
+
+// Check opens the proxy and SSH hops without reaching any target, so a login or *HostKeyError shows before a
+// service is dialed. Without SSH it does nothing; the session it opens is the one Dial reuses.
+func (r *Route) Check(ctx context.Context) error {
+	r.mu.Lock()
+	closed := r.closed
+	r.mu.Unlock()
+	if closed {
+		return ErrClosed
+	}
+	if r.tunnel == nil {
+		return nil
+	}
+	_, err := r.tunnel.session(ctx)
+	return err
 }
 
 // Close ends the SSH session, if any. Calling it again is a no-op; Dial after Close returns ErrClosed.

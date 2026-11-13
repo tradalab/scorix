@@ -53,6 +53,7 @@ type AppcastOptions struct {
 
 type AppcastResult struct {
 	Manifest string `json:"manifest,omitempty"`
+	Notes    string `json:"notes,omitempty"`
 	Signed   bool   `json:"signed"`
 	Entries  int    `json:"entries"`
 }
@@ -100,6 +101,19 @@ func appcast(ctx context.Context, opt AppcastOptions, res *AppcastResult) error 
 	}
 	if len(files) == 0 {
 		return fmt.Errorf("no installer artifacts (.msi/.dmg/.AppImage) found in %s - run `scorix package` first", artDir)
+	}
+
+	notes, err := releaseNotes(root, upd, version)
+	if err != nil {
+		return err
+	}
+	if res.Notes, err = writeReleaseNotes(artDir, notes); err != nil {
+		return err
+	}
+	if res.Notes == "" {
+		fmt.Printf("warning: no release notes - package.update.notes is empty and CHANGELOG.md has no section for %s\n", version)
+	} else {
+		fmt.Printf("==> wrote %s\n", res.Notes)
 	}
 
 	priv, err := loadUpdatePrivateKey(upd.SignKeyEnv)
@@ -166,7 +180,7 @@ func appcast(ctx context.Context, opt AppcastOptions, res *AppcastResult) error 
 		ac := staticAppcast{
 			Version:   version,
 			PubDate:   time.Now().UTC().Format(time.RFC3339),
-			Notes:     upd.Notes,
+			Notes:     notes,
 			Platforms: platforms,
 		}
 		data, err := json.MarshalIndent(ac, "", "  ")

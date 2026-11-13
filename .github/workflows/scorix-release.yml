@@ -396,10 +396,24 @@ jobs:
       # with "GitHub Releases requires a tag" after every platform has already
       # built. The version comes from scorix.yaml either way, so the release can
       # never be tagged something the manifest disagrees with.
+      - name: Pick the release body
+        id: notes
+        shell: bash
+        run: |
+          if [ -s artifacts/RELEASE_NOTES.md ]; then
+            echo "path=artifacts/RELEASE_NOTES.md" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::no release notes for v$APP_VERSION - add a section to CHANGELOG.md or set package.update.notes; falling back to GitHub's generated notes"
+          fi
+
+      # The github updater shows this body as the notes of the update, so an
+      # empty one reaches every user as a blank prompt (redishub 1.15.0-1.18.1).
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.meta.outputs.version }}
+          body_path: ${{ steps.notes.outputs.path }}
+          generate_release_notes: ${{ steps.notes.outputs.path == '' }}
           files: |
             artifacts/*.msi
             artifacts/*.dmg

@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 )
 
 // HostKeyPolicy decides whether a bastion is the one the user meant. Set Pinned to the authorized_keys line
@@ -77,12 +79,13 @@ func hostKeyAlgorithms(pinned ssh.PublicKey) []string {
 	}
 }
 
-func buildSSHClientConfig(cfg SSH, timeout time.Duration) (*ssh.ClientConfig, error) {
+func buildSSHClientConfig(cfg SSH, timeout time.Duration) (*ssh.ClientConfig, *sshAgent, error) {
 	callback, algos, err := hostKeyCallback(cfg.HostKey)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	out := &ssh.ClientConfig{User: cfg.Username, Timeout: timeout, HostKeyCallback: callback, HostKeyAlgorithms: algos}
+	var own []ssh.Signer
 	if key := strings.TrimSpace(cfg.PrivateKey); key != "" {
 		var signer ssh.Signer
 		if cfg.Passphrase != "" {
@@ -92,20 +95,81 @@ func buildSSHClientConfig(cfg SSH, timeout time.Duration) (*ssh.ClientConfig, er
 		}
 		var missing *ssh.PassphraseMissingError
 		if errors.As(err, &missing) {
-			return nil, errors.New("netx: ssh private key is encrypted and no passphrase was given")
+			return nil, nil, errors.New("netx: ssh private key is encrypted and no passphrase was given")
 		}
 		if err != nil {
-			return nil, fmt.Errorf("netx: ssh private key: %w", err)
+			return nil, nil, fmt.Errorf("netx: ssh private key: %w", err)
 		}
-		out.Auth = append(out.Auth, ssh.PublicKeys(signer))
+		own = append(own, signer)
+	}
+	var keys *sshAgent
+	switch {
+	case cfg.Agent != "":
+		keys = &sshAgent{path: cfg.Agent, own: own}
+	case len(own) > 0:
+		out.Auth = append(out.Auth, ssh.PublicKeys(own...))
 	}
 	if cfg.Password != "" {
 		out.Auth = append(out.Auth, ssh.Password(cfg.Password), ssh.KeyboardInteractive(answerWith(cfg.Password)))
 	}
-	if len(out.Auth) == 0 {
-		return nil, errors.New("netx: ssh needs a password or a private key")
+	if len(out.Auth) == 0 && keys == nil {
+		return nil, nil, errors.New("netx: ssh needs a password, a private key or an agent")
 	}
-	return out, nil
+	return out, keys, nil
+}
+
+type sshAgent struct {
+	path string
+	own  []ssh.Signer
+}
+
+type agentSession struct {
+	*sshAgent
+	deadline time.Time
+	mu       sync.Mutex
+	conns    []net.Conn
+	done     bool
+}
+
+func (a *sshAgent) begin(deadline time.Time) *agentSession {
+	return &agentSession{sshAgent: a, deadline: deadline}
+}
+
+func (s *agentSession) signers() ([]ssh.Signer, error) {
+	conn, err := (&net.Dialer{Deadline: s.deadline}).Dial("unix", s.path)
+	if err != nil {
+		if len(s.own) > 0 {
+			return s.own, nil
+		}
+		return nil, fmt.Errorf("ssh agent %s: %w", s.path, err)
+	}
+	_ = conn.SetDeadline(s.deadline)
+	s.mu.Lock()
+	if s.done {
+		s.mu.Unlock()
+		_ = conn.Close()
+		return nil, net.ErrClosed
+	}
+	s.conns = append(s.conns, conn)
+	s.mu.Unlock()
+	held, err := agent.NewClient(conn).Signers()
+	if err != nil && len(s.own) == 0 {
+		return nil, fmt.Errorf("ssh agent %s: %w", s.path, err)
+	}
+	return append(slices.Clip(s.own), held...), nil
+}
+
+func (s *agentSession) release() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	conns := s.conns
+	s.conns, s.done = nil, true
+	s.mu.Unlock()
+	for _, c := range conns {
+		_ = c.Close()
+	}
 }
 
 func answerWith(password string) ssh.KeyboardInteractiveChallenge {
@@ -124,6 +188,7 @@ type tunnel struct {
 	cfg       *ssh.ClientConfig
 	keepAlive time.Duration
 	timeout   time.Duration
+	agent     *sshAgent
 
 	mu      sync.Mutex
 	client  *ssh.Client
@@ -197,12 +262,25 @@ func (t *tunnel) open(ctx context.Context) (*ssh.Client, chan struct{}, error) {
 		return nil, nil, fmt.Errorf("netx: ssh dial %s: %w", t.addr, err)
 	}
 	deadline := time.Now().Add(t.timeout)
+	ctxBound := false
 	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
-		deadline = d
+		deadline, ctxBound = d, true
 	}
 	_ = conn.SetDeadline(deadline)
-	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
-	c, chans, reqs, err := ssh.NewClientConn(conn, t.addr, t.cfg)
+	cfg := t.cfg
+	var keys *agentSession
+	if t.agent != nil {
+		keys = t.agent.begin(deadline)
+		withAgent := *t.cfg
+		withAgent.Auth = append([]ssh.AuthMethod{ssh.PublicKeysCallback(keys.signers)}, t.cfg.Auth...)
+		cfg = &withAgent
+	}
+	stop := context.AfterFunc(ctx, func() {
+		_ = conn.Close()
+		keys.release()
+	})
+	c, chans, reqs, err := ssh.NewClientConn(conn, t.addr, cfg)
+	keys.release()
 	if !stop() && err == nil {
 		_ = c.Close()
 		c, err = nil, ctx.Err()
@@ -212,6 +290,9 @@ func (t *tunnel) open(ctx context.Context) (*ssh.Client, chan struct{}, error) {
 		var hk *HostKeyError
 		if errors.As(err, &hk) {
 			return nil, nil, hk
+		}
+		if ctxBound && !time.Now().Before(deadline) {
+			<-ctx.Done()
 		}
 		if ctx.Err() != nil {
 			return nil, nil, ctx.Err()

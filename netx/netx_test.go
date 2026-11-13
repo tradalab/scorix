@@ -36,6 +36,8 @@ type bastion struct {
 	logins  atomic.Int32
 	mu      sync.Mutex
 	conns   []*ssh.ServerConn
+	offered []string
+	allow   string
 }
 
 func startBastion(t *testing.T) *bastion {
@@ -57,8 +59,15 @@ func startBastion(t *testing.T) *bastion {
 			}
 			return nil, errors.New("denied")
 		},
-		PublicKeyCallback: func(c ssh.ConnMetadata, _ ssh.PublicKey) (*ssh.Permissions, error) {
+		PublicKeyCallback: func(c ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
 			b.logins.Add(1)
+			b.mu.Lock()
+			b.offered = append(b.offered, ssh.FingerprintSHA256(key))
+			allow := b.allow
+			b.mu.Unlock()
+			if allow != "" && allow != ssh.FingerprintSHA256(key) {
+				return nil, errors.New("key not authorized")
+			}
 			return nil, nil
 		},
 	}
