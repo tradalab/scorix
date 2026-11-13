@@ -1,3 +1,5 @@
+// Code scaffolded by scorix. Safe to edit.
+
 {{ with .Shell.Directive }}{{ . }}
 
 {{ end -}}

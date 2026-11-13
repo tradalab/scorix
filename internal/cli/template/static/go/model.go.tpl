@@ -1,3 +1,5 @@
+// Code scaffolded by scorix. Safe to edit.
+
 package {{ .Package }}
 
 import scorixsqlx "github.com/tradalab/scorix/module/sqlx"
