@@ -5,6 +5,8 @@ package pagetest
 
 import (
 	"context"
+	"reflect"
+	"slices"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -81,7 +83,32 @@ type List struct {
 }
 
 func invalid(err error) bool {
-	return fault.CodeOf(err) == fault.CodeInvalid || connect.CodeOf(err) == connect.CodeInvalidArgument
+	return fault.CodeOf(err) == fault.CodeInvalid || connect.CodeOf(err) == connect.CodeInvalidArgument || grpcInvalid(err)
+}
+
+const grpcInvalidArgument = 3
+
+func grpcInvalid(err error) bool {
+	if code, ok := statusCode(err); ok {
+		return code == grpcInvalidArgument
+	}
+	switch u := err.(type) {
+	case interface{ Unwrap() error }:
+		return grpcInvalid(u.Unwrap())
+	case interface{ Unwrap() []error }:
+		return slices.ContainsFunc(u.Unwrap(), grpcInvalid)
+	}
+	return false
+}
+
+func statusCode(err error) (code uint64, ok bool) {
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
+	status := reflect.ValueOf(err).MethodByName("GRPCStatus").Call(nil)[0]
+	return status.MethodByName("Code").Call(nil)[0].Uint(), true
 }
 
 // Check runs every rule against l and reports each broken one through t.Errorf. It needs at

@@ -21,21 +21,40 @@ func scalar(t reflect.Type) bool {
 	return t.Kind() != reflect.Struct || t == timeType || reflect.PointerTo(t).Implements(scannerType)
 }
 
+func embedded(t reflect.Type) reflect.Type {
+	if t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct || scalar(t) {
+		return nil
+	}
+	return t
+}
+
 func columnsOf(t reflect.Type) (map[string][]int, error) {
 	if p, ok := plans.Load(t); ok {
 		return p.(map[string][]int), nil
 	}
 	out := map[string][]int{}
+	open := map[reflect.Type]bool{}
 	var walk func(t reflect.Type, index []int) error
 	walk = func(t reflect.Type, index []int) error {
+		if open[t] {
+			return fmt.Errorf("data: %s embeds itself, so a row has no end; embed a different type", t)
+		}
+		open[t] = true
+		defer delete(open, t)
 		for i := 0; i < t.NumField(); i++ {
 			f := t.Field(i)
 			at := append(append([]int(nil), index...), i)
 			name, _, _ := strings.Cut(f.Tag.Get("db"), ",")
 			switch {
 			case name == "-":
-			case name == "" && f.Anonymous && f.Type.Kind() == reflect.Struct && !scalar(f.Type):
-				if err := walk(f.Type, at); err != nil {
+			case name == "" && f.Anonymous && embedded(f.Type) != nil:
+				if f.Type.Kind() == reflect.Pointer && !f.IsExported() {
+					return fmt.Errorf("data: %s embeds %s, which is unexported, so a scan cannot allocate it; export it or embed it by value", t, f.Type)
+				}
+				if err := walk(embedded(f.Type), at); err != nil {
 					return err
 				}
 			case name == "":
@@ -110,9 +129,22 @@ func (p plan) scan(rows *sql.Rows, v reflect.Value) error {
 	}
 	dests := make([]any, len(p.fields))
 	for i, idx := range p.fields {
-		dests[i] = v.FieldByIndex(idx).Addr().Interface()
+		dests[i] = fieldAt(v, idx).Addr().Interface()
 	}
 	return rows.Scan(dests...)
+}
+
+func fieldAt(v reflect.Value, index []int) reflect.Value {
+	for _, i := range index {
+		if v.Kind() == reflect.Pointer {
+			if v.IsNil() {
+				v.Set(reflect.New(v.Type().Elem()))
+			}
+			v = v.Elem()
+		}
+		v = v.Field(i)
+	}
+	return v
 }
 
 func target(dst any, slice bool) (reflect.Value, error) {

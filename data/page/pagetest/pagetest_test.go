@@ -2,16 +2,19 @@ package pagetest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
 	"testing"
 
+	"connectrpc.com/connect"
 	"github.com/bufbuild/protocompile"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
 
 	"github.com/tradalab/scorix/data/page"
+	"github.com/tradalab/scorix/fault"
 )
 
 const listProto = `syntax = "proto3";
@@ -24,6 +27,7 @@ message ListRes { repeated Row rows = 1; string next_page_token = 2; int32 total
 type broken struct {
 	noLookahead, noMax, inclusive, totalAlways, totalLater, unbound, negativeOK, extraRow bool
 	filterLate, endless, defaultIsMax, lenientToken, countAll, skipRow                    bool
+	asGRPC                                                                                bool
 }
 
 type fixture struct {
@@ -67,6 +71,9 @@ func (f fixture) lister(rows []int64, groups map[int64]string, b broken) func(co
 			tok = ""
 		}
 		p, err := f.spec.Start(size, tok, filter)
+		if err != nil && b.asGRPC {
+			return nil, fmt.Errorf("list: %w", grpcErr{&grpcStatus{code: 3}})
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -213,5 +220,59 @@ func TestTooFewRowsIsReportedRatherThanPassed(t *testing.T) {
 	Check(r, List{Rows: 2})
 	if len(r.errs) != 1 || !strings.Contains(r.errs[0], "at least 3 rows") {
 		t.Fatalf("errs = %q", r.errs)
+	}
+}
+
+type grpcCode uint32
+
+type grpcStatus struct{ code grpcCode }
+
+func (s *grpcStatus) Code() grpcCode { return s.code }
+
+type grpcErr struct{ s *grpcStatus }
+
+func (e grpcErr) Error() string           { return "rpc error" }
+func (e grpcErr) GRPCStatus() *grpcStatus { return e.s }
+
+type textStatus struct{}
+
+func (textStatus) Code() string { return "invalid_argument" }
+
+type textErr struct{}
+
+func (textErr) Error() string          { return "text code" }
+func (textErr) GRPCStatus() textStatus { return textStatus{} }
+
+type wrongShape struct{}
+
+func (wrongShape) Error() string           { return "wrong shape" }
+func (wrongShape) GRPCStatus(int) grpcCode { return 3 }
+
+func TestAListThatRefusesWithAGRPCStatusPasses(t *testing.T) {
+	if errs := compile(t).check(t, broken{asGRPC: true}); len(errs) != 0 {
+		t.Fatalf("a list answering InvalidArgument as a gRPC status failed:\n%s", strings.Join(errs, "\n"))
+	}
+}
+
+func TestAnyErrorCarryingInvalidArgumentCountsAsInvalid(t *testing.T) {
+	for name, c := range map[string]struct {
+		err  error
+		want bool
+	}{
+		"fault":               {fault.New(fault.CodeInvalid, "bad token"), true},
+		"connect":             {connect.NewError(connect.CodeInvalidArgument, errors.New("bad")), true},
+		"grpc status":         {grpcErr{&grpcStatus{code: 3}}, true},
+		"wrapped grpc status": {fmt.Errorf("list: %w", grpcErr{&grpcStatus{code: 3}}), true},
+		"joined grpc status":  {errors.Join(errors.New("x"), grpcErr{&grpcStatus{code: 3}}), true},
+		"grpc not found":      {grpcErr{&grpcStatus{code: 5}}, false},
+		"grpc nil status":     {grpcErr{nil}, false},
+		"connect not found":   {connect.NewError(connect.CodeNotFound, errors.New("x")), false},
+		"wrong method shape":  {wrongShape{}, false},
+		"plain":               {errors.New("bad token"), false},
+		"nil":                 {nil, false},
+	} {
+		if got := invalid(c.err); got != c.want {
+			t.Errorf("%s: invalid = %v, want %v", name, got, c.want)
+		}
 	}
 }

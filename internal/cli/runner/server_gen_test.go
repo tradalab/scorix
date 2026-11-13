@@ -512,13 +512,27 @@ func TestGenerateServerRefusesAnRPCNamedWithAGoKeyword(t *testing.T) {
 	}
 }
 
-func TestGenerateDispatchRefusesTwoServicesWhoseRPCsShareALogic(t *testing.T) {
-	proto := collideHead + "service Foo { rpc GetA (Req) returns (Res); }\nservice FooBar { rpc GetA (Req) returns (Res); }\n"
-	if _, err := genDispatch(t, proto); err == nil || !strings.Contains(err.Error(), "rpc Foo.GetA and rpc FooBar.GetA both dispatch to logic.NewGetALogic") {
-		t.Errorf("err = %v", err)
+func TestGenerateDispatchPrefixesALogicWithItsServiceOnlyWhenTwoServicesShareTheRPCName(t *testing.T) {
+	src, err := genDispatch(t, collideHead+"service Rpc { rpc ListUsers (Req) returns (Res); rpc Get (Req) returns (Res); }\nservice Authz { rpc ListUsers (Req) returns (Res); rpc Check (Req) returns (Res); }\n")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := genServer(t, proto); err != nil {
-		t.Errorf("the server output has no shared logic, yet: %v", err)
+	for _, want := range []string{
+		"func (s *RpcServer) ListUsers(ctx context.Context, in *pb.Req) (*pb.Res, error) {\n\treturn logic.NewRpcListUsersLogic(ctx, s.svcCtx).ListUsers(in)\n}",
+		"func (s *AuthzServer) ListUsers(ctx context.Context, in *pb.Req) (*pb.Res, error) {\n\treturn logic.NewAuthzListUsersLogic(ctx, s.svcCtx).ListUsers(in)\n}",
+		"return logic.NewGetLogic(ctx, s.svcCtx).Get(in)",
+		"return logic.NewCheckLogic(ctx, s.svcCtx).Check(in)",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("dispatch lacks %q:\n%s", want, src)
+		}
+	}
+}
+
+func TestGenerateDispatchRefusesTwoRPCsThatStillShareALogic(t *testing.T) {
+	proto := collideHead + "service Foo { rpc GetA (Req) returns (Res); }\nservice Bar { rpc GetA (Req) returns (Res); rpc FooGetA (Req) returns (Res); }\n"
+	if _, err := genDispatch(t, proto); err == nil || !strings.Contains(err.Error(), "rpc Foo.GetA and rpc Bar.FooGetA both dispatch to logic.NewFooGetALogic") {
+		t.Errorf("err = %v", err)
 	}
 	proto = collideHead + "service Foo { rpc GetA (Req) returns (Res); }\nservice NewFoo { rpc GetB (Req) returns (Res); }\n"
 	if _, err := genDispatch(t, proto); err == nil || !strings.Contains(err.Error(), "service Foo and service NewFoo both generate the Go name NewFooServer") {
@@ -537,4 +551,29 @@ func genDispatch(t *testing.T, proto string) (string, error) {
 	err := GenerateDispatch(context.Background(), GenerateDispatchOptions{Proto: p, PB: "example.com/acme/pb", Logic: "example.com/acme/logic", Svc: "example.com/acme/svc", Out: out})
 	b, _ := os.ReadFile(out)
 	return string(b), err
+}
+
+func TestTheGeneratedClientBoundsACallByItsTimeoutTrait(t *testing.T) {
+	proto := strings.NewReplacer(
+		"package acme.links;\n", "package acme.links;\nimport \"scorix/v1/annotations.proto\";\n",
+		"rpc Get (Req) returns (Res);", `rpc Get (Req) returns (Res) { option (scorix.v1.rpc) = { timeout: "3s" }; }
+  rpc Watch (Req) returns (stream Res) { option (scorix.v1.rpc) = { timeout: "1m" }; }
+  rpc Feed (stream Req) returns (Res) { option (scorix.v1.rpc) = { timeout: "2s" }; }
+  rpc Chat (stream Req) returns (stream Res) { option (scorix.v1.rpc) = { timeout: "4s" }; }`,
+	).Replace(serverProto)
+	src, err := genServer(t, proto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"func (x linksClient) Get(ctx context.Context, in *pb.Req) (*pb.Res, error) {\n\tctx, cancel := connect.MethodTimeout(ctx, 3000000000)\n\tdefer cancel()\n\treturn connect.Call[",
+		"func (x linksClient) Watch(ctx context.Context, in *pb.Req, each func(*pb.Res) error) error {\n\tctx, cancel := connect.MethodTimeout(ctx, 60000000000)\n\tdefer cancel()\n\treturn connect.Stream[",
+		"func (x linksClient) Feed(ctx context.Context, recv func() (*pb.Req, error)) (*pb.Res, error) {\n\tctx, cancel := connect.MethodTimeout(ctx, 2000000000)\n\tdefer cancel()\n\treturn connect.CallClientStream[",
+		"func (x linksClient) Chat(ctx context.Context, recv func() (*pb.Req, error), send func(*pb.Res) error) error {\n\tctx, cancel := connect.MethodTimeout(ctx, 4000000000)\n\tdefer cancel()\n\treturn connect.CallBidiStream(",
+		"func (x linksClient) Put(ctx context.Context, in *pb.Req) (*pb.Res, error) {\n\treturn connect.Call[",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("generated client lacks %q:\n%s", want, src)
+		}
+	}
 }

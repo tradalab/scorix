@@ -1,7 +1,9 @@
 package conf
 
 import (
+	"bytes"
 	"errors"
+	"log/slog"
 	"os"
 	"strings"
 	"testing"
@@ -207,5 +209,78 @@ func TestStructsThatCannotBeConfigAreRefused(t *testing.T) {
 		if err := loadService("svc.yaml", []byte("{}"), dst, env(nil), os.ReadFile); err == nil || !strings.Contains(err.Error(), "Load needs a pointer to a struct") {
 			t.Errorf("destination %T: %v", dst, err)
 		}
+	}
+}
+
+type cacheBlock struct {
+	Host  string `env:"T_CACHE_HOST"`
+	Pass  string `env:"T_CACHE_PASS,secret"`
+	Inner struct {
+		Port int `json:",optional,env=T_CACHE_PORT"`
+	}
+	Skipped string `json:"-" env:"T_CACHE_SKIPPED"`
+}
+
+type withCache struct {
+	Name  string
+	Cache cacheBlock `json:",optional"`
+}
+
+func TestAnEnvVarOfAnAbsentOptionalBlockIsLoggedAsIgnoredButDoesNotStopTheLoad(t *testing.T) {
+	prev := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	for name, vars := range map[string]map[string]string{
+		"host":         {"T_CACHE_HOST": "redis:6379"},
+		"secret":       {"T_CACHE_PASS": "hunter2-value"},
+		"nested block": {"T_CACHE_PORT": "6380"},
+	} {
+		var logged bytes.Buffer
+		slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+		var got withCache
+		if err := loadService("svc.yaml", []byte("Name: x\n"), &got, env(vars), os.ReadFile); err != nil || got.Cache.Host != "" {
+			t.Errorf("%s: a shared env var stopped the load or turned the block on: %+v %v", name, got, err)
+		}
+		for k := range vars {
+			if !strings.Contains(logged.String(), "env="+k) || !strings.Contains(logged.String(), "block=Cache") || !strings.Contains(logged.String(), "level=WARN") {
+				t.Errorf("%s: the log does not name $%s and Cache: %q", name, k, logged.String())
+			}
+		}
+		if vars["T_CACHE_PASS"] != "" && strings.Contains(logged.String(), vars["T_CACHE_PASS"]) {
+			t.Errorf("%s: the log carries the secret: %q", name, logged.String())
+		}
+	}
+}
+
+func TestAnAbsentOptionalBlockWithNoEnvVarSetStaysOff(t *testing.T) {
+	for name, vars := range map[string]map[string]string{"none": nil, "empty": {"T_CACHE_HOST": ""}, "other": {"T_OTHER": "x"}, "not config": {"T_CACHE_SKIPPED": "x"}} {
+		var got withCache
+		if err := loadService("svc.yaml", []byte("Name: x\n"), &got, env(vars), os.ReadFile); err != nil || got.Cache.Host != "" {
+			t.Errorf("%s: %+v %v", name, got, err)
+		}
+	}
+	var got withCache
+	err := loadService("svc.yaml", []byte("Name: x\nCache: {}\n"), &got, env(map[string]string{"T_CACHE_HOST": "redis:6379", "T_CACHE_PASS": "p"}), os.ReadFile)
+	if err != nil || got.Cache.Host != "redis:6379" || got.Cache.Pass != "p" {
+		t.Errorf("a present block reads its env: %+v %v", got, err)
+	}
+}
+
+type withTwoCaches struct {
+	Name    string
+	Cache   cacheBlock
+	Replica cacheBlock `json:",optional"`
+}
+
+func TestAnEnvVarAPresentBlockReadsIsNotReportedForAnAbsentBlockSharingIt(t *testing.T) {
+	prev := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	var logged bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+	var got withTwoCaches
+	if err := loadService("svc.yaml", []byte("Name: x\nCache: {}\n"), &got, env(map[string]string{"T_CACHE_HOST": "redis:6379", "T_CACHE_PASS": "p"}), os.ReadFile); err != nil || got.Cache.Host != "redis:6379" {
+		t.Fatalf("%+v %v", got, err)
+	}
+	if strings.Contains(logged.String(), "T_CACHE_") {
+		t.Fatalf("an env var the present Cache block reads was reported for the absent Replica: %q", logged.String())
 	}
 }

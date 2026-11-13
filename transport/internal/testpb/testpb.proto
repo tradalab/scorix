@@ -30,4 +30,7 @@ message Thing {
   Color color = 12;
   map<string, int64> counts = 13;
   map<int32, Nested> by_id = 14;
+  optional string nick = 15;
+  optional int64 rank = 16;
+  optional Nested best = 17;
 }

@@ -108,6 +108,32 @@ func TestOnePathNamesItsParamsTheSameWayUnderEveryMethod(t *testing.T) {
 	}
 }
 
+func TestAnEndAnchorMatchesOnlyThePathEndingInASlashAndIsNoParam(t *testing.T) {
+	r := routes(t, `service S {
+  rpc Index (Req) returns (Empty) { option (scorix.v1.http) = { get: "/v1/things/{$}" }; }
+  rpc Get (Req) returns (Empty) { option (scorix.v1.http) = { get: "/v1/things/{id}" }; }
+  rpc Under (Req) returns (Empty) { option (scorix.v1.http) = { get: "/v1/things/{id}/parts/{$}" }; }
+}`)
+	if g := r["Index"]; g == nil || g.Path != "/v1/things/{$}" || len(g.Params) != 0 {
+		t.Errorf("Index route = %+v", g)
+	}
+	if g := r["Under"]; g == nil || g.Path != "/v1/things/{id}/parts/{$}" || len(g.Params) != 1 || g.Params[0] != "id" {
+		t.Errorf("Under route = %+v", g)
+	}
+	for name, path := range map[string]string{"anchor inside": "/v1/{$}/things", "anchor glued": "/v1/things{$}", "two anchors": "/v1/{$}/{$}"} {
+		refused(t, name, httpHead+service(`get: "`+path+`"`), "{$} only ends a path, after a /")
+	}
+}
+
+func TestAnEndAnchorAndASubtreeOnOneMethodAreRefusedForSharingAnOpenAPIPath(t *testing.T) {
+	src := httpHead + "service S {\n  rpc Index (Req) returns (Empty) { option (scorix.v1.http) = { get: \"/x/{$}\" }; }\n  rpc Tree (Req) returns (Empty) { option (scorix.v1.http) = { get: \"/x/\" }; }\n}"
+	refused(t, "anchor and subtree", src, "S.Tree and S.Index both list as GET /x/ in OpenAPI")
+	apart := httpHead + "service S {\n  rpc Index (Req) returns (Empty) { option (scorix.v1.http) = { get: \"/x/{$}\" }; }\n  rpc Tree (Req) returns (Empty) { option (scorix.v1.http) = { delete: \"/x/\" }; }\n}"
+	if _, err := Parse("app.proto", apart); err != nil {
+		t.Errorf("an anchor and a subtree under two methods: %v", err)
+	}
+}
+
 func TestAHeaderBindsOnlyASingleString(t *testing.T) {
 	src := strings.Replace(httpHead, `int32 page = 2;`, `int32 page = 2 [(scorix.v1.field) = { header: "X-Page" }];`, 1)
 	refused(t, "int header", src+service(`get: "/x"`), `Req.page takes header "X-Page"`)
@@ -147,5 +173,20 @@ func TestAFieldsClassIsRead(t *testing.T) {
 				t.Errorf("Req.%s class = %q, want %q", fl.Name, fl.Class, want)
 			}
 		}
+	}
+}
+
+func TestTwoRoutesThatListAsOneOpenAPIPathUnderDifferentParamNamesAreRefused(t *testing.T) {
+	_, err := Parse("app.proto", `syntax = "proto3";
+package acme;
+import "scorix/v1/annotations.proto";
+message Req { string id = 1; string page = 2; }
+service S {
+  rpc A (Req) returns (Req) { option (scorix.v1.http) = { get: "/a/{id}/{$}" }; }
+  rpc B (Req) returns (Req) { option (scorix.v1.http) = { post: "/a/{page}/" body: "*" }; }
+}
+`)
+	if err == nil {
+		t.Fatal("two routes naming one OpenAPI path's parameter differently were accepted")
 	}
 }

@@ -152,6 +152,7 @@ func TestNativeAnnotationMisuse(t *testing.T) {
 		"stream":   "message Empty {}\n// @native\nservice P {\n  rpc A (Empty) returns (stream Empty);\n}\n",
 		"event":    "message Empty {}\n// @native\nservice P {\n  // @event\n  rpc A (Empty) returns (Empty);\n}\n",
 		"reserved": "message Empty {}\n// @native\nservice P {\n  rpc OnStart (Empty) returns (Empty);\n}\n",
+		"optional": "syntax = \"proto3\";\nmessage Empty {}\nmessage Inner {\n  optional string nick = 1;\n}\nmessage Req {\n  Inner inner = 1;\n}\n// @native\nservice P {\n  rpc A (Req) returns (Empty);\n}\n",
 	} {
 		dir := newNativeProject(t, proto)
 		if err := GenerateProto(context.Background(), GenerateProtoOptions{Dir: dir}); err == nil {

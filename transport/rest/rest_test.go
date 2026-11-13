@@ -16,6 +16,9 @@ import (
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protodesc"
+	"google.golang.org/protobuf/types/descriptorpb"
+	"google.golang.org/protobuf/types/dynamicpb"
 
 	"github.com/tradalab/scorix/fault"
 	"github.com/tradalab/scorix/kernel"
@@ -207,9 +210,50 @@ func TestTheResponseHasEveryFieldAndInt64AsANumber(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"id":"","page":0,"views":9007199254740991,"active":false,"tags":[],"score":0,"child":{"name":"","count":0,"parent":null},"children":[{"name":"n","count":2,"parent":null}],"blob":"","userAgent":"","big":18000000000000000000,"color":"COLOR_UNSPECIFIED","counts":{},"byId":{}}`
+	want := `{"id":"","page":0,"views":9007199254740991,"active":false,"tags":[],"score":0,"child":{"name":"","count":0,"parent":null},"children":[{"name":"n","count":2,"parent":null}],"blob":"","userAgent":"","big":18000000000000000000,"color":"COLOR_UNSPECIFIED","counts":{},"byId":{},"nick":null,"rank":null,"best":null}`
 	if string(got) != want {
 		t.Fatalf("Marshal =\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestAnOptionalFieldSetToItsZeroIsWrittenAndOnlyAnUnsetOneIsNull(t *testing.T) {
+	nick, rank := "", int64(0)
+	got, err := Marshal(&testpb.Thing{Nick: &nick, Rank: &rank, Best: &testpb.Nested{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(string(got), `"nick":"","rank":0,"best":{"name":"","count":0,"parent":null}}`) {
+		t.Fatalf("Marshal = %s", got)
+	}
+}
+
+func TestAnOptionalFieldLeftOutOrSentAsNullStaysUnset(t *testing.T) {
+	var got *testpb.Thing
+	srv := serve(t, Options{}, Route{Method: "POST", Path: "/things", Body: "*"}, func(_ context.Context, in *testpb.Thing) (*testpb.Thing, error) {
+		got = in
+		return in, nil
+	})
+	for body, want := range map[string]string{
+		`{}`:                                        "nick=<nil> rank=<nil> best=false",
+		`{"nick":null,"rank":null,"best":null}`:     "nick=<nil> rank=<nil> best=false",
+		`{"nick":"","rank":"0","best":{}}`:          `nick="" rank=0 best=true`,
+		`{"nick":"x","rank":7,"best":{"name":"b"}}`: `nick="x" rank=7 best=true`,
+	} {
+		res, err := http.Post(srv.URL+"/things", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		nick, rank := "<nil>", "<nil>"
+		if got.Nick != nil {
+			nick = fmt.Sprintf("%q", *got.Nick)
+		}
+		if got.Rank != nil {
+			rank = fmt.Sprint(*got.Rank)
+		}
+		if s := fmt.Sprintf("nick=%s rank=%s best=%v", nick, rank, got.Best != nil); s != want {
+			t.Errorf("%s bound %s, want %s", body, s, want)
+		}
 	}
 }
 
@@ -503,5 +547,40 @@ func TestTheJSONNameWinsWhenAQueryNamesAFieldBothWays(t *testing.T) {
 		if code, body := do(t, srv, "GET", "/things?user_agent=proto&userAgent=json", "", nil); code != 200 || got != "json" {
 			t.Fatalf("%d %s, bound %q", code, body, got)
 		}
+	}
+}
+
+func TestAProto2OptionalFieldKeepsItsDefaultRatherThanNull(t *testing.T) {
+	fd, err := protodesc.NewFile(&descriptorpb.FileDescriptorProto{
+		Name:    proto.String("legacy.proto"),
+		Package: proto.String("legacy"),
+		Syntax:  proto.String("proto2"),
+		MessageType: []*descriptorpb.DescriptorProto{{
+			Name: proto.String("Old"),
+			Field: []*descriptorpb.FieldDescriptorProto{{
+				Name: proto.String("nick"), JsonName: proto.String("nick"), Number: proto.Int32(1),
+				Label: descriptorpb.FieldDescriptorProto_LABEL_OPTIONAL.Enum(), Type: descriptorpb.FieldDescriptorProto_TYPE_STRING.Enum(),
+			}},
+		}},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Marshal(dynamicpb.NewMessage(fd.Messages().Get(0)))
+	if err != nil || string(got) != `{"nick":""}` {
+		t.Fatalf("Marshal = %s, %v", got, err)
+	}
+}
+
+func TestAQueryKeyNamingAMapFieldIsIgnoredRatherThanPanicking(t *testing.T) {
+	srv := serve(t, Options{}, Route{Method: "GET", Path: "/things"}, echo)
+	res, err := http.Get(srv.URL + "/things?counts=1&byId=2&id=x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != 200 || !strings.Contains(string(body), `"id":"x"`) || !strings.Contains(string(body), `"counts":{}`) {
+		t.Fatalf("%d %s", res.StatusCode, body)
 	}
 }

@@ -31,6 +31,14 @@ type Field struct {
 	GoType   string
 	TSType   string
 	Repeated bool
+	// Optional is set by the proto3 optional keyword: the field has presence, so it is a pointer
+	// in Go, nullable in TS, and null on REST while unset.
+	Optional bool
+	// Map is a map<MapKey, Type> field, an object on REST.
+	Map    bool
+	MapKey string
+	// Enum names the values of an enum field (or map value) in declaration order.
+	Enum []string
 	// WireName is the field's protobuf JSON name, the one a network caller sends.
 	WireName string
 	// Header is the request header a REST route fills this field from.

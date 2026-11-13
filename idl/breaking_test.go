@@ -113,6 +113,8 @@ func TestEachBreakIsReportedAtTheLevelThatFirstNoticesIt(t *testing.T) {
 		"field renamed":              {edit(t, "  int32 count = 2;", "  int32 total = 2;"), JSON, "field 2 was renamed count to total"},
 		"json name":                  {edit(t, "  int32 count = 2;", `  int32 count = 2 [json_name = "n"];`), JSON, "field 2 (count) is n in JSON, was count"},
 		"widened int":                {edit(t, "  int32 count = 2;", "  int64 count = 2;"), JSON, "field 2 (count) is int64, was int32"},
+		"optional added":             {edit(t, "  int32 count = 2;", "  optional int32 count = 2;"), JSON, "field 2 (count) is optional now, so unset it is null"},
+		"optional message added":     {edit(t, "  Empty inner = 6;", "  optional Empty inner = 6;"), JSON, "field 6 (inner) is optional now, so unset it is null"},
 		"bytes to string":            {edit(t, "  bytes blob = 4;", "  string blob = 4;"), JSON, "field 4 (blob) is string, was bytes"},
 		"route removed":              {edit(t, ` { option (scorix.v1.http) = { get: "/v1/links/{id}" anonymous: true }; }`, ";"), Contract, "REST route GET /v1/links/{id} was removed"},
 		"route moved":                {edit(t, `get: "/v1/links/{id}"`, `get: "/v1/link/{id}"`), Contract, "REST route GET /v1/links/{id} is GET /v1/link/{id} now"},
@@ -160,6 +162,17 @@ func TestEachBreakIsReportedAtTheLevelThatFirstNoticesIt(t *testing.T) {
 	}
 }
 
+func TestDroppingOptionalTurnsANullBackIntoAZeroValue(t *testing.T) {
+	before := strings.Replace(breakBase, "  int32 count = 2;", "  optional int32 count = 2;", 1)
+	changes, err := Breaking("app.proto", before, breakBase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 1 || changes[0].Level != JSON || !strings.Contains(changes[0].String(), "field 2 (count) is no longer optional, so unset it is a zero value") {
+		t.Fatalf("changes = %v", changes)
+	}
+}
+
 func TestARenamedPackageIsOneChangeNotOneForEveryTypeInIt(t *testing.T) {
 	if c := breaks(t, strings.Replace(breakBase, "package acme.v1;", "package acme.v2;", 1)); len(c) != 1 {
 		t.Fatalf("a renamed package = %v", c)
@@ -172,5 +185,64 @@ func TestAProtoThatDoesNotCompileIsAnErrorNamingWhichSide(t *testing.T) {
 	}
 	if _, err := Breaking("app.proto", breakBase, "nope"); err == nil || !strings.HasPrefix(err.Error(), "after: ") {
 		t.Errorf("a broken new proto = %v", err)
+	}
+}
+
+const enumMapBase = breakHead + `enum Priority {
+  PRIORITY_UNSPECIFIED = 0;
+  HIGH = 1;
+  LOW = 2;
+}
+enum Channel {
+  CHANNEL_UNSPECIFIED = 0;
+}
+message Ev {
+  Priority priority = 1;
+  map<string, string> data = 2;
+  map<string, Ev> children = 3;
+}
+service S { rpc Send (Ev) returns (Empty); }
+`
+
+func TestAnEnumOrAMapChangeIsReportedAtItsLevel(t *testing.T) {
+	if c, err := Breaking("app.proto", enumMapBase, enumMapBase); err != nil || len(c) != 0 {
+		t.Fatalf("an unchanged proto with an enum and maps broke %v, %v", c, err)
+	}
+	for name, c := range map[string]struct {
+		after string
+		level Level
+		want  string
+	}{
+		"value removed":     {strings.Replace(enumMapBase, "  LOW = 2;\n", "", 1), Wire, "enum Priority value 2 (LOW) was removed"},
+		"value renamed":     {strings.Replace(enumMapBase, "LOW = 2;", "MINOR = 2;", 1), JSON, "enum Priority value 2 is MINOR in JSON, was LOW"},
+		"value reserved":    {strings.Replace(enumMapBase, "  LOW = 2;\n", "  reserved 2;\n", 1), JSON, "enum Priority value 2 (LOW) was removed"},
+		"map value type":    {strings.Replace(enumMapBase, "map<string, string> data", "map<string, int64> data", 1), Wire, "field 2 (data) is map<string, int64>, was map<string, string>"},
+		"map key type":      {strings.Replace(enumMapBase, "map<string, string> data", "map<int32, string> data", 1), Wire, "field 2 (data) is map<int32, string>, was map<string, string>"},
+		"enum of a field":   {strings.Replace(enumMapBase, "Priority priority = 1;", "Channel priority = 1;", 1), JSON, "field 1 (priority) is Channel, was Priority"},
+		"enum to int":       {strings.Replace(enumMapBase, "Priority priority = 1;", "int32 priority = 1;", 1), JSON, "field 1 (priority) is int32, was Priority"},
+		"enum type rename":  {strings.NewReplacer("enum Priority {", "enum Level {", "Priority priority = 1;", "Level priority = 1;").Replace(enumMapBase), Contract, "field 1 (priority) is Level, was Priority"},
+		"map value widened": {strings.Replace(enumMapBase, "map<string, string> data", "map<string, bytes> data", 1), JSON, "field 2 (data) is map<string, bytes>, was map<string, string>"},
+		"map becomes list":  {strings.Replace(enumMapBase, "map<string, string> data = 2;", "repeated string data = 2;", 1), Wire, "field 2 (data)"},
+	} {
+		got, err := Breaking("app.proto", enumMapBase, c.after)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		found := false
+		for _, ch := range got {
+			if ch.Level == c.level && strings.Contains(ch.String(), c.want) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s: want %s %q in %v", name, c.level, c.want, got)
+		}
+		if c.level != Wire {
+			for _, ch := range got {
+				if ch.Level == Wire && strings.Contains(ch.String(), "field ") {
+					t.Errorf("%s: the wire is unchanged but %v was reported", name, ch)
+				}
+			}
+		}
 	}
 }

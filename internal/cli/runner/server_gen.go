@@ -269,8 +269,8 @@ type dispatchTemplateData struct {
 	Proto   idl.File
 }
 
-// GenerateDispatch writes the <Service>Server that hands each rpc to logic.New<Rpc>Logic,
-// the shape goctl's server scaffold has, so a go-zero service drops goctl without touching logic.
+// GenerateDispatch writes the <Service>Server that hands each rpc to logic.New<Rpc>Logic, the shape
+// goctl's server scaffold has; an rpc name two services share becomes logic.New<Service><Rpc>Logic.
 func GenerateDispatch(ctx context.Context, opt GenerateDispatchOptions) error {
 	res := &GenerateResult{Check: opt.Check, Regen: "scorix generate dispatch"}
 	err := generateDispatch(ctx, opt, res)
@@ -288,7 +288,7 @@ func generateDispatch(ctx context.Context, opt GenerateDispatchOptions, res *Gen
 	if err != nil {
 		return err
 	}
-	if err := dispatchNames(pf); err != nil {
+	if err := dispatchNames(&pf); err != nil {
 		return err
 	}
 	out, err := filepath.Abs(opt.Out)
@@ -308,17 +308,27 @@ func goPackage(file string) string {
 	return strings.ReplaceAll(filepath.Base(filepath.Dir(file)), "-", "")
 }
 
-func dispatchNames(pf idl.File) error {
-	taken, logic := goNames{}, map[string]string{}
+func dispatchNames(pf *idl.File) error {
+	taken, logic, services := goNames{}, map[string]string{}, map[string]int{}
 	for _, svc := range pf.Services {
 		if err := taken.claim("service "+svc.Name, svc.Name+"Server", "New"+svc.Name+"Server"); err != nil {
 			return err
 		}
 		for _, rpc := range svc.RPCs {
-			if prev, dup := logic[rpc.Name]; dup {
-				return fmt.Errorf("proto: %s and rpc %s.%s both dispatch to logic.New%sLogic, and the logic package holds one %sLogic; rename one", prev, svc.Name, rpc.Name, rpc.Name, rpc.Name)
+			services[rpc.Name]++
+		}
+	}
+	for i, svc := range pf.Services {
+		for j, rpc := range svc.RPCs {
+			name := rpc.Name + "Logic"
+			if services[rpc.Name] > 1 {
+				name = svc.Name + name
 			}
-			logic[rpc.Name] = "rpc " + svc.Name + "." + rpc.Name
+			if prev, dup := logic[name]; dup {
+				return fmt.Errorf("proto: %s and rpc %s.%s both dispatch to logic.New%s, and the logic package holds one %s; rename one", prev, svc.Name, rpc.Name, name, name)
+			}
+			logic[name] = "rpc " + svc.Name + "." + rpc.Name
+			pf.Services[i].RPCs[j].LogicName = name
 		}
 	}
 	return nil

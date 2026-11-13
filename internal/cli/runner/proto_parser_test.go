@@ -119,12 +119,12 @@ message Thing {
 
 func TestParseProto_UnsupportedConstructsRejected(t *testing.T) {
 	cases := map[string]struct{ src, want string }{
-		"enum":        {"syntax = \"proto3\";\nenum Color { RED = 0; }\nmessage M { string a = 1; }\nservice S { rpc Do(M) returns (M); }", `"enum" is not supported`},
-		"nested enum": {"syntax = \"proto3\";\nmessage M { enum Kind { A = 0; } string a = 1; }\nservice S { rpc Do(M) returns (M); }", `"enum" is not supported`},
-		"oneof":       {"syntax = \"proto3\";\nmessage M { oneof pick { string a = 1; int32 b = 2; } }\nservice S { rpc Do(M) returns (M); }", `"oneof" is not supported`},
-		"map":         {"syntax = \"proto3\";\nmessage M { map<string, string> tags = 1; }\nservice S { rpc Do(M) returns (M); }", `"map" is not supported`},
-		"optional":    {"syntax = \"proto3\";\nmessage M { optional string a = 1; }\nservice S { rpc Do(M) returns (M); }", "field M.a is optional"},
-		"first wins":  {"syntax = \"proto3\";\nmessage M { map<string, string> tags = 1; }\nenum Color { RED = 0; }\nservice S { rpc Do(M) returns (M); }", `"map" is not supported`},
+		"enum":           {"syntax = \"proto3\";\nenum Color { RED = 0; }\nmessage M { string a = 1; }\nservice S { rpc Do(M) returns (M); }", `"enum" is not supported`},
+		"nested enum":    {"syntax = \"proto3\";\nmessage M { enum Kind { A = 0; } string a = 1; }\nservice S { rpc Do(M) returns (M); }", `"enum" is not supported`},
+		"oneof":          {"syntax = \"proto3\";\nmessage M { oneof pick { string a = 1; int32 b = 2; } }\nservice S { rpc Do(M) returns (M); }", `"oneof" is not supported`},
+		"map":            {"syntax = \"proto3\";\nmessage M { map<string, string> tags = 1; }\nservice S { rpc Do(M) returns (M); }", `"map" is not supported`},
+		"optional bytes": {"syntax = \"proto3\";\nmessage M { optional bytes a = 1; }\nservice S { rpc Do(M) returns (M); }", "field M.a is optional bytes"},
+		"first wins":     {"syntax = \"proto3\";\nmessage M { map<string, string> tags = 1; }\nenum Color { RED = 0; }\nservice S { rpc Do(M) returns (M); }", `"map" is not supported`},
 	}
 	for name, c := range cases {
 		if _, err := parseProto(c.src); err == nil || !strings.Contains(err.Error(), c.want) {

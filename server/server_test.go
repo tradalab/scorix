@@ -482,3 +482,67 @@ func TestAStreamThatOutlivesTheGraceIsCancelledOrCutOffAndRunSaysSo(t *testing.T
 		}
 	}
 }
+
+func TestAServiceThatServesHealthzItselfReplacesTheBuiltIn(t *testing.T) {
+	mine := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
+	for name, register := range map[string]func(*Server){
+		"probe GET":    func(s *Server) { s.Probe("GET /healthz", mine) },
+		"mount":        func(s *Server) { s.Mount("/healthz", mine) },
+		"stream":       func(s *Server) { s.Stream("GET  /healthz", mine, StreamOptions{}) },
+		"probe anyone": func(s *Server) { s.Probe("/healthz", mine) },
+	} {
+		s := New(Options{})
+		register(s)
+		var h http.Handler
+		func() {
+			defer func() {
+				if p := recover(); p != nil {
+					t.Fatalf("%s: building the handler panicked: %v", name, p)
+				}
+			}()
+			h = s.handler()
+		}()
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+		if rec.Code != http.StatusTeapot {
+			t.Errorf("%s: GET /healthz = %d, want the service's 418", name, rec.Code)
+		}
+	}
+}
+
+func TestTheBuiltInHealthzStaysBesideOtherPatterns(t *testing.T) {
+	mine := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
+	s := New(Options{})
+	s.Mount("/", mine)
+	s.Probe("POST /healthz", mine)
+	s.Probe("HEAD /healthz", mine)
+	s.Probe("GET /api/v1/healthz", mine)
+	s.Probe("GET /healthz/deep", mine)
+	rec := httptest.NewRecorder()
+	s.handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("GET /healthz = %d, want the built-in 204", rec.Code)
+	}
+}
+
+func TestAServerRunAgainAfterAStopStillAnswersHealthz(t *testing.T) {
+	s := New(Options{Grace: time.Second})
+	for round := 0; round < 2; round++ {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() { done <- s.Run(ctx, ln) }()
+		res, err := http.Get("http://" + ln.Addr().String() + "/healthz")
+		if err != nil || res.StatusCode != http.StatusNoContent {
+			t.Fatalf("round %d: healthz = %v, %v", round, res, err)
+		}
+		res.Body.Close()
+		cancel()
+		if err := <-done; err != nil {
+			t.Fatalf("round %d: Run = %v", round, err)
+		}
+	}
+}

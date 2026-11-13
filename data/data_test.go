@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -262,5 +263,77 @@ func TestASlowStatementIsLoggedWithoutItsArguments(t *testing.T) {
 	out := buf.String()
 	if strings.Count(out, `"msg":"slow sql"`) != 3 || !strings.Contains(out, "WHERE slug = ?") || strings.Contains(out, "hunter2") {
 		t.Fatalf("log = %s", out)
+	}
+}
+
+type LinkBase struct {
+	ID   int64  `db:"id"`
+	Slug string `db:"slug"`
+}
+
+type byPointer struct {
+	*LinkBase
+	Title sql.NullString `db:"title"`
+	audit
+}
+
+type withAudit struct {
+	ID int64 `db:"id"`
+	*audit
+}
+
+func TestARowScansIntoAStructEmbeddedByPointerAllocatingIt(t *testing.T) {
+	db := open(t, pool)
+	var one byPointer
+	if err := db.QueryRowCtx(ctx, &one, cols+` WHERE id = ?`, 1); err != nil {
+		t.Fatal(err)
+	}
+	if one.LinkBase == nil || one.ID != 1 || one.Slug != "a" || one.Title.String != "First" || one.Views != 3 {
+		t.Fatalf("scanned %+v", one)
+	}
+	kept := &LinkBase{ID: 42}
+	again := byPointer{LinkBase: kept}
+	if err := db.QueryRowCtx(ctx, &again, cols+` WHERE id = ?`, 2); err != nil || again.LinkBase != kept || kept.ID != 2 || kept.Slug != "b" {
+		t.Fatalf("a set pointer is scanned into in place: %+v %v", again.LinkBase, err)
+	}
+	var vals []byPointer
+	var ptrs []*byPointer
+	for dst, q := range map[any]string{&vals: cols + ` ORDER BY id`, &ptrs: cols + ` ORDER BY id`} {
+		if err := db.QueryRowsCtx(ctx, dst, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(vals) != 2 || vals[0].LinkBase == vals[1].LinkBase || vals[0].Slug != "a" || vals[1].Slug != "b" || len(ptrs) != 2 || ptrs[1].Slug != "b" || ptrs[0].LinkBase == ptrs[1].LinkBase {
+		t.Fatalf("vals %+v %+v ptrs %+v %+v", vals[0].LinkBase, vals[1].LinkBase, ptrs[0].LinkBase, ptrs[1].LinkBase)
+	}
+}
+
+func TestAStructEmbeddedByPointerFollowsTheEmbeddedValueRules(t *testing.T) {
+	db := open(t, pool)
+	var one byPointer
+	if err := db.QueryRowCtx(ctx, &one, `SELECT id, title, views FROM links WHERE 1 = 0`); err == nil || !strings.Contains(err.Error(), "no column for data.byPointer field slug") {
+		t.Errorf("missing column of the embedded pointer: %v", err)
+	}
+	var skipped struct {
+		*LinkBase `db:"-"`
+		Views     int64 `db:"views"`
+	}
+	if err := db.QueryRowCtx(ctx, &skipped, `SELECT views FROM links WHERE id = 1`); err != nil || skipped.LinkBase != nil || skipped.Views != 3 {
+		t.Errorf("a db:\"-\" embedded pointer: %+v %v", skipped, err)
+	}
+	var hidden withAudit
+	if err := db.QueryRowCtx(ctx, &hidden, `SELECT id, views FROM links WHERE id = 1`); err == nil || !strings.Contains(err.Error(), "embeds *data.audit, which is unexported") {
+		t.Errorf("an unexported embedded pointer: %v", err)
+	}
+}
+
+type Cyclic struct {
+	*Cyclic
+	ID int64 `db:"id"`
+}
+
+func TestAStructEmbeddingItselfByPointerIsRefusedNotWalkedForever(t *testing.T) {
+	if _, err := columnsOf(reflect.TypeOf(Cyclic{})); err == nil || !strings.Contains(err.Error(), "embeds") {
+		t.Fatalf("columnsOf = %v", err)
 	}
 }

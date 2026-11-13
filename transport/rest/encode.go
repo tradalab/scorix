@@ -13,8 +13,8 @@ import (
 )
 
 // Marshal writes msg as JSON with every field present: an unset message is an object of zero
-// values, or null where it would recurse, int64 is a number rather than a string, an enum is
-// its name (its number when unknown), and a map is an object with sorted keys.
+// values (null where it would recurse), an unset optional field is null, int64 is a number, an
+// enum is its name (its number when unknown), and a map is an object with sorted keys.
 func Marshal(msg proto.Message) ([]byte, error) {
 	var b bytes.Buffer
 	err := message(&b, msg.ProtoReflect(), true, map[protoreflect.FullName]bool{})
@@ -47,6 +47,8 @@ func message(b *bytes.Buffer, m protoreflect.Message, set bool, open map[protore
 			err = object(b, f.MapValue(), m.Get(f).Map(), open)
 		case f.Cardinality() == protoreflect.Repeated:
 			err = list(b, f, m.Get(f).List(), open)
+		case f.HasOptionalKeyword() && f.Syntax() == protoreflect.Proto3 && !m.Has(f):
+			b.WriteString("null")
 		default:
 			err = value(b, f, m.Get(f), m.Has(f), open)
 		}

@@ -35,14 +35,24 @@ var (
 // Parse compiles src as the proto file name and reads it into a File. Syntax and type
 // errors carry name:line:col.
 func Parse(name, src string) (File, error) {
-	fd, err := compile(name, src)
+	fd, err := compile(name, src, false)
 	if err != nil {
 		return File{}, err
 	}
 	return read(fd)
 }
 
-func compile(name, src string) (protoreflect.FileDescriptor, error) {
+// ParseApp is Parse for a desktop app's proto, which also refuses enum and map: the app's
+// generated Go and TS types have no shape for them yet.
+func ParseApp(name, src string) (File, error) {
+	fd, err := compile(name, src, true)
+	if err != nil {
+		return File{}, err
+	}
+	return read(fd)
+}
+
+func compile(name, src string, app bool) (protoreflect.FileDescriptor, error) {
 	comp := protocompile.Compiler{
 		Resolver: protocompile.WithStandardImports(&protocompile.SourceResolver{
 			Accessor: protocompile.SourceAccessorFromMap(map[string]string{name: src, traitPath: traitSource}),
@@ -60,7 +70,7 @@ func compile(name, src string) (protoreflect.FileDescriptor, error) {
 			return nil, fmt.Errorf("proto: %s imports %s; an app proto may import only %s", name, p, traitPath)
 		}
 	}
-	if err := rejectUnsupported(fd); err != nil {
+	if err := rejectUnsupported(fd, app); err != nil {
 		return nil, err
 	}
 	return fd, nil
@@ -72,21 +82,25 @@ type offence struct {
 	what      string
 }
 
-func rejectUnsupported(fd protoreflect.FileDescriptor) error {
+func rejectUnsupported(fd protoreflect.FileDescriptor, app bool) error {
 	locs := fd.SourceLocations()
 	var found []offence
 	add := func(d protoreflect.Descriptor, word, what string) {
 		l := locs.ByDescriptor(d)
 		found = append(found, offence{l.StartLine, l.StartColumn, word, what})
 	}
-	for i := 0; i < fd.Enums().Len(); i++ {
+	for i := 0; app && i < fd.Enums().Len(); i++ {
 		add(fd.Enums().Get(i), "enum", "")
 	}
 	msgs := fd.Messages()
 	for i := 0; i < msgs.Len(); i++ {
 		m := msgs.Get(i)
 		for j := 0; j < m.Enums().Len(); j++ {
-			add(m.Enums().Get(j), "enum", "")
+			what := ""
+			if !app {
+				what = fmt.Sprintf("enum %s is declared inside %s; declare it at the top level", m.Enums().Get(j).Name(), m.Name())
+			}
+			add(m.Enums().Get(j), "enum", what)
 		}
 		for j := 0; j < m.Messages().Len(); j++ {
 			if nested := m.Messages().Get(j); !nested.IsMapEntry() {
@@ -101,10 +115,10 @@ func rejectUnsupported(fd protoreflect.FileDescriptor) error {
 		for j := 0; j < m.Fields().Len(); j++ {
 			f := m.Fields().Get(j)
 			switch {
-			case f.IsMap():
+			case f.IsMap() && app:
 				add(f, "map", "")
-			case f.HasOptionalKeyword():
-				add(f, "optional", fmt.Sprintf("field %s.%s is optional; scorix types have no presence yet, drop the keyword", m.Name(), f.Name()))
+			case f.HasOptionalKeyword() && f.Kind() == protoreflect.BytesKind:
+				add(f, "optional", fmt.Sprintf("field %s.%s is optional bytes; empty bytes already read as unset, drop the keyword", m.Name(), f.Name()))
 			}
 		}
 	}
@@ -172,6 +186,7 @@ func read(fd protoreflect.FileDescriptor) (File, error) {
 	locs := fd.SourceLocations()
 	routes := map[string]string{}
 	paths := map[string][2]string{}
+	listed := map[string]string{}
 	svcs := fd.Services()
 	for i := 0; i < svcs.Len(); i++ {
 		s := svcs.Get(i)
@@ -216,11 +231,17 @@ func read(fd protoreflect.FileDescriptor) (File, error) {
 					return File{}, fmt.Errorf("proto: %s.%s and %s both route %s", svc.Name, rpc.Name, prev, key)
 				}
 				routes[key] = svc.Name + "." + rpc.Name
-				shape := paramRe.ReplaceAllString(h.Path, "{}")
-				if prev, ok := paths[shape]; ok && prev[0] != h.Path {
+				listedPath := strings.TrimSuffix(h.Path, endAnchor)
+				shape := pathShape(listedPath)
+				if prev, ok := paths[shape]; ok && prev[0] != listedPath {
 					return File{}, fmt.Errorf("proto: %s.%s routes %s but %s routes %s; one path names its parameters the same way under every method", svc.Name, rpc.Name, h.Path, prev[1], prev[0])
 				}
-				paths[shape] = [2]string{h.Path, svc.Name + "." + rpc.Name}
+				paths[shape] = [2]string{listedPath, svc.Name + "." + rpc.Name}
+				openapi := h.Method + " " + listedPath
+				if prev, dup := listed[openapi]; dup {
+					return File{}, fmt.Errorf("proto: %s.%s and %s both list as %s in OpenAPI; an exact {$} path and the subtree under it take two methods or two paths", svc.Name, rpc.Name, prev, openapi)
+				}
+				listed[openapi] = svc.Name + "." + rpc.Name
 			}
 			for _, mw := range rpc.Middlewares {
 				addMiddleware(mw)
@@ -236,10 +257,25 @@ func read(fd protoreflect.FileDescriptor) (File, error) {
 }
 
 func typeName(f protoreflect.FieldDescriptor) string {
-	if f.Kind() == protoreflect.MessageKind || f.Kind() == protoreflect.GroupKind {
+	switch f.Kind() {
+	case protoreflect.MessageKind, protoreflect.GroupKind:
 		return string(f.Message().Name())
+	case protoreflect.EnumKind:
+		return string(f.Enum().Name())
 	}
 	return f.Kind().String()
+}
+
+func enumValues(f protoreflect.FieldDescriptor) []string {
+	if f.Kind() != protoreflect.EnumKind {
+		return nil
+	}
+	vs := f.Enum().Values()
+	out := make([]string, vs.Len())
+	for i := range out {
+		out[i] = string(vs.Get(i).Name())
+	}
+	return out
 }
 
 func option[T proto.Message](opts proto.Message, empty T, xt protoreflect.ExtensionType) (T, error) {
@@ -442,7 +478,7 @@ func listing(svc string, md protoreflect.MethodDescriptor) (*List, error) {
 	l.Total = wants != nil
 	items := 0
 	for i := 0; i < md.Output().Fields().Len(); i++ {
-		if f := md.Output().Fields().Get(i); f.Cardinality() == protoreflect.Repeated && f.Kind() == protoreflect.MessageKind {
+		if f := md.Output().Fields().Get(i); f.IsList() && f.Kind() == protoreflect.MessageKind {
 			items++
 		}
 	}
@@ -456,13 +492,28 @@ func listing(svc string, md protoreflect.MethodDescriptor) (*List, error) {
 		}
 		l.Order = append(l.Order, Order{Column: words[0], Desc: len(words) == 2 && words[1] == "desc"})
 	}
-	if l.Order[len(l.Order)-1].Column != "id" {
-		return nil, fmt.Errorf("%s order %q has no unique tiebreaker; end it with id", where, rule.GetOrder())
+	unique := rule.GetUnique()
+	if unique == "" {
+		unique = "id"
+	}
+	if l.Order[len(l.Order)-1].Column != unique {
+		return nil, fmt.Errorf("%s order %q has no unique tiebreaker; end it with %s", where, rule.GetOrder(), unique)
 	}
 	return l, nil
 }
 
 var paramRe = regexp.MustCompile(`\{([^{}]*)\}`)
+
+const endAnchor = "{$}"
+
+func pathShape(path string) string {
+	return paramRe.ReplaceAllStringFunc(path, func(p string) string {
+		if p == endAnchor {
+			return p
+		}
+		return "{}"
+	})
+}
 
 func route(svc string, md protoreflect.MethodDescriptor) (*HTTP, error) {
 	rule, err := option(md.Options(), (*scorixpb.Http)(nil), scorixpb.E_Http)
@@ -491,7 +542,10 @@ func route(svc string, md protoreflect.MethodDescriptor) (*HTTP, error) {
 		return nil, fmt.Errorf("%s is %s with body \"*\"; a %s has no body", where, h.Method, h.Method)
 	}
 	h.Body, h.Anonymous = rule.GetBody(), rule.GetAnonymous()
-	for _, m := range paramRe.FindAllStringSubmatch(h.Path, -1) {
+	if i := strings.Index(h.Path, endAnchor); i >= 0 && (i != len(h.Path)-len(endAnchor) || h.Path[i-1] != '/') {
+		return nil, fmt.Errorf("%s path %q: {$} only ends a path, after a /, where it matches that path exactly", where, h.Path)
+	}
+	for _, m := range paramRe.FindAllStringSubmatch(strings.TrimSuffix(h.Path, endAnchor), -1) {
 		f := md.Input().Fields().ByName(protoreflect.Name(m[1]))
 		if f == nil || f.Cardinality() == protoreflect.Repeated || f.Kind() == protoreflect.MessageKind {
 			return nil, fmt.Errorf("%s path segment {%s} is not a scalar field of %s", where, m[1], md.Input().Name())
@@ -502,12 +556,24 @@ func route(svc string, md protoreflect.MethodDescriptor) (*HTTP, error) {
 }
 
 func field(f protoreflect.FieldDescriptor) (Field, error) {
-	t := typeName(f)
-	repeated := f.Cardinality() == protoreflect.Repeated
+	elem, mapKey := f, ""
+	if f.IsMap() {
+		elem, mapKey = f.MapValue(), f.MapKey().Kind().String()
+	}
+	t := typeName(elem)
+	repeated := f.IsList()
 	goType, tsType := scalarToGo(t), scalarToTS(t)
-	if repeated {
+	optional := f.HasOptionalKeyword()
+	switch {
+	case mapKey != "":
+		goType = "map[" + scalarToGo(mapKey) + "]" + goType
+		tsType = "Record<string, " + tsType + ">"
+	case repeated:
 		goType = "[]" + goType
 		tsType += "[]"
+	case optional:
+		goType = "*" + goType
+		tsType += " | null"
 	}
 	name := string(f.Name())
 	binding, err := option(f.Options(), (*scorixpb.Field)(nil), scorixpb.E_Field)
@@ -525,6 +591,10 @@ func field(f protoreflect.FieldDescriptor) (Field, error) {
 		GoType:   goType,
 		TSType:   tsType,
 		Repeated: repeated,
+		Map:      f.IsMap(),
+		MapKey:   mapKey,
+		Enum:     enumValues(elem),
+		Optional: optional,
 		WireName: f.JSONName(),
 		Header:   binding.GetHeader(),
 		Class:    map[scorixpb.Class]string{scorixpb.Class_PII: "pii", scorixpb.Class_SECRET: "secret"}[binding.GetClass()],

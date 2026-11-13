@@ -173,7 +173,7 @@ func bind(msg proto.Message, r Route, hr *http.Request) error {
 					continue
 				}
 			}
-			if f == nil {
+			if f == nil || f.IsMap() {
 				continue
 			}
 			if err := set(msg, f, values); err != nil {

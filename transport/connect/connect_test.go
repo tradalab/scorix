@@ -332,3 +332,22 @@ func TestTheReadCapDefaultsToFourMebibytes(t *testing.T) {
 		t.Fatalf("5 MiB: %v, want resource_exhausted", err)
 	}
 }
+
+func TestACodeHookAnswerWithCodeZeroIsNoMapping(t *testing.T) {
+	plain := errors.New("plain")
+	for name, hook := range map[string]func(error) *connect.Error{
+		"code zero":         func(err error) *connect.Error { return connect.NewError(0, err) },
+		"code zero, no err": func(error) *connect.Error { return connect.NewError(0, nil) },
+	} {
+		url := listen(t, Options{Auth: trustAll, Wire: hook}, func(context.Context, *wrapperspb.StringValue) (*wrapperspb.StringValue, error) {
+			return nil, plain
+		}) + echo
+		for proto, opt := range map[string]connect.ClientOption{"connect": connect.WithProtoJSON(), "grpc-web": connect.WithGRPCWeb()} {
+			c := connect.NewClient[wrapperspb.StringValue, wrapperspb.StringValue](http.DefaultClient, url, opt)
+			_, err := call(c, "ana", "hi")
+			if connect.CodeOf(err) != connect.CodeUnknown || !strings.HasSuffix(err.Error(), ": plain") {
+				t.Errorf("%s over %s: err = %v, want the original error as unknown", name, proto, err)
+			}
+		}
+	}
+}

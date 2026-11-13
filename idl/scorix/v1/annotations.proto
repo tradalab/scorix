@@ -69,8 +69,10 @@ message Rpc {
 message List {
   int32 default_page_size = 1;
   int32 max_page_size = 2;
-  // order is the sort, such as "created_at desc, id desc"; its last column must be id, the unique tiebreaker.
+  // order is the sort, such as "created_at desc, id desc"; its last column must be unique, the tiebreaker.
   string order = 3;
+  // unique is the column that identifies one row and so ends order; empty means id.
+  string unique = 4;
 }
 
 // Mcp offers an rpc to agents as an MCP tool. The rpc's leading comment is the tool's

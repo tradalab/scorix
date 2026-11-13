@@ -75,23 +75,21 @@ func openAPI(pf idl.File, title, version string) map[string]any {
 		if !used[name] {
 			used[name] = true
 			for _, f := range byName[name].Fields {
-				if _, ok := scalarSchema(f.Type); !ok {
+				if _, ok := scalarSchema(f.Type); !ok && f.Enum == nil {
 					ref(f.Type)
 				}
 			}
 		}
 		return map[string]any{"$ref": "#/components/schemas/" + name}
 	}
-	typeOf := func(f idl.Field) map[string]any {
-		s, ok := scalarSchema(f.Type)
+	paramOf := func(f idl.Field) map[string]any {
+		s, ok := fieldElem(f)
 		if !ok {
 			s = ref(f.Type)
 		}
-		if f.Repeated {
-			s = map[string]any{"type": "array", "items": s}
-		}
-		return s
+		return shaped(f, s)
 	}
+	typeOf := func(f idl.Field) map[string]any { return orNull(f, paramOf(f)) }
 	paths := map[string]map[string]any{}
 	anyAuth := false
 	for _, svc := range pf.Services {
@@ -109,11 +107,11 @@ func openAPI(pf idl.File, title, version string) map[string]any {
 			for _, f := range req.Fields {
 				switch {
 				case inPath[f.Name]:
-					params = append(params, map[string]any{"name": f.Name, "in": "path", "required": true, "schema": typeOf(f)})
+					params = append(params, map[string]any{"name": f.Name, "in": "path", "required": true, "schema": paramOf(f)})
 				case f.Header != "":
-					params = append(params, map[string]any{"name": f.Header, "in": "header", "schema": typeOf(f)})
-				case h.Body == "":
-					params = append(params, map[string]any{"name": f.WireName, "in": "query", "schema": typeOf(f)})
+					params = append(params, map[string]any{"name": f.Header, "in": "header", "schema": paramOf(f)})
+				case h.Body == "" && !f.Map:
+					params = append(params, map[string]any{"name": f.WireName, "in": "query", "schema": paramOf(f)})
 				}
 			}
 			op := map[string]any{
@@ -138,10 +136,11 @@ func openAPI(pf idl.File, title, version string) map[string]any {
 			} else {
 				anyAuth = true
 			}
-			if paths[h.Path] == nil {
-				paths[h.Path] = map[string]any{}
+			path := strings.TrimSuffix(h.Path, "{$}")
+			if paths[path] == nil {
+				paths[path] = map[string]any{}
 			}
-			paths[h.Path][strings.ToLower(h.Method)] = op
+			paths[path][strings.ToLower(h.Method)] = op
 		}
 	}
 	schemas := map[string]any{}

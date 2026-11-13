@@ -76,6 +76,9 @@ func kotlinNatives(pf protoFile, appPackage string) (ktFile, error) {
 			return fmt.Errorf("proto: message %s is used by a @native service but never declared", name)
 		}
 		for _, f := range m.Fields {
+			if f.Optional {
+				return fmt.Errorf("proto: field %s.%s is optional, which a @native service cannot carry; the Kotlin side has no null for it", name, f.Name)
+			}
 			if _, scalar := ktScalars[f.Type]; !scalar {
 				if err := visit(f.Type); err != nil {
 					return err

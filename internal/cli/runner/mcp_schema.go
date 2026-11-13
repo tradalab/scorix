@@ -35,20 +35,60 @@ func messageSchema(byName map[string]protoMessage, name string, closed bool, ope
 	defer delete(open, name)
 	props := make(map[string]any, len(msg.Fields))
 	for _, f := range msg.Fields {
-		s, ok := scalarSchema(f.Type)
+		s, ok := fieldElem(f)
 		if !ok {
 			s = messageSchema(byName, f.Type, closed, open, key)
 		}
-		if f.Repeated {
-			s = map[string]any{"type": "array", "items": s}
-		}
-		props[key(f)] = s
+		props[key(f)] = orNull(f, shaped(f, s))
 	}
 	schema := map[string]any{"type": "object", "properties": props}
 	if closed {
 		schema["additionalProperties"] = false
 	}
 	return schema
+}
+
+func fieldElem(f protoField) (map[string]any, bool) {
+	if f.Enum != nil {
+		values := make([]any, len(f.Enum))
+		for i, v := range f.Enum {
+			values[i] = v
+		}
+		return map[string]any{"anyOf": []any{map[string]any{"type": "string", "enum": values}, map[string]any{"type": "integer"}}}, true
+	}
+	return scalarSchema(f.Type)
+}
+
+func shaped(f protoField, elem map[string]any) map[string]any {
+	switch {
+	case f.Map:
+		s := map[string]any{"type": "object", "additionalProperties": elem}
+		if pattern, ok := mapKeyPatterns[f.MapKey]; ok {
+			s["propertyNames"] = map[string]any{"pattern": pattern}
+		}
+		return s
+	case f.Repeated:
+		return map[string]any{"type": "array", "items": elem}
+	}
+	return elem
+}
+
+var mapKeyPatterns = map[string]string{
+	"int32": signedKey, "sint32": signedKey, "sfixed32": signedKey, "int64": signedKey, "sint64": signedKey, "sfixed64": signedKey,
+	"uint32": unsignedKey, "fixed32": unsignedKey, "uint64": unsignedKey, "fixed64": unsignedKey,
+	"bool": "^(true|false)$",
+}
+
+const (
+	signedKey   = "^-?[0-9]+$"
+	unsignedKey = "^[0-9]+$"
+)
+
+func orNull(f protoField, s map[string]any) map[string]any {
+	if !f.Optional {
+		return s
+	}
+	return map[string]any{"anyOf": []any{s, map[string]any{"type": "null"}}}
 }
 
 func scalarSchema(typ string) (map[string]any, bool) {

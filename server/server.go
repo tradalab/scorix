@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -45,13 +46,15 @@ type Options struct {
 }
 
 type Server struct {
-	opt   Options
-	mux   *http.ServeMux
-	slots chan struct{}
-	load  *shedder
-	cpu   *sampler
-	cpuOn atomic.Bool
-	root  fs.FS
+	opt        Options
+	mux        *http.ServeMux
+	slots      chan struct{}
+	load       *shedder
+	cpu        *sampler
+	cpuOn      atomic.Bool
+	root       fs.FS
+	ownHealthz bool
+	healthz    sync.Once
 }
 
 func New(opt Options) *Server {
@@ -66,10 +69,14 @@ func New(opt Options) *Server {
 		s.cpu = &sampler{}
 		s.load = &shedder{threshold: opt.ShedAboveCPU, cpu: s.cpu.load, now: time.Now}
 	}
-	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	})
 	return s
+}
+
+func (s *Server) handle(pattern string, h http.Handler) {
+	s.mux.Handle(pattern, h)
+	if f := strings.Fields(pattern); f[len(f)-1] == "/healthz" && (len(f) == 1 || f[0] == http.MethodGet) {
+		s.ownHealthz = true
+	}
 }
 
 // Mount serves h for every path under prefix, for example "/shorten.Rpc/". Each outer wraps it
@@ -79,12 +86,55 @@ func (s *Server) Mount(prefix string, h http.Handler, outer ...func(http.Handler
 	for i := len(outer) - 1; i >= 0; i-- {
 		h = outer[i](h)
 	}
-	s.mux.Handle(prefix, h)
+	s.handle(prefix, h)
+}
+
+// StreamOptions shapes a Stream mount.
+type StreamOptions struct {
+	// MaxConns caps the connections h holds open at once; the next one gets 503 with Retry-After. Zero means no cap.
+	MaxConns int
+}
+
+// Stream serves a long-lived h, such as SSE or a long poll, at pattern outside MaxInFlight and CPU shedding,
+// capped by opt.MaxConns instead; each outer wraps it outside the cap like Mount. The access line, msg
+// "stream", is written when the connection closes and carries its duration.
+func (s *Server) Stream(pattern string, h http.Handler, opt StreamOptions, outer ...func(http.Handler) http.Handler) {
+	h = s.capConns(h, opt.MaxConns)
+	for i := len(outer) - 1; i >= 0; i-- {
+		h = outer[i](h)
+	}
+	s.handle(pattern, h)
+}
+
+type streamMark struct{}
+
+func (s *Server) capConns(h http.Handler, max int) http.Handler {
+	var conns chan struct{}
+	if max > 0 {
+		conns = make(chan struct{}, max)
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if mark, ok := r.Context().Value(streamMark{}).(*bool); ok {
+			*mark = true
+		}
+		if conns == nil {
+			h.ServeHTTP(w, r)
+			return
+		}
+		select {
+		case conns <- struct{}{}:
+			defer func() { <-conns }()
+			h.ServeHTTP(w, r)
+		default:
+			s.refuse(w, r, "the server is at its stream connection cap")
+		}
+	})
 }
 
 // Probe serves h at pattern, such as "GET /api/v1/healthz", and never sheds it, so an orchestrator
 // polling it under load does not restart a busy pod. Nothing caps h, so it must stay cheap.
-func (s *Server) Probe(pattern string, h http.Handler) { s.mux.Handle(pattern, h) }
+// A pattern that serves GET /healthz, here or through Mount or Stream, replaces the built-in 204.
+func (s *Server) Probe(pattern string, h http.Handler) { s.handle(pattern, h) }
 
 func (s *Server) refuse(w http.ResponseWriter, r *http.Request, why string) {
 	if s.opt.OnShed != nil {
@@ -252,13 +302,22 @@ func grpcCode(h http.Header) (string, bool) {
 }
 
 func (s *Server) handler() http.Handler {
+	s.healthz.Do(func() {
+		if !s.ownHealthz {
+			s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusNoContent)
+			})
+		}
+	})
 	if s.opt.Log == nil {
 		return s.mux
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rec := &recorder{ResponseWriter: w}
-		s.mux.ServeHTTP(rec, r.WithContext(observe.WithLogger(r.Context(), s.opt.Log)))
+		stream := new(bool)
+		ctx := context.WithValue(observe.WithLogger(r.Context(), s.opt.Log), streamMark{}, stream)
+		s.mux.ServeHTTP(rec, r.WithContext(ctx))
 		if rec.status == 0 {
 			rec.status = http.StatusOK
 		}
@@ -269,7 +328,11 @@ func (s *Server) handler() http.Handler {
 		if code, ok := grpcCode(rec.Header()); ok {
 			attrs = append(attrs, slog.String("code", code))
 		}
-		s.opt.Log.LogAttrs(r.Context(), slog.LevelInfo, "request", attrs...)
+		msg := "request"
+		if *stream {
+			msg = "stream"
+		}
+		s.opt.Log.LogAttrs(r.Context(), slog.LevelInfo, msg, attrs...)
 	})
 }
 

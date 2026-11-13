@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
+	"github.com/tradalab/scorix/transport/internal/gate"
 )
 
 type ConnOptions struct {
@@ -21,6 +23,20 @@ type ConnOptions struct {
 	Header func(ctx context.Context, h http.Header)
 	// HTTPClient nil picks one that speaks cleartext HTTP/2 for an http:// base with GRPC.
 	HTTPClient connect.HTTPClient
+	// ReadMaxBytes caps each reply message; a larger one fails with CodeResourceExhausted. Zero or less
+	// means 4 MiB, the cap a Mux reads requests with; set a larger value to raise it, nothing lifts it.
+	ReadMaxBytes int
+	// Timeout bounds every unary call whose method declares no timeout of its own; the call ends
+	// at the earlier of it and the caller's deadline. Zero adds no bound. Streams ignore it.
+	Timeout time.Duration
+}
+
+type methodBound struct{}
+
+// MethodTimeout bounds a call by its method's own timeout, which then replaces the Conn's default;
+// the caller's earlier deadline still wins. Generated clients call it for a timeout trait.
+func MethodTimeout(ctx context.Context, d time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithValue(ctx, methodBound{}, true), d)
 }
 
 // Conn reaches one service at base, for example "http://shorten-rpc:8070". It is safe for
@@ -42,6 +58,9 @@ func Dial(base string, opt ConnOptions) *Conn {
 	if opt.Header == nil {
 		opt.Header = func(context.Context, http.Header) {}
 	}
+	if opt.ReadMaxBytes <= 0 {
+		opt.ReadMaxBytes = gate.MaxBody
+	}
 	if opt.HTTPClient == nil {
 		opt.HTTPClient = http.DefaultClient
 		if opt.GRPC && strings.HasPrefix(base, "http://") {
@@ -56,7 +75,7 @@ func Dial(base string, opt ConnOptions) *Conn {
 func open[Req, Res any](c *Conn, name string) (procedure[Req, Res], error) {
 	cached, ok := c.clients.Load(name)
 	if !ok {
-		var opts []connect.ClientOption
+		opts := []connect.ClientOption{connect.WithReadMaxBytes(c.opt.ReadMaxBytes)}
 		if c.opt.GRPC {
 			opts = append(opts, connect.WithGRPC())
 		}
@@ -79,6 +98,11 @@ func Call[Req, Res any](ctx context.Context, c *Conn, name string, req *Req) (*R
 	p, err := open[Req, Res](c, name)
 	if err != nil {
 		return nil, err
+	}
+	if ctx.Value(methodBound{}) == nil && c.opt.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.opt.Timeout)
+		defer cancel()
 	}
 	r := connect.NewRequest(req)
 	c.opt.Header(ctx, r.Header())

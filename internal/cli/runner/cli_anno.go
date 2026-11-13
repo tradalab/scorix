@@ -33,7 +33,7 @@ func checkCLI(pf protoFile, svcName string, rpc protoRPC) error {
 		switch {
 		case !ok:
 			return fmt.Errorf("%s has `@cli arg=%s`, but %s has no field %q", where, rpc.CLIArg, rpc.RequestType, rpc.CLIArg)
-		case f.Repeated || !isProtoScalar(f.Type) || f.Type == "bytes":
+		case f.Repeated || f.Map || !isProtoScalar(f.Type) || f.Type == "bytes":
 			return fmt.Errorf("%s has `@cli arg=%s`; a positional argument is one word, so the field must be a single string, number or bool", where, rpc.CLIArg)
 		}
 	}
@@ -48,7 +48,7 @@ func checkCLI(pf protoFile, svcName string, rpc protoRPC) error {
 	}
 	if rpc.CLISecret != "" {
 		f, ok := fieldOf(byName[rpc.RequestType], rpc.CLISecret)
-		if !ok || f.Repeated || f.Type != "string" {
+		if !ok || f.Repeated || f.Map || f.Type != "string" {
 			return fmt.Errorf("%s has `@cli secret=%s`; a secret is read as one line of text, so it must be a single string field of %s", where, rpc.CLISecret, rpc.RequestType)
 		}
 		if rpc.CLISecret == rpc.CLIArg {

@@ -109,19 +109,31 @@ type {{ lowerFirst $svc.Name }}Client struct{ c *connect.Conn }
 
 func New{{ $svc.Name }}Client(c *connect.Conn) {{ $svc.Name }}Handler { return {{ lowerFirst $svc.Name }}Client{c} }
 {{ range $svc.RPCs }}{{ if .IsServerStream }}
-func (x {{ lowerFirst $svc.Name }}Client) {{ .Name }}(ctx context.Context, in *pb.{{ pbName .RequestType }}, each func(*pb.{{ pbName .ResponseType }}) error) error {
+func (x {{ lowerFirst $svc.Name }}Client) {{ .Name }}(ctx context.Context, in *pb.{{ pbName .RequestType }}, each func(*pb.{{ pbName .ResponseType }}) error) error { {{- if .Timeout }}
+	ctx, cancel := connect.MethodTimeout(ctx, {{ .Timeout.Nanoseconds }})
+	defer cancel()
+{{- end }}
 	return connect.Stream[pb.{{ pbName .RequestType }}, pb.{{ pbName .ResponseType }}](ctx, x.c, {{ $svc.Name }}Path+"{{ .Name }}", in, each)
 }
 {{ else if eq .Arity "client-stream" }}
-func (x {{ lowerFirst $svc.Name }}Client) {{ .Name }}(ctx context.Context, recv func() (*pb.{{ pbName .RequestType }}, error)) (*pb.{{ pbName .ResponseType }}, error) {
+func (x {{ lowerFirst $svc.Name }}Client) {{ .Name }}(ctx context.Context, recv func() (*pb.{{ pbName .RequestType }}, error)) (*pb.{{ pbName .ResponseType }}, error) { {{- if .Timeout }}
+	ctx, cancel := connect.MethodTimeout(ctx, {{ .Timeout.Nanoseconds }})
+	defer cancel()
+{{- end }}
 	return connect.CallClientStream[pb.{{ pbName .RequestType }}, pb.{{ pbName .ResponseType }}](ctx, x.c, {{ $svc.Name }}Path+"{{ .Name }}", recv)
 }
 {{ else if eq .Arity "bidi" }}
-func (x {{ lowerFirst $svc.Name }}Client) {{ .Name }}(ctx context.Context, recv func() (*pb.{{ pbName .RequestType }}, error), send func(*pb.{{ pbName .ResponseType }}) error) error {
+func (x {{ lowerFirst $svc.Name }}Client) {{ .Name }}(ctx context.Context, recv func() (*pb.{{ pbName .RequestType }}, error), send func(*pb.{{ pbName .ResponseType }}) error) error { {{- if .Timeout }}
+	ctx, cancel := connect.MethodTimeout(ctx, {{ .Timeout.Nanoseconds }})
+	defer cancel()
+{{- end }}
 	return connect.CallBidiStream(ctx, x.c, {{ $svc.Name }}Path+"{{ .Name }}", recv, send)
 }
 {{ else }}
-func (x {{ lowerFirst $svc.Name }}Client) {{ .Name }}(ctx context.Context, in *pb.{{ pbName .RequestType }}) (*pb.{{ pbName .ResponseType }}, error) {
+func (x {{ lowerFirst $svc.Name }}Client) {{ .Name }}(ctx context.Context, in *pb.{{ pbName .RequestType }}) (*pb.{{ pbName .ResponseType }}, error) { {{- if .Timeout }}
+	ctx, cancel := connect.MethodTimeout(ctx, {{ .Timeout.Nanoseconds }})
+	defer cancel()
+{{- end }}
 	return connect.Call[pb.{{ pbName .RequestType }}, pb.{{ pbName .ResponseType }}](ctx, x.c, {{ $svc.Name }}Path+"{{ .Name }}", in)
 }
 {{ end }}{{ end }}{{ end }}

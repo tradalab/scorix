@@ -25,7 +25,7 @@ type rewrite struct {
 // scorix.v1 option and returns the new text. Notes say where the option form behaves more
 // carefully than the comment did; an error means nothing was rewritten.
 func Fix(name, src string) (string, []string, error) {
-	fd, err := compile(name, src)
+	fd, err := compile(name, src, false)
 	if err != nil {
 		return "", nil, err
 	}

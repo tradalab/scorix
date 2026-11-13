@@ -51,6 +51,27 @@ func TestAListThatCannotPageIsRefused(t *testing.T) {
 	}
 }
 
+func TestAListNamesItsUniqueColumnAndEndsTheOrderWithIt(t *testing.T) {
+	opt := func(o string) string {
+		return listHead + `service S { rpc ListThings (ListReq) returns (ListRes) { option (scorix.v1.list) = { default_page_size: 50 max_page_size: 200 ` + o + ` }; } }`
+	}
+	f, err := Parse("app.proto", opt(`order: "created_at desc, uuid desc" unique: "uuid"`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l := f.Services[0].RPCs[0].List; l.Order[1] != (Order{"uuid", true}) {
+		t.Fatalf("list = %+v", l)
+	}
+	for name, c := range map[string]struct{ src, want string }{
+		"id with uuid unique": {opt(`order: "created_at desc, id desc" unique: "uuid"`), `has no unique tiebreaker; end it with uuid`},
+		"uuid by default":     {opt(`order: "created_at desc, uuid desc"`), `has no unique tiebreaker; end it with id`},
+	} {
+		if _, err := Parse("app.proto", c.src); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: err = %v, want %q", name, err, c.want)
+		}
+	}
+}
+
 func TestATotalIsOptInAndComesInPairs(t *testing.T) {
 	opt := `service S { rpc ListThings (ListReq) returns (ListRes) { option (scorix.v1.list) = { default_page_size: 50 max_page_size: 200 order: "id" }; } }`
 	both := strings.Replace(strings.Replace(listHead, "string query = 3;", "string query = 3; bool want_total = 4;", 1), "string next_page_token = 2;", "string next_page_token = 2; int32 total_size = 3;", 1)

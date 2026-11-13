@@ -27,7 +27,7 @@ type Options struct {
 	// Policy answers for every procedure whose Rule names a permission.
 	Policy kernel.Policy
 	// Wire turns errors that are neither a *connect.Error nor a *fault.Error into what the
-	// caller receives; nil leaves the error as connect's CodeUnknown.
+	// caller receives; nil, or a code of 0, leaves the error as connect's CodeUnknown.
 	Wire func(error) *connect.Error
 	// Replay keeps outcomes for every procedure whose Rule sets Replay.
 	Replay kernel.ReplayStore
@@ -241,7 +241,7 @@ func (m *Mux) wire(err error) error {
 		return connect.NewError(code, err)
 	}
 	if m.opt.Wire != nil {
-		if ce := m.opt.Wire(err); ce != nil {
+		if ce := m.opt.Wire(err); ce != nil && ce.Code() != 0 {
 			return ce
 		}
 	}

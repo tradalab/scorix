@@ -48,11 +48,11 @@ func (c Change) String() string { return fmt.Sprintf("%s: %s %s", c.Level, c.Whe
 // a caller of before: wire and JSON changes, then contract ones, each in before's order.
 // A compile error names its side.
 func Breaking(name, before, after string) ([]Change, error) {
-	oldFD, err := compile(name, before)
+	oldFD, err := compile(name, before, false)
 	if err != nil {
 		return nil, fmt.Errorf("before: %w", err)
 	}
-	newFD, err := compile(name, after)
+	newFD, err := compile(name, after, false)
 	if err != nil {
 		return nil, fmt.Errorf("after: %w", err)
 	}
@@ -97,6 +97,12 @@ func (d *diff) descriptors(before, after protoreflect.FileDescriptor) {
 			d.message(om, nm)
 		}
 	}
+	for i := 0; i < before.Enums().Len(); i++ {
+		oe := before.Enums().Get(i)
+		if ne := after.Enums().ByName(oe.Name()); ne != nil {
+			d.enum(oe, ne)
+		}
+	}
 }
 
 func (d *diff) method(om, nm protoreflect.MethodDescriptor) {
@@ -139,7 +145,7 @@ func renameLevel(om, nm protoreflect.MessageDescriptor) Level {
 }
 
 var wireAlike = map[protoreflect.Kind]int{
-	protoreflect.Int32Kind: 1, protoreflect.Int64Kind: 1, protoreflect.Uint32Kind: 1, protoreflect.Uint64Kind: 1, protoreflect.BoolKind: 1,
+	protoreflect.Int32Kind: 1, protoreflect.Int64Kind: 1, protoreflect.Uint32Kind: 1, protoreflect.Uint64Kind: 1, protoreflect.BoolKind: 1, protoreflect.EnumKind: 1,
 	protoreflect.Sint32Kind: 2, protoreflect.Sint64Kind: 2,
 	protoreflect.Fixed32Kind: 3, protoreflect.Sfixed32Kind: 3,
 	protoreflect.Fixed64Kind: 4, protoreflect.Sfixed64Kind: 4,
@@ -150,11 +156,67 @@ func local(d protoreflect.Descriptor) string {
 	return strings.TrimPrefix(string(d.FullName()), string(d.ParentFile().Package())+".")
 }
 
+func typeLevel(of, nf protoreflect.FieldDescriptor) Level {
+	switch {
+	case of.IsMap() && nf.IsMap():
+		k, v := typeLevel(of.MapKey(), nf.MapKey()), typeLevel(of.MapValue(), nf.MapValue())
+		if k == 0 || (v != 0 && v < k) {
+			return v
+		}
+		return k
+	case of.IsMap() != nf.IsMap():
+		return Wire
+	case kindName(of) == kindName(nf):
+		return 0
+	case of.Kind() == protoreflect.EnumKind && nf.Kind() == protoreflect.EnumKind && sameValues(of.Enum(), nf.Enum()):
+		return Contract
+	}
+	if g := wireAlike[of.Kind()]; g != 0 && g == wireAlike[nf.Kind()] {
+		return JSON
+	}
+	return Wire
+}
+
+func sameValues(o, n protoreflect.EnumDescriptor) bool {
+	if o.Values().Len() != n.Values().Len() {
+		return false
+	}
+	for i := 0; i < o.Values().Len(); i++ {
+		ov := o.Values().Get(i)
+		nv := n.Values().ByNumber(ov.Number())
+		if nv == nil || nv.Name() != ov.Name() {
+			return false
+		}
+	}
+	return true
+}
+
 func kindName(f protoreflect.FieldDescriptor) string {
-	if f.Kind() == protoreflect.MessageKind {
+	switch {
+	case f.IsMap():
+		return "map<" + kindName(f.MapKey()) + ", " + kindName(f.MapValue()) + ">"
+	case f.Kind() == protoreflect.MessageKind:
 		return local(f.Message())
+	case f.Kind() == protoreflect.EnumKind:
+		return local(f.Enum())
 	}
 	return f.Kind().String()
+}
+
+func (d *diff) enum(oe, ne protoreflect.EnumDescriptor) {
+	where := "enum " + string(oe.Name())
+	for i := 0; i < oe.Values().Len(); i++ {
+		ov := oe.Values().Get(i)
+		nv := ne.Values().ByNumber(ov.Number())
+		switch {
+		case nv == nil && ne.ReservedRanges().Has(ov.Number()):
+			d.add(JSON, where, "value %d (%s) was removed", ov.Number(), ov.Name())
+		case nv == nil:
+			d.add(Wire, where, "value %d (%s) was removed without reserving %d, so a later value can take its number", ov.Number(), ov.Name(), ov.Number())
+		case nv.Name() != ov.Name():
+			d.add(JSON, where, "value %d is %s in JSON, was %s", ov.Number(), nv.Name(), ov.Name())
+		}
+	}
 }
 
 func (d *diff) message(om, nm protoreflect.MessageDescriptor) {
@@ -175,11 +237,10 @@ func (d *diff) message(om, nm protoreflect.MessageDescriptor) {
 			d.add(Wire, where, "%s is %s now", label, map[bool]string{true: "repeated", false: "no longer repeated"}[n])
 		}
 		if o, n := kindName(of), kindName(nf); o != n {
-			level := Wire
-			if g := wireAlike[of.Kind()]; g != 0 && g == wireAlike[nf.Kind()] {
-				level = JSON
-			}
-			d.add(level, where, "%s is %s, was %s", label, n, o)
+			d.add(typeLevel(of, nf), where, "%s is %s, was %s", label, n, o)
+		}
+		if o, n := of.HasOptionalKeyword(), nf.HasOptionalKeyword(); o != n {
+			d.add(JSON, where, "%s %s", label, map[bool]string{true: "is optional now, so unset it is null", false: "is no longer optional, so unset it is a zero value"}[n])
 		}
 		if of.Name() != nf.Name() {
 			d.add(JSON, where, "field %d was renamed %s to %s", of.Number(), of.Name(), nf.Name())
@@ -192,7 +253,7 @@ func (d *diff) message(om, nm protoreflect.MessageDescriptor) {
 var effectRank = map[string]int{"readonly": 1, "idempotent": 2, "": 3, "mutating": 3, "destructive": 4}
 
 func routeKey(h *HTTP) string {
-	return h.Method + " " + paramRe.ReplaceAllString(h.Path, "{}")
+	return h.Method + " " + pathShape(h.Path)
 }
 
 func messagesByName(f File) map[string]Message {

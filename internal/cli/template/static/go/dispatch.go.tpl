@@ -17,18 +17,18 @@ func New{{ $s.Name }}Server(svcCtx *svc.ServiceContext) *{{ $s.Name }}Server {
 }
 {{ range $s.RPCs }}{{ if .IsServerStream }}
 func (s *{{ $s.Name }}Server) {{ .Name }}(ctx context.Context, in *pb.{{ pbName .RequestType }}, send func(*pb.{{ pbName .ResponseType }}) error) error {
-	return logic.New{{ .Name }}Logic(ctx, s.svcCtx).{{ .Name }}(in, send)
+	return logic.New{{ .LogicName }}(ctx, s.svcCtx).{{ .Name }}(in, send)
 }
 {{ else if eq .Arity "client-stream" }}
 func (s *{{ $s.Name }}Server) {{ .Name }}(ctx context.Context, recv func() (*pb.{{ pbName .RequestType }}, error)) (*pb.{{ pbName .ResponseType }}, error) {
-	return logic.New{{ .Name }}Logic(ctx, s.svcCtx).{{ .Name }}(recv)
+	return logic.New{{ .LogicName }}(ctx, s.svcCtx).{{ .Name }}(recv)
 }
 {{ else if eq .Arity "bidi" }}
 func (s *{{ $s.Name }}Server) {{ .Name }}(ctx context.Context, recv func() (*pb.{{ pbName .RequestType }}, error), send func(*pb.{{ pbName .ResponseType }}) error) error {
-	return logic.New{{ .Name }}Logic(ctx, s.svcCtx).{{ .Name }}(recv, send)
+	return logic.New{{ .LogicName }}(ctx, s.svcCtx).{{ .Name }}(recv, send)
 }
 {{ else }}
 func (s *{{ $s.Name }}Server) {{ .Name }}(ctx context.Context, in *pb.{{ pbName .RequestType }}) (*pb.{{ pbName .ResponseType }}, error) {
-	return logic.New{{ .Name }}Logic(ctx, s.svcCtx).{{ .Name }}(in)
+	return logic.New{{ .LogicName }}(ctx, s.svcCtx).{{ .Name }}(in)
 }
 {{ end }}{{ end }}{{ end }}

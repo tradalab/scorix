@@ -7,7 +7,7 @@ import (
 )
 
 func parseProto(src string) (protoFile, error) {
-	return idl.Parse("app.proto", src)
+	return idl.ParseApp("app.proto", src)
 }
 
 func protoTypeName(name string) string {

@@ -117,12 +117,31 @@ func (r *replay) Read(p []byte) (int, error) {
 	return r.Conn.Read(p)
 }
 
-func TestAServerThatNeverAnswersFailsWithinTimeout(t *testing.T) {
+func open(t *testing.T, cfg Config) *Client {
+	t.Helper()
+	c, err := Open(context.Background(), cfg, "")
+	if err != nil {
+		t.Fatalf("Open = %v", err)
+	}
+	t.Cleanup(func() { c.Close() })
+	return c
+}
+
+func TestOpenDialsNothingSoAServerThatIsDownDoesNotFailIt(t *testing.T) {
+	ln := listen(t)
+	open(t, valid(ln.Addr().String()))
+	if ln.accepted() {
+		t.Fatal("Open dialed the server")
+	}
+	open(t, valid(refused(t)))
+}
+
+func TestAServerThatNeverAnswersFailsPingWithinTimeout(t *testing.T) {
 	ln := listen(t)
 	cfg := valid(ln.Addr().String())
 	cfg.Timeout = 200 * time.Millisecond
 	start := time.Now()
-	_, err := Open(context.Background(), cfg, "")
+	err := Ping(context.Background(), open(t, cfg))
 	if err == nil {
 		t.Fatal("opened a server that never answered")
 	}
@@ -140,8 +159,8 @@ func TestTlsSpeaksTLSWithTheHostAsServerName(t *testing.T) {
 	cfg := valid(net.JoinHostPort("localhost", port))
 	cfg.Tls = true
 	cfg.Timeout = 200 * time.Millisecond
-	if _, err := Open(context.Background(), cfg, ""); err == nil {
-		t.Fatal("opened through a failed handshake")
+	if err := Ping(context.Background(), open(t, cfg)); err == nil {
+		t.Fatal("pinged through a failed handshake")
 	}
 	if b := recv(t, ln.first); b != 0x16 {
 		t.Fatalf("first byte %#x, want a TLS handshake", b)
@@ -155,7 +174,7 @@ func TestWithoutTlsTheFirstByteIsRESP(t *testing.T) {
 	ln := listen(t)
 	cfg := valid(ln.Addr().String())
 	cfg.Timeout = 200 * time.Millisecond
-	Open(context.Background(), cfg, "")
+	Ping(context.Background(), open(t, cfg))
 	if b := recv(t, ln.first); b != '*' {
 		t.Fatalf("first byte %#x, want a RESP array", b)
 	}
@@ -192,7 +211,12 @@ func TestUserAndPasswordReachTheServer(t *testing.T) {
 	if err != nil || who != "scorixtest" {
 		t.Fatalf("whoami = %q, %v", who, err)
 	}
-	_, err = Open(ctx, cfg, "wrong-pass")
+	wrong, err := Open(ctx, cfg, "wrong-pass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wrong.Close()
+	err = Ping(ctx, wrong)
 	if err == nil {
 		t.Fatal("opened with a wrong password")
 	}
@@ -257,47 +281,72 @@ func refused(t *testing.T) string {
 	return addr
 }
 
-func TestARefusedPortFailsWithinTimeoutDespiteRetries(t *testing.T) {
+func TestARefusedPortFailsPingWithinTimeoutDespiteRetries(t *testing.T) {
 	cfg := valid(refused(t))
 	cfg.Timeout = 200 * time.Millisecond
+	c := open(t, cfg)
 	start := time.Now()
-	if _, err := Open(context.Background(), cfg, ""); err == nil {
-		t.Fatal("opened a closed port")
+	if err := Ping(context.Background(), c); err == nil {
+		t.Fatal("pinged a closed port")
 	}
 	if took := time.Since(start); took > 600*time.Millisecond {
 		t.Fatalf("took %v with Timeout 200ms", took)
 	}
 }
 
-func TestAShorterCtxEndsOpenBeforeTimeout(t *testing.T) {
+func TestAShorterCtxEndsPingBeforeTimeout(t *testing.T) {
 	ln := listen(t)
 	cfg := valid(ln.Addr().String())
 	cfg.Timeout = 2 * time.Second
+	c := open(t, cfg)
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	if _, err := Open(ctx, cfg, ""); err == nil {
-		t.Fatal("opened a server that never answered")
+	if err := Ping(ctx, c); err == nil {
+		t.Fatal("pinged a server that never answered")
 	}
 	if took := time.Since(start); took > 800*time.Millisecond {
 		t.Fatalf("took %v with a 300ms ctx", took)
 	}
 }
 
-func TestAFailedOpenLeavesNoGoroutineBehind(t *testing.T) {
+func TestAFailedPingThenCloseLeavesNoGoroutineBehind(t *testing.T) {
 	cfg := valid(refused(t))
 	cfg.Timeout = 50 * time.Millisecond
-	Open(context.Background(), cfg, "")
+	pingAndClose := func() {
+		c, _ := Open(context.Background(), cfg, "")
+		Ping(context.Background(), c)
+		c.Close()
+	}
+	pingAndClose()
 	time.Sleep(100 * time.Millisecond)
 	before := runtime.NumGoroutine()
 	for range 5 {
-		Open(context.Background(), cfg, "")
+		pingAndClose()
 	}
 	deadline := time.Now().Add(2 * time.Second)
 	for runtime.NumGoroutine() > before && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	if n := runtime.NumGoroutine(); n > before {
-		t.Fatalf("%d goroutines after 5 failed Opens, %d before", n, before)
+		t.Fatalf("%d goroutines after 5 failed Pings, %d before", n, before)
+	}
+}
+
+func TestSortedSetTypesNeedNoGoRedisImport(t *testing.T) {
+	cfg := server(t)
+	ctx := context.Background()
+	c := open(t, cfg)
+	if err := Ping(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	key := "scorix:test:" + t.Name()
+	defer c.Del(ctx, key)
+	if err := c.ZAdd(ctx, key, Z{Score: 1, Member: "a"}, Z{Score: 2, Member: "b"}).Err(); err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.ZRangeByScore(ctx, key, &ZRangeBy{Min: "2", Max: "+inf"}).Result()
+	if err != nil || len(got) != 1 || got[0] != "b" {
+		t.Fatalf("ZRangeByScore = %v, %v", got, err)
 	}
 }

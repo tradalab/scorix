@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"reflect"
 	"strings"
@@ -15,9 +16,9 @@ import (
 	"github.com/tradalab/scorix/internal/confvalue"
 )
 
-// Load reads the YAML at path into dst, a pointer to a struct, honoring go-zero's json tag
-// options. It fails on a key no field takes at any depth, on a ${VAR} (only env tags read the
-// environment), and on a required field left unset, as a YAML null or an empty env var leaves it.
+// Load reads the YAML at path into dst, a pointer to a struct, honoring go-zero's json tag options.
+// It fails on a key no field takes, on a ${VAR}, on a required field left unset (null or empty env
+// counts as unset). An env var set for an optional block the file leaves out is logged and ignored.
 func Load(path string, dst any) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -32,6 +33,8 @@ type serviceLoader struct {
 	readFile func(string) ([]byte, error)
 	missing  []string
 	errs     []error
+	read     map[string]bool
+	unread   [][2]string
 }
 
 func loadService(file string, data []byte, dst any, lookup func(string) (string, bool), readFile func(string) ([]byte, error)) error {
@@ -47,8 +50,13 @@ func loadService(file string, data []byte, dst any, lookup func(string) (string,
 	if len(doc.Content) > 0 {
 		root = doc.Content[0]
 	}
-	l := &serviceLoader{file: file, lookup: lookup, readFile: readFile}
+	l := &serviceLoader{file: file, lookup: lookup, readFile: readFile, read: map[string]bool{}}
 	l.object("", root, rv.Elem())
+	for _, u := range l.unread {
+		if !l.read[u[0]] {
+			slog.Warn("conf: an env var of an optional block the file leaves out is ignored; add the block to turn it on", "env", u[0], "block", u[1], "file", file)
+		}
+	}
 	if len(l.missing) > 0 {
 		l.errs = append(l.errs, fmt.Errorf("conf: %s leaves required keys unset: %s", file, strings.Join(l.missing, ", ")))
 	}
@@ -161,12 +169,31 @@ func (l *serviceLoader) fields(path string, children map[string]*yaml.Node, read
 		read[s.key] = present
 		if fv.Kind() == reflect.Struct {
 			if !present && s.optional {
+				l.absentBlock(path+s.key, fv.Type())
 				continue
 			}
 			l.object(path+s.key+".", child, fv)
 			continue
 		}
 		l.leaf(path+s.key, s, child, present, fv)
+	}
+}
+
+func (l *serviceLoader) absentBlock(block string, t reflect.Type) {
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if !f.IsExported() && !f.Anonymous {
+			continue
+		}
+		s, _ := l.spec("", f)
+		switch {
+		case s.inline || f.Type.Kind() == reflect.Struct:
+			l.absentBlock(block, f.Type)
+		case s.env != "":
+			if raw, _ := l.lookup(s.env); raw != "" {
+				l.unread = append(l.unread, [2]string{s.env, block})
+			}
+		}
 	}
 }
 
@@ -197,6 +224,7 @@ func (l *serviceLoader) leaf(key string, s fieldSpec, node *yaml.Node, present b
 	}
 	if s.env != "" {
 		if raw, ok := l.lookup(s.env); ok {
+			l.read[s.env] = true
 			if s.fromFile {
 				b, err := l.readFile(raw)
 				if err != nil {
