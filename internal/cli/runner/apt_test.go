@@ -201,6 +201,22 @@ func TestAptRefusesAKeyThatIsNotTheOneTheDebShips(t *testing.T) {
 	}
 }
 
+func TestAptRefusedForTheWrongKeyLeavesNoSignedRepositoryToUpload(t *testing.T) {
+	shipped := genAptKey(t, "Shipped <shipped@example.com>")
+	other := genAptKey(t, "Other <other@example.com>")
+	root, bc := aptProject(t, shipped.public)
+	if _, err := buildDeb(bc); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(aptKeyEnv, string(other.private))
+	if err := apt(context.Background(), AptOptions{Dir: root}, &AptResult{}); err == nil {
+		t.Fatal("apt signed with a key the .deb does not ship")
+	}
+	if _, err := os.Stat(filepath.Join(root, "artifacts", "apt")); !os.IsNotExist(err) {
+		t.Fatalf("artifacts/apt survived the refusal (stat err = %v): an upload step would publish a repository apt rejects", err)
+	}
+}
+
 func TestAptRefusesAURLTheDebDoesNotPointAt(t *testing.T) {
 	keys := genAptKey(t, "Url <url@example.com>")
 	root, bc := aptProject(t, keys.public)

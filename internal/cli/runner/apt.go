@@ -171,6 +171,7 @@ func apt(ctx context.Context, opt AptOptions, res *AptResult) error {
 		return err
 	}
 	if err := aptSign(ctx, filepath.Join(repo, "dists", c.suite()), key, pub); err != nil {
+		_ = os.RemoveAll(repo)
 		return err
 	}
 	res.Repo = repo
