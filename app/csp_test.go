@@ -96,3 +96,16 @@ func TestHeadOpenEnd(t *testing.T) {
 		}
 	}
 }
+
+func TestTheDefaultPresetLetsAPageShowImagesAndMediaItBuiltAsBlobURLs(t *testing.T) {
+	directives := map[string]string{}
+	for _, d := range strings.Split(cspValue("default"), ";") {
+		name, value, _ := strings.Cut(strings.TrimSpace(d), " ")
+		directives[name] = value
+	}
+	for _, name := range []string{"img-src", "media-src"} {
+		if !strings.Contains(" "+directives[name]+" ", " blob: ") || !strings.Contains(directives[name], "'self'") {
+			t.Fatalf("%s = %q, want 'self' and blob:", name, directives[name])
+		}
+	}
+}
