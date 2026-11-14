@@ -24,6 +24,9 @@ interface ScorixPlugin {
     fun onStop(activity: Activity) {}
 }
 
+/** Sends `<plugin name>:<event>` to the page's `scorix.on` listeners, from any thread; see [ScorixHost.emit]. */
+fun ScorixPlugin.emit(event: String, data: Any? = null) = ScorixHost.emit("$name:$event", data)
+
 /**
  * The typed side of a [PluginCall], for plugins extending a base that `scorix generate proto`
  * writes from an `@native` service. [encode] turns [T] into what [PluginCall.resolve] takes.

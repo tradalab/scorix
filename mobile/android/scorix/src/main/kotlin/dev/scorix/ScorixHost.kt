@@ -126,6 +126,15 @@ object ScorixHost {
         main.post(fn)
     }
 
+    /**
+     * Hands the page a `scorix.on(name)` event without going through Go; callable from any thread.
+     * Dropped while no page has spoken to the host, and Go listeners never hear it.
+     */
+    fun emit(name: String, data: Any? = null) {
+        val text = JSONObject().put("id", "android-$name").put("kind", "event").put("name", name).put("data", data ?: JSONObject.NULL).toString()
+        main.post { replyProxy?.postMessage(text) }
+    }
+
     internal fun reply(id: Long, reply: JSONObject) {
         calls.remove(id)
         ScorixNative.callReply(reply.toString().toByteArray(Charsets.UTF_8))
