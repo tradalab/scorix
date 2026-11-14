@@ -11,7 +11,10 @@ import (
 
 const releaseNotesFile = "RELEASE_NOTES.md"
 
-var linkReference = regexp.MustCompile(`^\[[^\]]+\]:\s+\S+$`)
+var (
+	linkReference = regexp.MustCompile(`^\[([^\]]+)\]:\s+\S+$`)
+	versionLike   = regexp.MustCompile(`^\d+\.\d+`)
+)
 
 func releaseNotes(root string, upd *UpdateConfig, version string) (string, error) {
 	if notes := strings.TrimSpace(upd.Notes); notes != "" {
@@ -34,11 +37,11 @@ func changelogSection(changelog, version string) string {
 		if strings.HasPrefix(strings.TrimSpace(line), "```") {
 			fenced = !fenced
 		}
-		if !fenced && strings.HasPrefix(line, "## ") {
+		if heading, ok := releaseHeading(line); !fenced && ok {
 			if inside {
 				break
 			}
-			inside = headingVersion(line) == strings.TrimPrefix(version, "v")
+			inside = heading == strings.TrimPrefix(version, "v")
 			continue
 		}
 		if inside {
@@ -47,7 +50,7 @@ func changelogSection(changelog, version string) string {
 	}
 	for len(out) > 0 {
 		last := strings.TrimSpace(out[len(out)-1])
-		if last != "" && last != "---" && !linkReference.MatchString(last) {
+		if last != "" && last != "---" && !unusedReference(last, out[:len(out)-1]) {
 			break
 		}
 		out = out[:len(out)-1]
@@ -55,12 +58,43 @@ func changelogSection(changelog, version string) string {
 	return strings.TrimSpace(strings.Join(out, "\n"))
 }
 
-func headingVersion(line string) string {
-	fields := strings.Fields(strings.TrimPrefix(line, "## "))
-	if len(fields) == 0 {
-		return ""
+func unusedReference(line string, body []string) bool {
+	m := linkReference.FindStringSubmatch(line)
+	if m == nil {
+		return false
 	}
-	return strings.TrimPrefix(strings.Trim(fields[0], "[]"), "v")
+	label := strings.ToLower("[" + m[1] + "]")
+	for _, l := range body {
+		if strings.Contains(strings.ToLower(l), label) && !linkReference.MatchString(strings.TrimSpace(l)) {
+			return false
+		}
+	}
+	return true
+}
+
+func releaseHeading(line string) (string, bool) {
+	var rest string
+	switch {
+	case strings.HasPrefix(line, "## "):
+		rest = line[3:]
+	case strings.HasPrefix(line, "### "):
+		rest = line[4:]
+	default:
+		return "", false
+	}
+	fields := strings.Fields(rest)
+	if len(fields) == 0 {
+		return "", line[:3] == "## "
+	}
+	v := strings.TrimPrefix(fields[0], "[")
+	if end := strings.IndexByte(v, ']'); end >= 0 {
+		v = v[:end]
+	}
+	v = strings.TrimPrefix(v, "v")
+	if !strings.HasPrefix(line, "## ") && !versionLike.MatchString(v) {
+		return "", false
+	}
+	return v, true
 }
 
 func writeReleaseNotes(artDir, notes string) (string, error) {

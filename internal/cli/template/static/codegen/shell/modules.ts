@@ -4,7 +4,7 @@
  * The calls of the built-in modules this app turns on in scorix.yaml or registers in Go.
  */
 {{- if .Fragments }}
-import scorix from "@/lib/scorix";
+import scorix{{ if .WebMode }}, { isWebMode, webModeReady }{{ end }} from "@/lib/scorix";
 {{- range .Fragments }}
 {{ . }}
 {{- end }}

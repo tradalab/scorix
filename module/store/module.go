@@ -60,6 +60,7 @@ func (m *StoreModule) OnLoad(ctx *module.Context) error {
 	module.Expose(m, "Set", ctx.IPC)
 	module.Expose(m, "Delete", ctx.IPC)
 	module.Expose(m, "Keys", ctx.IPC)
+	module.Expose(m, "All", ctx.IPC)
 
 	return nil
 }
@@ -189,6 +190,44 @@ func (m *StoreModule) Keys(ctx context.Context) ([]string, error) {
 	}
 	m.mu.RUnlock()
 	return keys, nil
+}
+
+// All returns a deep copy of every key with its value, so a page loads its settings in one call.
+func (m *StoreModule) All(ctx context.Context) (map[string]interface{}, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make(map[string]interface{}, len(m.data))
+	for k, v := range m.data {
+		out[k] = cloneValue(v)
+	}
+	return out, nil
+}
+
+// Value reads a deep copy of a key from Go; ok is false when the key is absent.
+// The caller may change the result without touching the store.
+func (m *StoreModule) Value(key string) (value interface{}, ok bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	value, ok = m.data[key]
+	return cloneValue(value), ok
+}
+
+func cloneValue(v interface{}) interface{} {
+	switch v := v.(type) {
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(v))
+		for k, e := range v {
+			out[k] = cloneValue(e)
+		}
+		return out
+	case []interface{}:
+		out := make([]interface{}, len(v))
+		for i, e := range v {
+			out[i] = cloneValue(e)
+		}
+		return out
+	}
+	return v
 }
 
 func (m *StoreModule) Capability() string { return "store" }

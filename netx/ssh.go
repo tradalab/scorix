@@ -272,7 +272,7 @@ func (t *tunnel) open(ctx context.Context) (*ssh.Client, chan struct{}, error) {
 	if t.agent != nil {
 		keys = t.agent.begin(deadline)
 		withAgent := *t.cfg
-		withAgent.Auth = append([]ssh.AuthMethod{ssh.PublicKeysCallback(keys.signers)}, t.cfg.Auth...)
+		withAgent.Auth = append(slices.Clip(t.cfg.Auth), ssh.PublicKeysCallback(keys.signers))
 		cfg = &withAgent
 	}
 	stop := context.AfterFunc(ctx, func() {

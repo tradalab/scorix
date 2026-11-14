@@ -27,7 +27,7 @@ func (m *SystemTrayModule) Version() string { return "1.0.0" }
 
 func (m *SystemTrayModule) OnLoad(ctx *module.Context) error {
 	logger.Info("[systemtray] stub loaded (no native tray on this platform/build)")
-	return nil
+	return ctx.Decode(&Config{})
 }
 
 func (m *SystemTrayModule) Capability() string { return "tray" }

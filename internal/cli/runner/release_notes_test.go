@@ -18,6 +18,9 @@ func TestChangelogSectionIsTheBodyUnderTheVersionHeadingWithoutTheRuleBelowIt(t 
 		{"## [1.1.0]\n\nRun:\n\n```md\n## not a heading\n```\n\n## [1.0.0]\nold\n", "1.1.0", "Run:\n\n```md\n## not a heading\n```"},
 		{"## [1.0.0]\n\n- first\n\n[1.0.0]: https://example.com/compare/v0.9.0...v1.0.0\n[Unreleased]: https://example.com/compare/v1.0.0...HEAD\n", "1.0.0", "- first"},
 		{sampleChangelog, "9.9.9", ""},
+		{"## [1.2.0](https://example.com/compare/v1.1.0...v1.2.0) (2026-11-14)\n\n### Features\n\n- new\n\n### [1.1.1](https://example.com/compare/v1.1.0...v1.1.1) (2026-11-01)\n\n- fix\n", "1.2.0", "### Features\n\n- new"},
+		{"## [1.2.0](https://example.com/c) (2026-11-14)\n\n- new\n\n### [1.1.1](https://example.com/c) (2026-11-01)\n\n### Bug Fixes\n\n- fix\n", "1.1.1", "### Bug Fixes\n\n- fix"},
+		{"## [1.0.0]\n\nSee [the guide][mig].\n\n[mig]: https://example.com/mig\n[1.0.0]: https://example.com/compare\n", "1.0.0", "See [the guide][mig].\n\n[mig]: https://example.com/mig"},
 	} {
 		if got := changelogSection(c.changelog, c.version); got != c.want {
 			t.Errorf("version %s: got %q, want %q", c.version, got, c.want)

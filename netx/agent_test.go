@@ -188,3 +188,32 @@ func TestTheAgentsKeysAreStillOfferedWhenThePrivateKeyIsRefused(t *testing.T) {
 		t.Fatalf("the agent's key was never tried after the private key was refused: %v", err)
 	}
 }
+
+func TestAPasswordStillLogsInWhenTheAgentHoldsMoreKeysThanTheServerAllowsTries(t *testing.T) {
+	b := startBastion(t)
+	b.mu.Lock()
+	b.allow = "no key is authorized"
+	b.mu.Unlock()
+	socket, _ := serveAgent(t, func(ring agent.Agent) agent.Agent {
+		for range 8 {
+			_, key, err := ed25519.GenerateKey(rand.Reader)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := ring.Add(agent.AddedKey{PrivateKey: key}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return ring
+	})
+	r, err := Open(Config{Timeout: 3 * time.Second, SSH: &SSH{
+		Addr: b.addr, Username: "u", Password: "p", Agent: socket, HostKey: HostKeyPolicy{Pinned: b.pin()},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Close() })
+	if err := r.Check(context.Background()); err != nil {
+		t.Fatalf("the agent's keys used up the tries before the password: %v", err)
+	}
+}

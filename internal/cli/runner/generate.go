@@ -49,16 +49,9 @@ func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateR
 
 	protoPath := resolveProtoPath(root, opt.Proto, cfg)
 	if opt.Proto == DefaultProtoPath && !hasIPC(root) {
-		// Modules still go over IPC, but a hand-wired shell has no lib/scorix for the clients to import.
-		var writes []generatedFile
-		lib := filepath.Join(root, "shell", "lib", "scorix")
-		if fileExists(lib) || fileExists(lib+".ts") {
-			f, err := moduleClientFile(root, cfg, opt.Check)
-			if err != nil {
-				return err
-			} else if f != nil {
-				writes = append(writes, *f)
-			}
+		writes, err := clientFiles(root, cfg, shellClient(root), opt.Check)
+		if err != nil {
+			return err
 		}
 		fmt.Println("==> No proto: only the module clients apply")
 		return emitGenerated(ctx, root, opt.Check, res, writes)
@@ -207,11 +200,15 @@ func generateProto(ctx context.Context, opt GenerateProtoOptions, res *GenerateR
 		Force:    true,
 	})
 
-	if f, err := moduleClientFile(root, cfg, opt.Check); err != nil {
-		return err
-	} else if f != nil {
-		writes = append(writes, *f)
+	client := shellClient(root)
+	if client == noClient {
+		client = generatedClient
 	}
+	clients, err := clientFiles(root, cfg, client, opt.Check)
+	if err != nil {
+		return err
+	}
+	writes = append(writes, clients...)
 
 	nativeWrites, err := nativeFiles(root, pf, gen)
 	if err != nil {

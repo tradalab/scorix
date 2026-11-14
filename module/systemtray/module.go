@@ -12,11 +12,6 @@ import (
 	"github.com/tradalab/scorix/module"
 )
 
-type Config struct {
-	Title   string `json:"title"`
-	Tooltip string `json:"tooltip"`
-}
-
 type SystemTrayModule struct {
 	ctx  *module.Context
 	cfg  Config

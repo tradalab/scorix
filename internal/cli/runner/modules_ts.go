@@ -5,6 +5,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -16,7 +17,7 @@ import (
 
 const modulePrefix = "github.com/tradalab/scorix/module/"
 
-func moduleClientFile(root string, cfg *ProjectConfig, check bool) (*generatedFile, error) {
+func moduleClientFile(root string, cfg *ProjectConfig, client runtimeClient, check bool) (*generatedFile, error) {
 	out := filepath.Join(root, "shell", "api", "modules.ts")
 	// Missing is drift to --check and apps never had this file; same rule as docs/ipc-surface.md.
 	if check && !fileExists(out) {
@@ -32,16 +33,22 @@ func moduleClientFile(root string, cfg *ProjectConfig, check bool) (*generatedFi
 	}
 	sort.Strings(names)
 	var fragments []string
+	webMode := false
+	helpers := client == generatedClient
 	for _, d := range names {
 		// llm and template have no fragment: see modulets.Modules.
 		if src, err := template.ReadFile(template.ShellModuleDir + "/" + d + ".ts"); err == nil {
+			if extra, err := template.ReadFile(template.ShellModuleExtra + "/" + d + ".ts"); err == nil && helpers {
+				src += extra
+				webMode = true
+			}
 			fragments = append(fragments, src)
 		}
 	}
 	if len(fragments) == 0 && !fileExists(out) {
 		return nil, nil
 	}
-	return &generatedFile{Path: out, Template: mustRead(template.ShellModules), Data: map[string]any{"Fragments": fragments}, Force: true}, nil
+	return &generatedFile{Path: out, Template: mustRead(template.ShellModules), Data: map[string]any{"Fragments": fragments, "WebMode": webMode}, Force: true}, nil
 }
 
 // appModules names the module/ packages the app uses: turned on in scorix.yaml or registered in Go.
@@ -168,4 +175,48 @@ func modulePkgOf(e ast.Expr, pkgOf map[string]string) string {
 		}
 	}
 	return ""
+}
+
+type runtimeClient int
+
+const (
+	noClient runtimeClient = iota
+	handWiredClient
+	generatedClient
+)
+
+func shellClient(root string) runtimeClient {
+	lib := filepath.Join(root, "shell", "lib", "scorix")
+	if fileExists(lib + ".ts") {
+		return handWiredClient
+	}
+	entries, err := os.ReadDir(lib)
+	if err != nil {
+		return noClient
+	}
+	for _, e := range entries {
+		if e.Name() != "index.ts" {
+			return handWiredClient
+		}
+	}
+	return generatedClient
+}
+
+func clientFiles(root string, cfg *ProjectConfig, client runtimeClient, check bool) ([]generatedFile, error) {
+	var out []generatedFile
+	if client == generatedClient {
+		out = append(out, runtimeClientFile(root))
+	}
+	if client == noClient {
+		return out, nil
+	}
+	f, err := moduleClientFile(root, cfg, client, check)
+	if err != nil || f == nil {
+		return out, err
+	}
+	return append(out, *f), nil
+}
+
+func runtimeClientFile(root string) generatedFile {
+	return generatedFile{Path: filepath.Join(root, "shell", "lib", "scorix", "index.ts"), Template: mustRead(template.ShellLibScorix), Force: true}
 }

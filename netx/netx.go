@@ -26,7 +26,8 @@ type Proxy struct {
 }
 
 // SSH is the bastion hop, reached through Proxy when one is set. Password, PrivateKey and Agent may all be given.
-// Agent is an ssh-agent unix socket (SSH_AUTH_SOCK, not a Windows named pipe); its keys follow PrivateKey's.
+// Agent is an ssh-agent unix socket (SSH_AUTH_SOCK, not a Windows named pipe); its keys follow PrivateKey's,
+// and with an Agent the Password goes first, so a full agent cannot use up the server's MaxAuthTries.
 type SSH struct {
 	Addr       string
 	Username   string

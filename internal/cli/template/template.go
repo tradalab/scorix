@@ -30,11 +30,13 @@ const (
 	ShellPage        = "static/codegen/shell/page.tsx"
 	ShellHooksEvents = "static/codegen/shell/hooks_events.ts"
 	ShellModules     = "static/codegen/shell/modules.ts"
+	ShellLibScorix   = "static/codegen/shell/lib_scorix.ts"
 	DocsIPCSurface   = "static/codegen/docs/ipc-surface.md"
 	AndroidPlugins   = "static/codegen/android/plugins.kt"
 
 	// One fragment per module package, written by `go generate ./internal/modulets`.
-	ShellModuleDir = "static/codegen/shell/modules"
+	ShellModuleDir   = "static/codegen/shell/modules"
+	ShellModuleExtra = "static/codegen/shell/modules_extra"
 
 	// Rewritten into android/.scorix by every `scorix mobile sync`.
 	MobileGradle   = "static/mobile/gen/scorix.gradle"
@@ -55,8 +57,7 @@ const (
 	InstallerMac     = "static/project/installer/mac"
 
 	// Copied once by `scorix init`, unlike codegen/ which every `generate proto` rewrites.
-	ScaffoldCommon = "static/scaffold/_common"
-	ScaffoldDir    = "static/scaffold"
+	ScaffoldDir = "static/scaffold"
 )
 
 func ReadFile(path string) (string, error) {

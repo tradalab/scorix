@@ -74,12 +74,13 @@ func initProject(ctx context.Context, opt InitOptions, res *InitResult) error {
 
 	fmt.Printf("==> Initializing %s shell...\n", shell.Name)
 	shellDir := filepath.Join(root, "shell")
-	// One shared runtime shim: a copy per scaffold is how generated api/ and the bridge drift apart.
-	if err := writeTemplateFS(template.ScaffoldCommon, shellDir, data); err != nil {
-		return err
-	}
 	if err := writeTemplateFS(template.ScaffoldDir+"/"+shell.Name, shellDir, data); err != nil {
 		return err
+	}
+	if shellClient(root) != handWiredClient {
+		if _, err := writeGeneratedFile(runtimeClientFile(root)); err != nil {
+			return err
+		}
 	}
 
 	if _, err := os.Stat(filepath.Join(root, "go.mod")); os.IsNotExist(err) {
