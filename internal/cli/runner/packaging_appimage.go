@@ -73,7 +73,7 @@ func (linuxPackager) Package(ctx context.Context, bc *BuildContext) (string, err
 	}
 	cmd := exec.CommandContext(ctx, tool, args...)
 	cmd.Dir = bc.Root
-	cmd.Env = append(os.Environ(), "VERSION="+bc.Version)
+	cmd.Env = linuxdeployEnv(os.Environ(), bc.Root, bc.Version)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	fmt.Printf("==> linuxdeploy %s\n", strings.Join(args, " "))
@@ -95,6 +95,18 @@ func (linuxPackager) Package(ctx context.Context, bc *BuildContext) (string, err
 		return "", err
 	}
 	return artifact, nil
+}
+
+func linuxdeployEnv(environ []string, root, version string) []string {
+	env := make([]string, 0, len(environ)+2)
+	for _, kv := range environ {
+		switch strings.SplitN(kv, "=", 2)[0] {
+		case "OWD", "APPIMAGE", "APPDIR", "ARGV0":
+			continue
+		}
+		env = append(env, kv)
+	}
+	return append(env, "OWD="+root, "VERSION="+version)
 }
 
 func globAppImages(dir string) []string {
