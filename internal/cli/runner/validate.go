@@ -76,6 +76,11 @@ func validateProject(opt ValidateOptions, res *ValidateResult) error {
 		add("error", "manifest", "scorix.yaml", err.Error(), "run scorix init, or fix the manifest by hand")
 		return finish(res)
 	}
+	if cfg.Shell != nil {
+		if _, err := resolveShellKind(cfg.Shell.Type); err != nil {
+			add("error", "manifest", "scorix.yaml", "shell: "+err.Error(), "shell.type names the frontend scorix init --shell scaffolded")
+		}
+	}
 
 	protoRel := cfg.Proto
 	if protoRel == "" {

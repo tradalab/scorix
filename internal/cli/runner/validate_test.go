@@ -371,3 +371,16 @@ func TestACommentAnnotationIsOneWarningPointingAtFix(t *testing.T) {
 		t.Fatalf("annotation warnings = %+v", got)
 	}
 }
+
+func TestValidateRefusesAShellTypeGenerateDoesNotKnow(t *testing.T) {
+	res, err := validate(t, project(t, manifest+"shell:\n  type: vite\n", okProto, okSchema))
+	errs := only(t, res, "error")
+	if err == nil || len(errs) != 1 || !strings.Contains(errs[0].Message, `unknown shell "vite"`) || !strings.Contains(errs[0].Message, "vite-react") {
+		t.Fatalf("validate let through a shell generate refuses: %v %+v", err, res.Findings)
+	}
+	for _, kind := range shellKindNames() {
+		if res, err := validate(t, project(t, manifest+"shell:\n  type: "+kind+"\n", okProto, okSchema)); err != nil {
+			t.Errorf("shell %s: %v %+v", kind, err, res.Findings)
+		}
+	}
+}
