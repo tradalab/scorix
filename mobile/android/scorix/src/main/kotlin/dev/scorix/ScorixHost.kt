@@ -323,7 +323,7 @@ object ScorixHost {
         wv.webViewClient = Client()
         // The WebView ignores its own padding and still draws under the bars, so pad a parent.
         val f = FrameLayout(a)
-        f.setOnApplyWindowInsetsListener { v, insets -> padForSystemBars(v, insets) }
+        f.setOnApplyWindowInsetsListener { v, insets -> padForBarsAndKeyboard(v, insets) }
         f.addView(wv, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         a.setContentView(f)
         frame = f
@@ -387,14 +387,16 @@ object ScorixHost {
         a.window.insetsController?.setSystemBarsAppearance(if (night) 0 else light, light)
     }
 
-    // Consumed after padding: passed on, a recent WebView also maps them to env(safe-area-inset-*)
-    // and the page clears the bars twice. The keyboard inset still passes.
-    private fun padForSystemBars(v: android.view.View, insets: WindowInsets): WindowInsets {
+    private fun padForBarsAndKeyboard(v: android.view.View, insets: WindowInsets): WindowInsets {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val types = WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()
             val bars = insets.getInsets(types)
-            v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-            return WindowInsets.Builder(insets).setInsets(types, android.graphics.Insets.NONE).build()
+            val keyboard = insets.getInsets(WindowInsets.Type.ime())
+            v.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, keyboard.bottom))
+            return WindowInsets.Builder(insets)
+                .setInsets(types, android.graphics.Insets.NONE)
+                .setInsets(WindowInsets.Type.ime(), android.graphics.Insets.NONE)
+                .build()
         }
         @Suppress("DEPRECATION")
         v.setPadding(insets.systemWindowInsetLeft, insets.systemWindowInsetTop, insets.systemWindowInsetRight, insets.systemWindowInsetBottom)
