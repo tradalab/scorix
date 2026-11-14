@@ -92,7 +92,7 @@ func doctorChecks(ctx context.Context, res *DoctorResult) error {
 	case "linux":
 		soft = append(soft,
 			tool{"linuxdeploy", "Linux AppImage packaging (scorix package)"},
-			tool{"gpg", "Linux AppImage signing (optional; package.sign.linux)"},
+			tool{"gpg", "Linux AppImage signing and the apt repository (optional; package.sign.linux, package.linux.apt)"},
 		)
 	case "darwin":
 		soft = append(soft,

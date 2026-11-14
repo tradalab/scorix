@@ -52,14 +52,22 @@ func buildDeb(bc *BuildContext) (string, error) {
 	dataGz := gzip.NewWriter(&data)
 	dataTar := tar.NewWriter(dataGz)
 	now := time.Now()
-	files := []struct {
-		name string
-		mode int64
-		body []byte
-	}{
+	files := []debFile{
 		{"./usr/bin/" + pkgName, 0o755, binData},
 		{"./usr/share/applications/" + id + ".desktop", 0o644, desktop},
 		{"./" + iconDir + id + ".png", 0o644, iconData},
+	}
+	var conffiles []string
+	if c := bc.pkg.apt(); c != nil {
+		pub, err := readAptPublicKey(bc.Root, c)
+		if err != nil {
+			return "", fmt.Errorf("deb: %w", err)
+		}
+		files = append(files,
+			debFile{"./" + aptSourcesPath(pkgName), 0o644, []byte(aptSourcesLine(c, pkgName))},
+			debFile{"./" + aptKeyringPath(pkgName), 0o644, pub},
+		)
+		conffiles = append(conffiles, "/"+aptSourcesPath(pkgName))
 	}
 	dirs := map[string]bool{}
 	for _, f := range files {
@@ -84,7 +92,11 @@ func buildDeb(bc *BuildContext) (string, error) {
 		return "", err
 	}
 
-	installedKB := (len(binData) + len(desktop) + len(iconData) + 1023) / 1024
+	installed := 0
+	for _, f := range files {
+		installed += len(f.body)
+	}
+	installedKB := (installed + 1023) / 1024
 	control := fmt.Sprintf(`Package: %s
 Version: %s
 Section: utils
@@ -101,6 +113,11 @@ Description: %s
 	ctrlTar := tar.NewWriter(ctrlGz)
 	if err := writeTarFile(ctrlTar, "./control", 0o644, now, []byte(control)); err != nil {
 		return "", err
+	}
+	if len(conffiles) > 0 {
+		if err := writeTarFile(ctrlTar, "./conffiles", 0o644, now, []byte(strings.Join(conffiles, "\n")+"\n")); err != nil {
+			return "", err
+		}
 	}
 	if err := ctrlTar.Close(); err != nil {
 		return "", err
@@ -139,6 +156,12 @@ Description: %s
 
 // The webview is dlopen'd, so dpkg cannot infer these.
 const debDepends = "libgtk-3-0, libwebkit2gtk-4.1-0 | libwebkit2gtk-4.0-37"
+
+type debFile struct {
+	name string
+	mode int64
+	body []byte
+}
 
 func debIconDir(icon []byte) (string, error) {
 	cfg, err := png.DecodeConfig(bytes.NewReader(icon))

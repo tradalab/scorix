@@ -136,6 +136,12 @@ jobs:
           if provider == "appcast" and not os.environ.get("APP_PREFIX"):
               die("updater.provider is appcast but no app-prefix input was given")
 
+          # The .deb points apt at the CDN, and only the appcast provider
+          # publishes there: with another provider the repository is never
+          # uploaded and every installed .deb stops updating without a word.
+          if re.search(r"^  linux:\n(?:    .*\n)*?    apt:", src, re.M) and provider != "appcast":
+              die("package.linux.apt needs modules.updater.provider appcast: the apt repository is published to the CDN")
+
           cert = re.search(r"^      cert_env:\s*(\w+)", src, re.M)
           pw = re.search(r"^      password_env:\s*(\w+)", src, re.M)
           print("cert_env=" + (cert.group(1) if cert else ""))
@@ -343,6 +349,17 @@ jobs:
             scorix appcast -d .
           fi
 
+      # Writes artifacts/apt only when scorix.yaml has package.linux.apt; without
+      # it the command says so and exits 0. With it, a missing or wrong key fails
+      # the release here, before anything is uploaded: a .deb that points apt at
+      # a repository signed by another key never updates again.
+      - name: Build the apt repository
+        if: needs.meta.outputs.provider == 'appcast'
+        shell: bash
+        env:
+          SCORIX_APT_PRIVATE_KEY: ${{ secrets.SCORIX_APT_PRIVATE_KEY }}
+        run: scorix apt -d . --url "$CDN_PRIMARY/$APP_PREFIX/apt"
+
       - name: List artifacts
         run: ls -R artifacts
 
@@ -377,6 +394,11 @@ jobs:
               --cache-control "public, max-age=31536000, immutable"
           done
 
+          if [ -d artifacts/apt/pool ]; then
+            aws s3 cp --endpoint-url "$endpoint" --no-progress --recursive artifacts/apt/pool \
+              "s3://$R2_BUCKET/$APP_PREFIX/apt/pool" --cache-control "public, max-age=31536000, immutable"
+          fi
+
       - name: Publish the manifest to R2
         if: needs.meta.outputs.provider == 'appcast'
         shell: bash
@@ -387,6 +409,18 @@ jobs:
           endpoint="$(printf '%s' "$R2_ENDPOINT" | tr -d '[:space:]')"
           aws s3 cp --endpoint-url "$endpoint" --no-progress --cache-control no-cache \
             artifacts/appcast.json "s3://$R2_BUCKET/$APP_PREFIX/appcast.json"
+          # The apt indexes go with the manifest for the same reason: after the
+          # packages they name, and never cached, or apt keeps offering the
+          # previous release. Packages before Release/InRelease, or a client in
+          # between reads a Release whose hashes match nothing and reports a
+          # hash sum mismatch.
+          if [ -d artifacts/apt/dists ]; then
+            dists="s3://$R2_BUCKET/$APP_PREFIX/apt/dists"
+            aws s3 cp --endpoint-url "$endpoint" --no-progress --recursive --cache-control no-cache \
+              --exclude "*Release*" artifacts/apt/dists "$dists"
+            aws s3 cp --endpoint-url "$endpoint" --no-progress --recursive --cache-control no-cache \
+              --exclude "*" --include "*Release*" artifacts/apt/dists "$dists"
+          fi
 
       # For provider `github` this IS the distribution channel and the repo has
       # to be public - the updater sends no Authorization header. For `appcast`

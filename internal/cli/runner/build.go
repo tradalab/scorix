@@ -33,6 +33,7 @@ type PackageConfig struct {
 	Windows      *WindowsPackage `yaml:"windows"`
 	Sign         *SignConfig     `yaml:"sign"`
 	Update       *UpdateConfig   `yaml:"update"`
+	Linux        *LinuxPackage   `yaml:"linux"`
 }
 
 type PackageTarget struct {
