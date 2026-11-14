@@ -62,6 +62,7 @@ var tiers = map[string]int{
 	"internal/origin":         library,
 	"internal/singleinstance": library,
 	"internal/deeplink":       library,
+	"internal/appimage":       library,
 	"internal/desktopentry":   library,
 	"internal/devctl":         library,
 	"internal/mac":            library,

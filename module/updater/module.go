@@ -48,6 +48,10 @@ type Result struct {
 	SigBase64    string   `json:"sig_base64"`
 	Elevate      bool     `json:"elevate"`
 	LocalPath    string   `json:"local_path"`
+	// Install says how this copy updates: self (FullUpdate installs it), apt (the package manager does,
+	// with UpdateCommand) or manual (the user downloads the new version).
+	Install       string `json:"install"`
+	UpdateCommand string `json:"update_command"`
 }
 
 var (
@@ -55,6 +59,11 @@ var (
 	ErrSignatureMissing   = errors.New("signature missing in appcast")
 	ErrSignatureInvalid   = errors.New("signature invalid")
 	ErrUnknownAppcastType = errors.New("unknown appcast shape")
+	// ErrPlatformNotInAppcast: the manifest offers a newer version with no installer for this platform. A copy
+	// installed by apt still reports the update, since apt installs it.
+	ErrPlatformNotInAppcast = errors.New("platform not found in appcast")
+	ErrInstalledByApt       = errors.New("installed by apt, update it with")
+	ErrCannotSelfUpdate     = errors.New("this copy cannot install an update itself (only an msi, a .app bundle or an AppImage can): download the new version")
 )
 
 type UpdaterModule struct {
@@ -487,6 +496,17 @@ func runInstallerLinux(ctx context.Context, newPath string) error {
 	if target == "" {
 		return fmt.Errorf("auto-install requires running as an AppImage (the $APPIMAGE path is not set)")
 	}
+	if err := swapAppImage(newPath, target); err != nil {
+		return err
+	}
+
+	relaunchAfterExit(target)
+	logger.Info("[updater] update installed; relaunching")
+	os.Exit(0)
+	return nil
+}
+
+func swapAppImage(newPath, target string) error {
 	if err := os.Chmod(newPath, 0o755); err != nil {
 		return err
 	}
@@ -502,10 +522,8 @@ func runInstallerLinux(ctx context.Context, newPath string) error {
 	}
 	_ = os.Chmod(target, 0o755)
 	_ = os.Remove(backup)
-
-	relaunchAfterExit(target)
-	logger.Info("[updater] update installed; relaunching")
-	os.Exit(0)
+	_ = os.Remove(newPath)
+	_ = os.Remove(filepath.Dir(newPath))
 	return nil
 }
 
@@ -526,10 +544,7 @@ func currentMacAppBundle() (string, error) {
 }
 
 func currentLinuxAppImage() string {
-	if p := os.Getenv("APPIMAGE"); p != "" {
-		return p
-	}
-	return ""
+	return installEnvNow().runningAppImage()
 }
 
 func hdiutilAttach(ctx context.Context, dmg string) (string, error) {
@@ -588,11 +603,16 @@ func copyFileTo(src, dst string) error {
 // Detached shell that waits for this process to exit (releasing the single-instance
 // lock), then runs the command. Best-effort.
 func relaunchAfterExit(args ...string) {
+	_, _ = startAfterExit(os.Getpid(), args...)
+}
+
+func startAfterExit(pid int, args ...string) (*exec.Cmd, error) {
 	// Command passed as positional params ("$@"), not interpolated, so no shell
 	// injection; only the integer PID is interpolated.
-	script := fmt.Sprintf(`while kill -0 %d 2>/dev/null; do sleep 0.2; done; exec "$@"`, os.Getpid())
+	script := fmt.Sprintf(`while kill -0 %d 2>/dev/null; do sleep 0.2; done; exec "$@"`, pid)
 	cmd := exec.Command("sh", append([]string{"-c", script, "sh"}, args...)...)
-	_ = cmd.Start() // detached; orphaned to init after we exit
+	closeInheritedOnExec()
+	return cmd, cmd.Start()
 }
 
 // JS: scorix.invoke("mod:updater:CheckForUpdate", null)
@@ -610,6 +630,11 @@ func (m *UpdaterModule) CheckForUpdate(ctx context.Context) (*Result, error) {
 		return nil, fmt.Errorf("updater: version %q is not a semver, so no update can ever compare newer: set app.version", floor)
 	}
 	res, err := m.provider.CheckForUpdate(ctx, floor, m.cfg.PlatformKey)
+	if errors.Is(err, ErrPlatformNotInAppcast) && res != nil {
+		if kind, cmd := detectInstall(installEnvNow()); kind == InstallApt && isNewer(res.NewVersion, floor) {
+			return &Result{HasUpdate: true, NewVersion: res.NewVersion, Notes: res.Notes, Install: kind, UpdateCommand: cmd}, nil
+		}
+	}
 	if err != nil {
 		return res, err
 	}
@@ -622,6 +647,7 @@ func (m *UpdaterModule) CheckForUpdate(ctx context.Context) (*Result, error) {
 	if m.cfg.ForceElevate {
 		res.Elevate = true
 	}
+	res.Install, res.UpdateCommand = detectInstall(installEnvNow())
 
 	return res, nil
 }
@@ -634,6 +660,12 @@ func (m *UpdaterModule) FullUpdate(ctx context.Context) (*Result, error) {
 	}
 	if !res.HasUpdate {
 		return res, ErrNoUpdate
+	}
+	if res.Install == InstallApt {
+		return res, fmt.Errorf("%w: %s", ErrInstalledByApt, res.UpdateCommand)
+	}
+	if res.Install == InstallManual {
+		return res, ErrCannotSelfUpdate
 	}
 
 	localPath, err := m.downloadAny(ctx, res.ArtifactURLs)

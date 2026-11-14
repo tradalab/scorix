@@ -34,7 +34,7 @@ func (c *chainProvider) CheckForUpdate(ctx context.Context, currentVersion, plat
 			}
 			return res, nil // first answer wins, never the newest across sources: that would let any one source override the rest
 		}
-		if errors.Is(err, ErrNoUpdate) { // "up to date" is an answer: moving on would let a stale mirror offer a version the primary retired
+		if errors.Is(err, ErrNoUpdate) || errors.Is(err, ErrPlatformNotInAppcast) {
 			return res, err
 		}
 		errs = append(errs, fmt.Errorf("%s: %w", c.label(i), err))

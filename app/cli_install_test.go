@@ -19,7 +19,7 @@ func installRig(t *testing.T) (*cliRig, string, string) {
 	if err := os.WriteFile(target, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("APPIMAGE", target)
+	runningAsAppImage(t, target)
 	return newCLIRig(t), filepath.Join(home, ".local", "bin", "probe"), target
 }
 
@@ -89,7 +89,7 @@ func TestCLIStatusCountsAPackagedBinary(t *testing.T) {
 	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("APPIMAGE", bin)
+	runningAsAppImage(t, bin)
 	t.Setenv("PATH", filepath.Dir(bin))
 	r.run(false, "", "cli", "status", "--json")
 	if !strings.Contains(r.out.String(), `"installed":true`) {
@@ -129,7 +129,7 @@ func TestCLIUninstallNeverRemovesAPackagedBinary(t *testing.T) {
 	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("APPIMAGE", bin)
+	runningAsAppImage(t, bin)
 	t.Setenv("PATH", filepath.Dir(bin))
 	if code := r.run(false, "", "cli", "uninstall"); code == ExitOK {
 		t.Error("uninstall reported success on the package's binary")

@@ -35,3 +35,28 @@ func TestAppImageEntryPointsAtTheImage(t *testing.T) {
 		t.Fatal("icon not copied out of the image")
 	}
 }
+
+func TestAnAppStartedFromInsideAnotherAppImageAddsNoMenuEntryForIt(t *testing.T) {
+	other := t.TempDir()
+	if err := os.WriteFile(filepath.Join(other, "other.desktop"), []byte("[Desktop Entry]\nName=Other IDE\nExec=other\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	data := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", data)
+	t.Setenv("APPIMAGE", "/opt/OtherIDE.AppImage")
+	t.Setenv("APPDIR", other)
+	installDesktopEntry("com.tradalab.s3hub")
+	if entries, _ := os.ReadDir(filepath.Join(data, "applications")); len(entries) != 0 {
+		t.Fatalf("wrote %d menu entries pointing at an AppImage this process does not run from", len(entries))
+	}
+}
+
+func TestTheMCPCommandIsThisProcessNotAnInheritedAppImage(t *testing.T) {
+	t.Setenv("APPIMAGE", "/opt/OtherIDE.AppImage")
+	t.Setenv("APPDIR", t.TempDir())
+	got, err := mcpSelfCommand()
+	exe, _ := os.Executable()
+	if err != nil || got != exe {
+		t.Fatalf("mcp command = %q, %v; want this executable %q", got, err, exe)
+	}
+}

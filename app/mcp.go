@@ -23,6 +23,7 @@ import (
 	"github.com/ncruces/zenity"
 
 	"github.com/tradalab/scorix/fault"
+	"github.com/tradalab/scorix/internal/appimage"
 	"github.com/tradalab/scorix/internal/ipc"
 	"github.com/tradalab/scorix/internal/mcpcore"
 	"github.com/tradalab/scorix/logger"
@@ -771,8 +772,8 @@ func (a *App) mcpStatus() mcpStatus {
 
 // An AppImage's mount is gone once the process exits; the image itself lasts.
 func mcpSelfCommand() (string, error) {
-	if p := os.Getenv("APPIMAGE"); p != "" {
-		return p, nil
+	if image, _ := appimage.Current(); image != "" {
+		return image, nil
 	}
 	return os.Executable()
 }

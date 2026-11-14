@@ -49,11 +49,11 @@ func (p *AppcastProvider) CheckForUpdate(ctx context.Context, currentVersion, pl
 	var stat StaticAppcast
 	if json.Unmarshal(body, &stat) == nil && stat.Version != "" && len(stat.Platforms) > 0 {
 		plat, ok := stat.Platforms[platformKey]
-		if !ok {
-			return nil, fmt.Errorf("platform %s not found in appcast", platformKey)
-		}
 		if !isNewer(stat.Version, currentVersion) {
 			return &Result{HasUpdate: false}, ErrNoUpdate
+		}
+		if !ok {
+			return &Result{NewVersion: stat.Version, Notes: stat.Notes}, fmt.Errorf("%w: %s", ErrPlatformNotInAppcast, platformKey)
 		}
 		if bad, ok := allAdvertise(plat.URLs, stat.Version); !ok {
 			return nil, fmt.Errorf("appcast: manifest offers %s but points at %q", stat.Version, bad)
@@ -84,6 +84,13 @@ func (p *AppcastProvider) CheckForUpdate(ctx context.Context, currentVersion, pl
 			SigBase64:    dyn.SignatureBase64,
 			Elevate:      false,
 		}, nil
+	}
+
+	if stat.Version != "" && len(dyn.URLs) == 0 {
+		if !isNewer(stat.Version, currentVersion) {
+			return &Result{HasUpdate: false}, ErrNoUpdate
+		}
+		return &Result{NewVersion: stat.Version, Notes: stat.Notes}, fmt.Errorf("%w: %s", ErrPlatformNotInAppcast, platformKey)
 	}
 
 	return nil, ErrUnknownAppcastType

@@ -630,7 +630,7 @@ func TestMCPSwitchStartsAndStopsTheSocket(t *testing.T) {
 
 func TestMCPClientCommandSurvivesAnAppImageMount(t *testing.T) {
 	a, _ := mcpApp(t, false)
-	t.Setenv("APPIMAGE", "/home/someone/Apps/Demo.AppImage")
+	runningAsAppImage(t, "/home/someone/Apps/Demo.AppImage")
 	if got := a.mcpStatus().Client.Command; got != "/home/someone/Apps/Demo.AppImage" {
 		t.Errorf("client command under an AppImage = %q, want the image itself", got)
 	}
@@ -915,4 +915,17 @@ func TestMCPRelayReportsARefusalInsteadOfStartingTheApp(t *testing.T) {
 	if launched != 0 {
 		t.Errorf("the relay started the app %d times although it was running and had answered", launched)
 	}
+}
+
+func runningAsAppImage(t *testing.T, image string) {
+	t.Helper()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	t.Setenv("APPIMAGE", image)
+	t.Setenv("APPDIR", filepath.Dir(exe))
 }

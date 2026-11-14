@@ -20,6 +20,7 @@ func (p *fixedProvider) CheckForUpdate(context.Context, string, string) (*Result
 
 func updaterOfferedAnUpdate(t *testing.T) *UpdaterModule {
 	t.Helper()
+	asInstalled(t, installEnv{goos: "windows", exe: `C:\Program Files\App\app.exe`, exists: func(string) bool { return false }})
 	pubB64, priv := genKey(t)
 	artifact := []byte("installer bytes")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

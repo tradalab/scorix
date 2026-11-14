@@ -8,14 +8,15 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/tradalab/scorix/internal/appimage"
 	"github.com/tradalab/scorix/internal/desktopentry"
 	"github.com/tradalab/scorix/logger"
 )
 
 // No AppImage gets a menu entry by itself; rewritten every run so a moved image stays reachable.
 func installDesktopEntry(identifier string) {
-	image, dir := os.Getenv("APPIMAGE"), os.Getenv("APPDIR")
-	if image == "" || dir == "" || identifier == "" {
+	image, dir := appimage.Current()
+	if image == "" || identifier == "" {
 		return
 	}
 	data := xdgDataHome()

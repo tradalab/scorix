@@ -7,6 +7,8 @@ export interface UpdaterResult {
   sig_base64: string;
   elevate: boolean;
   local_path: string;
+  install: string;
+  update_command: string;
 }
 
 export const updater = {
