@@ -137,6 +137,7 @@ var (
 	wkViewGetURI        func(uintptr) uintptr
 	wkSchemeReqGetURI   func(uintptr) uintptr
 	wkSchemeReqFinish   func(uintptr, uintptr, int64, string)
+
 	wkJSResultGetValue  func(uintptr) uintptr
 	wkViewGetSettings   func(uintptr) uintptr // webkit_web_view_get_settings (borrowed ref)
 	wkNavDecisionAction func(uintptr) uintptr
@@ -148,6 +149,18 @@ var (
 	wkViewExecEditCmd   func(uintptr, string) // webkit_web_view_execute_editing_command
 	wkViewGetInspector  func(uintptr) uintptr // webkit_web_view_get_inspector (borrowed ref)
 	wkInspectorShow     func(uintptr)         // webkit_web_inspector_show
+
+	wkSchemeReqMethod     func(uintptr) uintptr
+	wkSchemeReqHeaders    func(uintptr) uintptr
+	wkSchemeRespNew       func(uintptr, int64) uintptr
+	wkSchemeRespStatus    func(uintptr, uint32, string)
+	wkSchemeRespType      func(uintptr, string)
+	wkSchemeRespHeaders   func(uintptr, uintptr)
+	wkSchemeReqFinishResp func(uintptr, uintptr)
+	soupHeadersNew        func(int32) uintptr
+	soupHeadersAppend     func(uintptr, string, string)
+	soupHeadersForeach    func(uintptr, uintptr, uintptr)
+	schemeResponses       bool
 
 	wkUserMediaType    func() uintptr      // webkit_user_media_permission_request_get_type -> GType
 	wkUserMediaIsAudio func(uintptr) int32 // is_for_audio_device
@@ -333,6 +346,7 @@ func initLibs() error {
 		purego.RegisterLibFunc(&wkViewGetURI, webkit, "webkit_web_view_get_uri")
 		purego.RegisterLibFunc(&wkSchemeReqGetURI, webkit, "webkit_uri_scheme_request_get_uri")
 		purego.RegisterLibFunc(&wkSchemeReqFinish, webkit, "webkit_uri_scheme_request_finish")
+		schemeResponses = registerSchemeResponses(webkit)
 		purego.RegisterLibFunc(&wkJSResultGetValue, webkit, "webkit_javascript_result_get_js_value")
 		purego.RegisterLibFunc(&wkViewGetSettings, webkit, "webkit_web_view_get_settings")
 		purego.RegisterLibFunc(&wkNavDecisionAction, webkit, "webkit_navigation_policy_decision_get_navigation_action")
@@ -352,6 +366,25 @@ func initLibs() error {
 		purego.RegisterLibFunc(&jscValueToString, jsc, "jsc_value_to_string")
 	})
 	return libErr
+}
+
+func registerSchemeResponses(webkit uintptr) bool {
+	for _, name := range []string{"webkit_uri_scheme_request_finish_with_response", "webkit_uri_scheme_request_get_http_headers", "soup_message_headers_new", "soup_message_headers_foreach"} {
+		if _, err := purego.Dlsym(webkit, name); err != nil {
+			return false
+		}
+	}
+	purego.RegisterLibFunc(&wkSchemeReqMethod, webkit, "webkit_uri_scheme_request_get_http_method")
+	purego.RegisterLibFunc(&wkSchemeReqHeaders, webkit, "webkit_uri_scheme_request_get_http_headers")
+	purego.RegisterLibFunc(&wkSchemeRespNew, webkit, "webkit_uri_scheme_response_new")
+	purego.RegisterLibFunc(&wkSchemeRespStatus, webkit, "webkit_uri_scheme_response_set_status")
+	purego.RegisterLibFunc(&wkSchemeRespType, webkit, "webkit_uri_scheme_response_set_content_type")
+	purego.RegisterLibFunc(&wkSchemeRespHeaders, webkit, "webkit_uri_scheme_response_set_http_headers")
+	purego.RegisterLibFunc(&wkSchemeReqFinishResp, webkit, "webkit_uri_scheme_request_finish_with_response")
+	purego.RegisterLibFunc(&soupHeadersNew, webkit, "soup_message_headers_new")
+	purego.RegisterLibFunc(&soupHeadersAppend, webkit, "soup_message_headers_append")
+	purego.RegisterLibFunc(&soupHeadersForeach, webkit, "soup_message_headers_foreach")
+	return true
 }
 
 func registerMemdup(glib uintptr) error {

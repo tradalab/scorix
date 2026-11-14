@@ -56,19 +56,23 @@ func (a *App) blobFor(urlPath string) (blobEntry, bool) {
 func (a *App) schemeWithBlobs(h webview.SchemeHandler) webview.SchemeHandler {
 	assets := a.withCSP(h)
 	return func(req *webview.Request) *webview.Response {
-		if p := schemeURLPath(req.URL); strings.HasPrefix(p, blobPathPrefix) {
-			e, ok := a.blobFor(p)
-			if !ok {
-				return &webview.Response{Status: http.StatusNotFound, Header: http.Header{}, Body: strings.NewReader("gone")}
-			}
-			hd := http.Header{}
-			if e.ct != "" {
-				hd.Set("Content-Type", e.ct)
-			}
-			return &webview.Response{Status: http.StatusOK, Header: hd, Body: bytes.NewReader(e.data)}
-		}
-		return assets(req)
+		return webview.ServeRange(req, a.blobOrAsset(assets, req))
 	}
+}
+
+func (a *App) blobOrAsset(assets webview.SchemeHandler, req *webview.Request) *webview.Response {
+	if p := schemeURLPath(req.URL); strings.HasPrefix(p, blobPathPrefix) {
+		e, ok := a.blobFor(p)
+		if !ok {
+			return &webview.Response{Status: http.StatusNotFound, Header: http.Header{}, Body: strings.NewReader("gone")}
+		}
+		hd := http.Header{}
+		if e.ct != "" {
+			hd.Set("Content-Type", e.ct)
+		}
+		return &webview.Response{Status: http.StatusOK, Header: hd, Body: bytes.NewReader(e.data)}
+	}
+	return assets(req)
 }
 
 func schemeURLPath(raw string) string {

@@ -86,6 +86,7 @@ func TestMain(m *testing.M) {
 		"nav-home.html": &fstest.MapFile{Data: []byte(homePage)},
 		"nav-link.html": &fstest.MapFile{Data: []byte(linkPage)},
 		"nav-away.html": &fstest.MapFile{Data: []byte(awayPage)},
+		"tone.wav":      &fstest.MapFile{Data: silentWAV(4000)},
 	})
 	a.Serve("other", foreignScheme)
 	a.Command("e2e:report", func(_ context.Context, data json.RawMessage, _ app.ChunkStream) (any, error) {

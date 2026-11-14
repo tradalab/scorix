@@ -5,6 +5,7 @@ package webkitgtk
 import (
 	"encoding/json"
 	"io"
+	"net/http"
 	"sync"
 	"unsafe"
 
@@ -209,16 +210,31 @@ func serveSchemeRequest(req uintptr) {
 	h := r.schemes[scheme]
 	r.mu.Unlock()
 
-	mime, body := "text/plain", []byte("not found")
+	in := &webview.Request{Method: "GET", URL: rawURL, Header: http.Header{}}
+	if schemeResponses {
+		if m := goString(wkSchemeReqMethod(req)); m != "" {
+			in.Method = m
+		}
+		readSoupHeaders(wkSchemeReqHeaders(req), in.Header)
+	}
+
+	status, header, body := http.StatusNotFound, http.Header{"Content-Type": {"text/plain"}}, []byte("not found")
 	if h != nil {
-		if resp := h(&webview.Request{Method: "GET", URL: rawURL}); resp != nil {
-			if b, err := io.ReadAll(resp.Body); err == nil {
-				body = b
-			}
-			if ct := resp.Header.Get("Content-Type"); ct != "" {
-				mime = ct
+		if resp := h(in); resp != nil {
+			status, header, body = resp.Status, resp.Header, nil
+			if resp.Body != nil {
+				if b, err := io.ReadAll(resp.Body); err == nil {
+					body = b
+				}
 			}
 		}
+	}
+	if status == 0 {
+		status = http.StatusOK
+	}
+	mime := header.Get("Content-Type")
+	if mime == "" {
+		mime = "text/plain"
 	}
 
 	// Copy into C memory (g_memdup2): WebKit drains the stream async, so Go bytes
@@ -229,7 +245,57 @@ func serveSchemeRequest(req uintptr) {
 	}
 	cbuf := gMemdup(src, uint64(len(body)))
 	stream := gMemStreamNew(cbuf, int64(len(body)), gFreeAddr)
-	wkSchemeReqFinish(req, stream, int64(len(body)), mime)
+	defer gObjectUnref(stream)
+	if !schemeResponses {
+		wkSchemeReqFinish(req, stream, int64(len(body)), mime)
+		return
+	}
+	resp := wkSchemeRespNew(stream, int64(len(body)))
+	defer gObjectUnref(resp)
+	reason := http.StatusText(status)
+	if reason == "" {
+		reason = "OK"
+	}
+	wkSchemeRespStatus(resp, uint32(status), reason)
+	wkSchemeRespType(resp, mime)
+	wkSchemeRespHeaders(resp, soupHeaders(header))
+	wkSchemeReqFinishResp(req, resp)
+}
+
+const soupHeadersResponse = 1
+
+func soupHeaders(h http.Header) uintptr {
+	out := soupHeadersNew(soupHeadersResponse)
+	for name, values := range h {
+		for _, v := range values {
+			soupHeadersAppend(out, name, v)
+		}
+	}
+	return out
+}
+
+var (
+	soupForeachCB   uintptr
+	soupForeachOnce sync.Once
+	soupForeachMu   sync.Mutex
+	soupForeachInto http.Header
+)
+
+func readSoupHeaders(headers uintptr, into http.Header) {
+	if headers == 0 {
+		return
+	}
+	soupForeachOnce.Do(func() {
+		soupForeachCB = purego.NewCallback(func(name, value, _ uintptr) uintptr {
+			soupForeachInto.Add(goString(name), goString(value))
+			return 0
+		})
+	})
+	soupForeachMu.Lock()
+	defer soupForeachMu.Unlock()
+	soupForeachInto = into
+	soupHeadersForeach(headers, soupForeachCB, 0)
+	soupForeachInto = nil
 }
 
 func (v *view) addUserScript(js string) {
