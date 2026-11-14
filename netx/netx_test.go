@@ -40,7 +40,7 @@ type bastion struct {
 	allow   string
 }
 
-func startBastion(t *testing.T) *bastion {
+func startBastion(t *testing.T, extraHostKeys ...ssh.Signer) *bastion {
 	t.Helper()
 	_, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -72,6 +72,9 @@ func startBastion(t *testing.T) *bastion {
 		},
 	}
 	cfg.AddHostKey(signer)
+	for _, k := range extraHostKeys {
+		cfg.AddHostKey(k)
+	}
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

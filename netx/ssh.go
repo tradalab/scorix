@@ -71,7 +71,7 @@ func hostKeyCallback(p HostKeyPolicy) (ssh.HostKeyCallback, []string, error) {
 func hostKeyAlgorithms(pinned ssh.PublicKey) []string {
 	switch {
 	case pinned == nil:
-		return nil
+		return []string{ssh.KeyAlgoED25519, ssh.KeyAlgoECDSA256, ssh.KeyAlgoECDSA384, ssh.KeyAlgoECDSA521, ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSA}
 	case pinned.Type() == ssh.KeyAlgoRSA:
 		return []string{ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSA}
 	default:
