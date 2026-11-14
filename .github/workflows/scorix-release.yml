@@ -467,13 +467,13 @@ jobs:
   # on a branch publishes the right tag. That matters more here than for
   # installers: an image that failed to build cannot be rebuilt from its own
   # release tag, because that tag points at the very commit that could not build.
+  # No permissions key on purpose: GitHub checks what every nested job requests
+  # before it reads any if:, so a request here refused each caller that never
+  # turns web-image on. Without one the job holds what the caller grants.
   web:
     if: inputs.web-image
     needs: meta
     runs-on: ubuntu-22.04
-    permissions:
-      contents: read
-      packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
