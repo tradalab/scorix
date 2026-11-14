@@ -10,8 +10,14 @@ import (
 	"github.com/tradalab/scorix/logger"
 )
 
+var trayRun = systray.Run
+
 func trayStart(m *SystemTrayModule) error {
-	go systray.Run(m.onReady, m.onExit)
+	if err := trayHostReady(); err != nil {
+		logger.Warn(fmt.Sprintf("[systemtray] no tray: %v", err))
+		return nil
+	}
+	go trayRun(m.onReady, m.onExit)
 	return nil
 }
 
