@@ -25,6 +25,7 @@ import (
 	"github.com/tradalab/scorix/module/dialog"
 	"github.com/tradalab/scorix/module/env"
 	"github.com/tradalab/scorix/module/fs"
+	"github.com/tradalab/scorix/module/geolocation"
 	"github.com/tradalab/scorix/module/httpfetch"
 	"github.com/tradalab/scorix/module/logfwd"
 	"github.com/tradalab/scorix/module/notification"
@@ -49,6 +50,7 @@ var Modules = []struct {
 	{"dialog", "dialog", reflect.TypeFor[*dialog.DialogModule]()},
 	{"env", "env", reflect.TypeFor[*env.EnvModule]()},
 	{"fs", "fs", reflect.TypeFor[*fs.FSModule]()},
+	{"geolocation", "geolocation", reflect.TypeFor[*geolocation.Module]()},
 	{"httpfetch", "http", reflect.TypeFor[*httpfetch.HTTPModule]()},
 	{"logfwd", "log", reflect.TypeFor[*logfwd.LogModule]()},
 	{"notification", "notification", reflect.TypeFor[*notification.NotificationModule]()},

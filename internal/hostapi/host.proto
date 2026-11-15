@@ -154,6 +154,38 @@ message ShareContent {
   bytes data = 7;
 }
 
+// One position fix from the platform's own providers, no Google Play services. The app declares
+// ACCESS_FINE_LOCATION or ACCESS_COARSE_LOCATION itself.
+// @native
+service Location {
+  // Asks for the permission first, and once per process asks to upgrade to precise location when
+  // only approximate was granted; rejects denied when refused, disabled when location is off, timeout when no fix came
+  // within timeout_ms. Waits for a fix within 25 m, settles for 100 m after 10 s, else the best by the timeout.
+  rpc Current(LocationRequest) returns (Position);
+}
+
+message LocationRequest {
+  // A cached fix no older than this and within 100 m is returned at once; 0 always waits for a fresh one.
+  int64 max_age_ms = 1;
+  int64 timeout_ms = 2;
+  // Coarse skips GPS and takes the first fix: faster indoors, a few hundred metres off.
+  bool coarse = 3;
+}
+
+message Position {
+  double latitude = 1;
+  double longitude = 2;
+  // Radius in metres of 68% confidence; 0 when the provider gives none.
+  double accuracy_m = 3;
+  double altitude_m = 4;
+  // Speed over ground and course over ground; has_motion is false when the fix carries neither.
+  double speed_mps = 5;
+  double bearing_deg = 6;
+  bool has_motion = 7;
+  int64 time_ms = 8;
+  string provider = 9;
+}
+
 // @native
 service Bluetooth {
   rpc Associate(BtService) returns (BtDevice);

@@ -144,6 +144,21 @@ internal abstract class SharePluginBase : ScorixPlugin {
     }
 }
 
+/** The `location` plugin, implemented as LocationPlugin. */
+internal abstract class LocationPluginBase : ScorixPlugin {
+    final override val name = "location"
+
+    /** Asks for the permission first, and once per process asks to upgrade to precise location when only approximate was granted; rejects denied when refused, disabled when location is off, timeout when no fix came within timeout_ms. Waits for a fix within 25 m, settles for 100 m after 10 s, else the best by the timeout. */
+    abstract fun current(req: LocationRequest, reply: Reply<Position>)
+
+    final override fun call(method: String, args: JSONObject, call: PluginCall) {
+        when (method) {
+            "current" -> current(LocationRequest.fromJson(args), Reply(call) { it.toJson() })
+            else -> call.reject("no_method", "location has no method $method")
+        }
+    }
+}
+
 /** The `bluetooth` plugin, implemented as BluetoothPlugin. */
 internal abstract class BluetoothPluginBase : ScorixPlugin {
     final override val name = "bluetooth"
@@ -501,6 +516,25 @@ internal data class KeystoreData(
     }
 }
 
+internal data class LocationRequest(
+    val maxAgeMs: Long = 0L,
+    val timeoutMs: Long = 0L,
+    val coarse: Boolean = false,
+) {
+    fun toJson(): JSONObject = JSONObject()
+        .put("max_age_ms", maxAgeMs)
+        .put("timeout_ms", timeoutMs)
+        .put("coarse", coarse)
+
+    companion object {
+        fun fromJson(o: JSONObject) = LocationRequest(
+            maxAgeMs = o.optLong("max_age_ms"),
+            timeoutMs = o.optLong("timeout_ms"),
+            coarse = o.optBoolean("coarse"),
+        )
+    }
+}
+
 internal data class MessageBox(
     val title: String = "",
     val text: String = "",
@@ -644,6 +678,43 @@ internal data class PlainText(
     companion object {
         fun fromJson(o: JSONObject) = PlainText(
             text = o.optString("text"),
+        )
+    }
+}
+
+internal data class Position(
+    val latitude: Double = 0.0,
+    val longitude: Double = 0.0,
+    val accuracyM: Double = 0.0,
+    val altitudeM: Double = 0.0,
+    val speedMps: Double = 0.0,
+    val bearingDeg: Double = 0.0,
+    val hasMotion: Boolean = false,
+    val timeMs: Long = 0L,
+    val provider: String = "",
+) {
+    fun toJson(): JSONObject = JSONObject()
+        .put("latitude", latitude)
+        .put("longitude", longitude)
+        .put("accuracy_m", accuracyM)
+        .put("altitude_m", altitudeM)
+        .put("speed_mps", speedMps)
+        .put("bearing_deg", bearingDeg)
+        .put("has_motion", hasMotion)
+        .put("time_ms", timeMs)
+        .put("provider", provider)
+
+    companion object {
+        fun fromJson(o: JSONObject) = Position(
+            latitude = o.optDouble("latitude", 0.0),
+            longitude = o.optDouble("longitude", 0.0),
+            accuracyM = o.optDouble("accuracy_m", 0.0),
+            altitudeM = o.optDouble("altitude_m", 0.0),
+            speedMps = o.optDouble("speed_mps", 0.0),
+            bearingDeg = o.optDouble("bearing_deg", 0.0),
+            hasMotion = o.optBoolean("has_motion"),
+            timeMs = o.optLong("time_ms"),
+            provider = o.optString("provider"),
         )
     }
 }

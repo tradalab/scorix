@@ -17,6 +17,7 @@ var builtinModules = map[string]builtinModule{
 	"env":          {"github.com/tradalab/scorix/module/env", "env"},
 	"fs":           {"github.com/tradalab/scorix/module/fs", "fs"},
 	"http":         {"github.com/tradalab/scorix/module/httpfetch", "httpfetch"},
+	"geolocation":  {"github.com/tradalab/scorix/module/geolocation", "geolocation"},
 	"log":          {"github.com/tradalab/scorix/module/logfwd", "logfwd"},
 	"notification": {"github.com/tradalab/scorix/module/notification", "notification"},
 	"scanner":      {"github.com/tradalab/scorix/module/scanner", "scanner"},

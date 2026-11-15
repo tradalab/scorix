@@ -98,6 +98,12 @@ type KeystoreData struct {
 	Data  []byte `json:"data"`
 }
 
+type LocationRequest struct {
+	MaxAgeMs  int64 `json:"max_age_ms"`
+	TimeoutMs int64 `json:"timeout_ms"`
+	Coarse    bool  `json:"coarse"`
+}
+
 type MessageBox struct {
 	Title string `json:"title"`
 	Text  string `json:"text"`
@@ -142,6 +148,18 @@ type PickedPlace struct {
 
 type PlainText struct {
 	Text string `json:"text"`
+}
+
+type Position struct {
+	Latitude   float64 `json:"latitude"`
+	Longitude  float64 `json:"longitude"`
+	AccuracyM  float64 `json:"accuracy_m"`
+	AltitudeM  float64 `json:"altitude_m"`
+	SpeedMps   float64 `json:"speed_mps"`
+	BearingDeg float64 `json:"bearing_deg"`
+	HasMotion  bool    `json:"has_motion"`
+	TimeMs     int64   `json:"time_ms"`
+	Provider   string  `json:"provider"`
 }
 
 type ScheduledNotification struct {
@@ -382,6 +400,19 @@ type sharePlugin struct{}
 func (sharePlugin) Share(ctx context.Context, req *ShareContent) (*Empty, error) {
 	out := new(Empty)
 	if err := native.Call(ctx, "share", "share", req, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+var Location locationPlugin
+
+type locationPlugin struct{}
+
+// Asks for the permission first, and once per process asks to upgrade to precise location when only approximate was granted; rejects denied when refused, disabled when location is off, timeout when no fix came within timeout_ms. Waits for a fix within 25 m, settles for 100 m after 10 s, else the best by the timeout.
+func (locationPlugin) Current(ctx context.Context, req *LocationRequest) (*Position, error) {
+	out := new(Position)
+	if err := native.Call(ctx, "location", "current", req, out); err != nil {
 		return nil, err
 	}
 	return out, nil
