@@ -11,6 +11,7 @@ type MenuItem struct {
 	Separator bool
 	Submenu   []MenuItem
 	OnClick   func() // runs on the UI thread
+	Edit      EditCommand
 }
 
 type MenuBarSetter interface {

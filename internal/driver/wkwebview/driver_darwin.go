@@ -76,6 +76,7 @@ func (r *rt) Run() error {
 
 	delegate := newAppDelegate(r)
 	r.app.Send(sel("setDelegate:"), delegate)
+	installMenuBar(r.app, nil)
 	r.app.Send(sel("activateIgnoringOtherApps:"), true)
 
 	r.app.Send(sel("run")) // blocks until stop:
@@ -141,6 +142,19 @@ func newAppDelegate(r *rt) objc.ID {
 						if rt != nil {
 							rt.fire(window.RuntimeReady)
 						}
+					},
+				},
+				{
+					Cmd: sel("applicationShouldTerminate:"),
+					Fn: func(self objc.ID, _ objc.SEL, _ objc.ID) uint64 {
+						defer recoverCB("applicationShouldTerminate:")
+						activeMu.Lock()
+						rt := activeRT
+						activeMu.Unlock()
+						if rt != nil {
+							go rt.Quit()
+						}
+						return nsTerminateCancel
 					},
 				},
 				{

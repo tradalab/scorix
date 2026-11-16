@@ -217,6 +217,8 @@ type win struct {
 	mu         sync.Mutex
 	events     map[window.Event][]func(window.EventData)
 	closeFired bool // EventClose already fired (windowShouldClose:); windowWillClose: won't re-fire
+	menu       []window.MenuItem
+	ownMenu    bool
 }
 
 // fireClose dispatches a cancelable EventClose and reports whether a handler
@@ -541,6 +543,7 @@ func registerWinDelegate(w *win) {
 					Fn: func(self objc.ID, _ objc.SEL, _ objc.ID) {
 						defer recoverCB("windowDidBecomeKey:")
 						if v, ok := winByDelegate.Load(self); ok {
+							v.(*win).menuBecameKey()
 							v.(*win).fire(window.EventFocus)
 						}
 					},

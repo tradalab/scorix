@@ -198,3 +198,23 @@ func TestWinSetMenuCommand(t *testing.T) {
 		t.Fatalf("sys:menu = %s", m.Data)
 	}
 }
+
+func TestAnEditRoleTellsTheDriverItsCommandUnlessTheAppHandlesTheClick(t *testing.T) {
+	a, stop := newMenuApp(t, menu.Menu{
+		menu.Sub("Edit",
+			menu.Std(menu.RoleCopy),
+			menu.Item{Role: menu.RolePaste, OnClick: func() {}},
+			menu.Std(menu.RoleQuit)),
+	})
+	defer stop()
+	edit := headless.MenuOf(a.MainWindow().Window)[0].Submenu
+	if edit[0].Edit != window.EditCopy {
+		t.Errorf("copy role carries %q, want %q", edit[0].Edit, window.EditCopy)
+	}
+	if edit[1].Edit != "" {
+		t.Errorf("paste with its own OnClick carries %q, want none", edit[1].Edit)
+	}
+	if edit[2].Edit != "" {
+		t.Errorf("quit carries %q, want none", edit[2].Edit)
+	}
+}

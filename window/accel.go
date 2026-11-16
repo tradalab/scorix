@@ -38,7 +38,7 @@ func ParseAccel(s string) (Accel, error) {
 	parts := strings.Split(s, "+")
 	for _, p := range parts[:len(parts)-1] {
 		switch strings.ToLower(strings.TrimSpace(p)) {
-		case "ctrl", "control", "cmdorctrl", "commandorcontrol": // CmdOrCtrl is Ctrl until the mac driver grows a menu
+		case "ctrl", "control", "cmdorctrl", "commandorcontrol":
 			a.Ctrl = true
 		case "alt", "option":
 			a.Alt = true

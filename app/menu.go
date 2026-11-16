@@ -85,6 +85,7 @@ func (a *App) resolveMenu(aw *AppWindow, items menu.Menu) []window.MenuItem {
 		}
 		fn := it.OnClick
 		if fn == nil {
+			mi.Edit = editCommands[it.Role]
 			fn = a.roleAction(aw, it.Role)
 		}
 		if fn == nil {
