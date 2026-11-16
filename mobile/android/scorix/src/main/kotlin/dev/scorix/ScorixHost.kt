@@ -82,10 +82,11 @@ object ScorixHost {
     private var hidden = false
 
     init {
-        for (p in listOf(KeystorePlugin(), BiometricPlugin(), ClipboardPlugin(), DialogPlugin(), ScannerPlugin(), BrowserPlugin(), SharePlugin(), LocationPlugin(), BluetoothPlugin(), NotificationPlugin(), WidgetPlugin())) plugins[p.name] = p
+        for (p in listOf(KeystorePlugin(), BiometricPlugin(), ClipboardPlugin(), DialogPlugin(), ScannerPlugin(), BrowserPlugin(), SharePlugin(), LocationPlugin(), BluetoothPlugin(), NotificationPlugin(), WidgetPlugin(), CapturePlugin())) plugins[p.name] = p
     }
 
     internal fun currentActivity(): Activity? = activity
+    internal fun currentWebView(): WebView? = webView
 
     internal fun goBack(): Boolean {
         val wv = webView ?: return false

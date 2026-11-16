@@ -114,3 +114,67 @@ func TestWindowCommandsWebModeUnavailable(t *testing.T) {
 		t.Fatalf("web-mode win:minimize: state=%q code=%q", r.State, r.ErrorCode)
 	}
 }
+
+func TestCaptureHandsThePageImageToTheCallerAndPassesADriverErrorThrough(t *testing.T) {
+	withHeadlessDriver(t)
+	a, err := New(Options{URL: "scorix://app/index.html"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Serve("scorix", fstest.MapFS{"index.html": {Data: []byte("<html></html>")}})
+	ready := make(chan struct{}, 1)
+	a.OnReady(func(*App) {
+		select {
+		case ready <- struct{}{}:
+		default:
+		}
+	})
+	done := make(chan error, 1)
+	go func() { done <- a.Run() }()
+	select {
+	case <-ready:
+	case <-time.After(2 * time.Second):
+		t.Fatal("OnReady never fired")
+	}
+	defer func() { a.Quit(); <-done }()
+	w := a.MainWindow().Window
+
+	if r := invokeWin(t, w, "c0", "win:capture", ""); r.State != "error" {
+		t.Fatalf("capture before the page drew: %q, want error", r.State)
+	}
+
+	png := []byte("\x89PNG\r\n\x1a\nfake")
+	headless.SetCapture(w, png, nil)
+	r := invokeWin(t, w, "c1", "win:capture", "")
+	if r.State != "done" {
+		t.Fatalf("capture: %q %q", r.State, r.Error)
+	}
+	var got struct {
+		PNG []byte `json:"png"`
+	}
+	if err := json.Unmarshal(r.Data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if string(got.PNG) != string(png) {
+		t.Fatalf("png = %q, want %q", got.PNG, png)
+	}
+
+	headless.SetCapture(w, nil, fault.New(fault.CodeUnavailable, "gone"))
+	if r := invokeWin(t, w, "c2", "win:capture", ""); r.State != "error" || r.ErrorCode != fault.CodeUnavailable {
+		t.Fatalf("capture with a driver fault: %q %q", r.State, r.ErrorCode)
+	}
+}
+
+func TestCaptureInWebModeIsUnavailable(t *testing.T) {
+	a := newTestApp(t)
+	ts := httptest.NewServer(a.Handler())
+	defer ts.Close()
+	c := dialWS(t, ts)
+	defer c.Close()
+
+	wsSend(t, c, webview.Message{ID: "1", Kind: "command", Name: "win:capture", State: "start"})
+	r := wsRecv(t, c)
+	if r.State != "error" || r.ErrorCode != fault.CodeUnavailable {
+		t.Fatalf("web-mode win:capture: state=%q code=%q", r.State, r.ErrorCode)
+	}
+}

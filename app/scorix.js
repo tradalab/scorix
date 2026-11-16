@@ -337,6 +337,13 @@
     setMenu: (items) => api.invoke("win:setMenu", { items: items || [] }),
     popupMenu: (items, x, y) =>
       api.invoke("win:popupMenu", { items: items || [], x: typeof x === "number" ? x : -1, y: typeof y === "number" ? y : -1 }),
+    capture: () =>
+      api.invoke("win:capture").then((r) => {
+        const bin = atob((r && r.png) || "");
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return new Blob([bytes], { type: "image/png" });
+      }),
   };
 
   if (mode === "app") {

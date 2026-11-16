@@ -117,6 +117,17 @@ func (a *App) registerWindowCommands() {
 		w.PopupMenu(req.Items, req.X, req.Y)
 		return nil, nil
 	})
+	a.reg.Command("win:capture", func(ctx context.Context, _ json.RawMessage, _ ipc.Stream) (any, error) {
+		w := a.windowFrom(ctx)
+		if w == nil {
+			return nil, fault.New(fault.CodeUnavailable, "win: no native window for this client (app mode only)")
+		}
+		png, err := w.Capture(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return map[string][]byte{"png": png}, nil
+	})
 	a.reg.Command("win:screens", func(context.Context, json.RawMessage, ipc.Stream) (any, error) {
 		return map[string]any{"screens": a.Screens()}, nil
 	})

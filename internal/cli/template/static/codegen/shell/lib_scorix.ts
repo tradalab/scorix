@@ -70,6 +70,7 @@ export interface ScorixWindow {
   startDrag(): Promise<void>;
   setMenu(items: ScorixMenuItem[]): Promise<void>;
   popupMenu(items: ScorixMenuItem[], x?: number, y?: number): Promise<void>; // clicks arrive as the sys:menu event {id, label}
+  capture(): Promise<Blob>;
 }
 
 // Matches the window.scorix bridge the Go app injects; apps must not ship their own.

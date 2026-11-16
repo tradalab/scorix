@@ -333,3 +333,14 @@ message WidgetCell {
   // What a tap on the cell opens the app on; empty, the tap opens the timeline's url.
   string url = 6;
 }
+
+// What the WebView shows, drawn at the screen's density.
+// @native
+service Capture {
+  // Rejects unavailable when no page is laid out on screen.
+  rpc Page(Empty) returns (PageImage);
+}
+
+message PageImage {
+  bytes png = 1;
+}

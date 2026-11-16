@@ -3,9 +3,7 @@
 // Package mac is the Objective-C runtime access shared by the macOS modules
 // (status bar, notifications) through purego, with no CGO.
 //
-// It deliberately does NOT serve internal/driver/wkwebview, which still carries
-// its own private copy of these helpers. Merging the two means editing ABI code
-// that has never run on real hardware; do it once a Mac is available, not before.
+// internal/driver/wkwebview keeps its own msgSend helpers and takes only NewBlock from here.
 package mac
 
 import (

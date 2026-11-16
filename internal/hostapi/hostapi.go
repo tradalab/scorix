@@ -136,6 +136,10 @@ type NotificationSchedule struct {
 	Items []ScheduledNotification `json:"items"`
 }
 
+type PageImage struct {
+	Png []byte `json:"png"`
+}
+
 type PickedDocument struct {
 	Name string `json:"name"`
 	Data []byte `json:"data"`
@@ -533,6 +537,19 @@ func (widgetPlugin) SetTimeline(ctx context.Context, req *WidgetTimeline) (*Empt
 func (widgetPlugin) RequestPin(ctx context.Context, req *WidgetKind) (*Empty, error) {
 	out := new(Empty)
 	if err := native.Call(ctx, "widget", "requestPin", req, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+var Capture capturePlugin
+
+type capturePlugin struct{}
+
+// Rejects unavailable when no page is laid out on screen.
+func (capturePlugin) Page(ctx context.Context, req *Empty) (*PageImage, error) {
+	out := new(PageImage)
+	if err := native.Call(ctx, "capture", "page", req, out); err != nil {
 		return nil, err
 	}
 	return out, nil

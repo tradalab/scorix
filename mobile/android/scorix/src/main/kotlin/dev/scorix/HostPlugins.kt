@@ -235,6 +235,21 @@ internal abstract class WidgetPluginBase : ScorixPlugin {
     }
 }
 
+/** The `capture` plugin, implemented as CapturePlugin. */
+internal abstract class CapturePluginBase : ScorixPlugin {
+    final override val name = "capture"
+
+    /** Rejects unavailable when no page is laid out on screen. */
+    abstract fun page(req: Empty, reply: Reply<PageImage>)
+
+    final override fun call(method: String, args: JSONObject, call: PluginCall) {
+        when (method) {
+            "page" -> page(Empty.fromJson(args), Reply(call) { it.toJson() })
+            else -> call.reject("no_method", "capture has no method $method")
+        }
+    }
+}
+
 internal data class AuthenticateRequest(
     val title: String = "",
     val subtitle: String = "",
@@ -633,6 +648,19 @@ internal data class NotificationSchedule(
     companion object {
         fun fromJson(o: JSONObject) = NotificationSchedule(
             items = o.optJSONArray("items")?.let { a -> List(a.length()) { ScheduledNotification.fromJson(a.getJSONObject(it)) } } ?: emptyList(),
+        )
+    }
+}
+
+internal data class PageImage(
+    val png: ByteArray = ByteArray(0),
+) {
+    fun toJson(): JSONObject = JSONObject()
+        .put("png", Base64.encodeToString(png, Base64.NO_WRAP))
+
+    companion object {
+        fun fromJson(o: JSONObject) = PageImage(
+            png = if (o.isNull("png")) ByteArray(0) else Base64.decode(o.optString("png"), Base64.DEFAULT),
         )
     }
 }

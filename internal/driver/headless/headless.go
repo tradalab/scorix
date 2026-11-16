@@ -2,6 +2,8 @@
 package headless
 
 import (
+	"context"
+	"errors"
 	"strconv"
 	"sync"
 
@@ -348,9 +350,31 @@ func (w *win) fire(evt window.Event) {
 }
 
 type view struct {
-	mu    sync.Mutex
-	onMsg func(raw []byte)
-	toJS  [][]byte
+	mu     sync.Mutex
+	onMsg  func(raw []byte)
+	toJS   [][]byte
+	png    []byte
+	capErr error
+}
+
+func (v *view) Capture(context.Context) ([]byte, error) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.capErr != nil {
+		return nil, v.capErr
+	}
+	if v.png == nil {
+		return nil, errors.New("headless: nothing drawn yet")
+	}
+	return append([]byte(nil), v.png...), nil
+}
+
+// SetCapture is what the next Capture on w returns.
+func SetCapture(w window.Window, png []byte, err error) {
+	v := w.View().(*view)
+	v.mu.Lock()
+	v.png, v.capErr = append([]byte(nil), png...), err
+	v.mu.Unlock()
 }
 
 func (v *view) Navigate(string)   {}
