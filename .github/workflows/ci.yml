@@ -16,7 +16,15 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go test ./... -count=1
+      - name: go test
+        shell: bash
+        run: |
+          set -o pipefail
+          go test ./... -count=1 2>&1 | tee test.log
+      - name: test results as annotations
+        if: always()
+        shell: bash
+        run: .github/scripts/go-test-annotations.sh test.log "test ${{ runner.os }}"
 
   race:
     runs-on: windows-latest
@@ -27,7 +35,13 @@ jobs:
           go-version-file: go.mod
       - name: race excluding webview2 (checkptr rejects its no-CGO COM laundering; not a data race)
         shell: bash
-        run: go test -race -count=1 $(go list ./... | grep -v internal/driver/webview2)
+        run: |
+          set -o pipefail
+          go test -race -count=1 $(go list ./... | grep -v internal/driver/webview2) 2>&1 | tee race.log
+      - name: race results as annotations
+        if: always()
+        shell: bash
+        run: .github/scripts/go-test-annotations.sh race.log "race"
 
   modules:
     runs-on: ubuntu-latest
@@ -115,12 +129,21 @@ jobs:
         if: runner.os == 'Linux'
         env:
           SCORIX_E2E: "1"
-        run: xvfb-run -a -s "-screen 0 1280x1024x24" bash -c "openbox & sleep 2; go test ./internal/e2e/ ./internal/driver/webkitgtk/ -count=1 -v"
+        run: |
+          set -o pipefail
+          xvfb-run -a -s "-screen 0 1280x1024x24" bash -c "openbox & sleep 2; go test ./internal/e2e/ ./internal/driver/webkitgtk/ -count=1 -v" 2>&1 | tee e2e.log
       - name: e2e
         if: runner.os != 'Linux'
+        shell: bash
         env:
           SCORIX_E2E: "1"
-        run: go test ./internal/e2e/ -count=1 -v
+        run: |
+          set -o pipefail
+          go test ./internal/e2e/ -count=1 -v 2>&1 | tee e2e.log
+      - name: e2e results as annotations
+        if: always()
+        shell: bash
+        run: .github/scripts/go-test-annotations.sh e2e.log "e2e ${{ runner.os }}"
 
   # The only job on the webkitgtk 4.0 soname: every other one installs 4.1, so
   # the driver's dlopen fallback has never run in CI, and an LTS desktop is
