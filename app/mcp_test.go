@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -919,6 +920,9 @@ func TestMCPRelayReportsARefusalInsteadOfStartingTheApp(t *testing.T) {
 
 func runningAsAppImage(t *testing.T, image string) {
 	t.Helper()
+	if runtime.GOOS != "linux" {
+		t.Skip("an AppImage only runs on Linux")
+	}
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)

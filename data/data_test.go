@@ -255,7 +255,10 @@ func TestASlowStatementIsLoggedWithoutItsArguments(t *testing.T) {
 	if buf.Len() != 0 {
 		t.Fatalf("logged with Slow unset: %s", buf.String())
 	}
-	slow := open(t, Options{MaxOpen: 1, MaxIdle: 1, MaxLifetime: time.Minute, Slow: time.Nanosecond})
+	old := elapsed
+	elapsed = func(time.Time) time.Duration { return time.Second }
+	t.Cleanup(func() { elapsed = old })
+	slow := open(t, Options{MaxOpen: 1, MaxIdle: 1, MaxLifetime: time.Minute, Slow: time.Millisecond})
 	slow.QueryRowCtx(lctx, &n, `SELECT count(*) FROM links WHERE slug = ?`, "hunter2")
 	slow.ExecCtx(lctx, `UPDATE links SET views = ? WHERE slug = 'zz'`, 1)
 	var ls []link

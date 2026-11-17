@@ -66,6 +66,7 @@ func TryLoad(t testing.TB, m module.Module, cfg map[string]any) (*Rig, error) {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
 	t.Setenv("APPDATA", filepath.Join(home, "data"))
 	section := map[string]any{"enabled": true}

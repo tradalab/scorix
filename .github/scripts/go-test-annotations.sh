@@ -12,6 +12,10 @@ awk '
   name && /^    / { sub(/^ +/, ""); if (length(msg) < 900) msg = msg (msg ? " | " : "") $0 }
   END { if (name) print "::error title=" name "::" msg }
 ' "$log" | head -10
-failed=$(grep -cE -- '^ *--- FAIL: ' "$log" || true)
+failed=$(grep -E -- '^ *--- FAIL: ' "$log" | awk '{print $3}' | paste -sd ' ' -)
 passed=$(grep -E -- '^ *--- PASS: ' "$log" | awk '{print $3}' | paste -sd ' ' -)
-echo "::notice title=$label::failed: $failed; passed: ${passed:-see log}"
+if [ -z "$failed" ] && ! grep -qE '^(ok|PASS)([ \t]|$)' "$log"; then
+  tail=$(grep -v '^[[:space:]]*$' "$log" | tail -15 | cut -c1-200 | paste -sd '|' -)
+  echo "::error title=$label ended without a result::$tail"
+fi
+echo "::notice title=$label::failed: ${failed:-none}; passed: ${passed:-see log}"

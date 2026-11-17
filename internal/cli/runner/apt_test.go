@@ -26,22 +26,28 @@ func genAptKey(t *testing.T, uid string) aptKeys {
 	if !hasTool("gpg") || !hasTool("gpgv") {
 		t.Skip("gpg and gpgv are needed")
 	}
-	home := filepath.Join(t.TempDir(), "gnupg")
-	if err := os.Mkdir(home, 0o700); err != nil {
+	home, err := os.MkdirTemp("", "scx-gpg-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(home) })
+	if err := os.Chmod(home, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	run := func(args ...string) []byte {
 		t.Helper()
-		cmd := exec.Command("gpg", append([]string{"--homedir", home, "--batch", "--pinentry-mode", "loopback", "--passphrase", ""}, args...)...)
+		cmd := exec.Command("gpg", append([]string{"--homedir", filepath.ToSlash(home), "--batch", "--pinentry-mode", "loopback", "--passphrase", ""}, args...)...)
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
 		out, err := cmd.Output()
 		if err != nil {
-			t.Fatalf("gpg %v: %v", args, err)
+			t.Fatalf("gpg %v: %v: %s", args, err, strings.TrimSpace(stderr.String()))
 		}
 		return out
 	}
 	run("--quick-gen-key", uid, "ed25519", "sign", "never")
 	keys := aptKeys{public: run("--armor", "--export", uid), private: run("--armor", "--export-secret-keys", uid)}
-	t.Cleanup(func() { _ = exec.Command("gpgconf", "--homedir", home, "--kill", "all").Run() })
+	t.Cleanup(func() { _ = exec.Command("gpgconf", "--homedir", filepath.ToSlash(home), "--kill", "all").Run() })
 	return keys
 }
 
@@ -171,15 +177,15 @@ func TestAptWritesASignedRepositoryThatGpgvAccepts(t *testing.T) {
 		}
 	}
 
-	ring := filepath.Join(t.TempDir(), "ring.gpg")
+	ring := filepath.ToSlash(filepath.Join(t.TempDir(), "ring.gpg"))
 	dearmor := exec.Command("gpg", "--batch", "--yes", "--dearmor", "-o", ring)
 	dearmor.Stdin = bytes.NewReader(keys.public)
 	if out, err := dearmor.CombinedOutput(); err != nil {
 		t.Fatalf("dearmor: %v %s", err, out)
 	}
 	for _, args := range [][]string{
-		{"--keyring", ring, filepath.Join(repo, "dists", "stable", "InRelease")},
-		{"--keyring", ring, filepath.Join(repo, "dists", "stable", "Release.gpg"), filepath.Join(repo, "dists", "stable", "Release")},
+		{"--keyring", ring, filepath.ToSlash(filepath.Join(repo, "dists", "stable", "InRelease"))},
+		{"--keyring", ring, filepath.ToSlash(filepath.Join(repo, "dists", "stable", "Release.gpg")), filepath.ToSlash(filepath.Join(repo, "dists", "stable", "Release"))},
 	} {
 		if out, err := exec.Command("gpgv", args...).CombinedOutput(); err != nil {
 			t.Fatalf("gpgv %v: %v %s", args, err, out)

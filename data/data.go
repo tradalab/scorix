@@ -17,6 +17,8 @@ import (
 // ErrNotFound is what QueryRowCtx returns when the query matched no row.
 var ErrNotFound = errors.New("data: no rows in result set")
 
+var elapsed = time.Since
+
 // Session is a connection or a transaction. dst of QueryRowCtx is a pointer to a struct
 // whose db tags name every column, or to one value for a one-column result; QueryRowsCtx
 // takes a pointer to a slice of either.
@@ -119,7 +121,7 @@ func (s session) timed(ctx context.Context, query string) func() {
 	}
 	start := time.Now()
 	return func() {
-		if took := time.Since(start); took > s.slow {
+		if took := elapsed(start); took > s.slow {
 			observe.Log(ctx).LogAttrs(ctx, slog.LevelWarn, "slow sql", slog.String("query", query), slog.Duration("took", took))
 		}
 	}

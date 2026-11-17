@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -66,13 +67,13 @@ func (d dockerRun) args(command ...string) []string {
 	a = append(a, "--mount", bindSpec(d.SDK, dockerSDKMount, false))
 	env := append([]string{
 		"ANDROID_HOME=" + dockerSDKMount,
-		"HOME=" + filepath.Join(d.Cache, "home"),
+		"HOME=" + path.Join(d.Cache, "home"),
 		"GOMODCACHE=" + d.ModCache,
-		"GOCACHE=" + filepath.Join(d.Cache, "go"),
-		"GRADLE_USER_HOME=" + filepath.Join(d.Cache, "gradle"),
+		"GOCACHE=" + path.Join(d.Cache, "go"),
+		"GRADLE_USER_HOME=" + path.Join(d.Cache, "gradle"),
 		// GOROOT is already the toolchain go.mod picked; a download would land outside the mounts.
 		"GOTOOLCHAIN=local",
-		"PATH=" + filepath.Join(d.GOROOT, "bin") + ":/opt/gradle/bin:/opt/java/openjdk/bin:/usr/local/bin:/usr/bin:/bin",
+		"PATH=" + path.Join(d.GOROOT, "bin") + ":/opt/gradle/bin:/opt/java/openjdk/bin:/usr/local/bin:/usr/bin:/bin",
 	}, d.Env...)
 	for _, e := range env {
 		a = append(a, "-e", e)
