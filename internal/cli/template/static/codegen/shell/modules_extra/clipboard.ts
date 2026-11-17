@@ -1,8 +1,16 @@
 
-/** Copies text on the user's machine: the module on desktop, the page's clipboard in web mode. Rejects when nothing copied. */
+/** Copies text on the user's machine: the module on desktop, falling back to a selection copy when the OS has no clipboard tool, and the page's clipboard in web mode. Rejects when nothing copied. */
 export async function writeClipboard(text: string): Promise<void> {
   if (!isWebMode() && !(await webModeReady())) {
-    await clipboard.write({ text });
+    try {
+      await clipboard.write({ text });
+    } catch (moduleError) {
+      try {
+        copyBySelection(text);
+      } catch {
+        throw moduleError;
+      }
+    }
     return;
   }
   if (navigator.clipboard) {
