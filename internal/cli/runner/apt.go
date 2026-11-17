@@ -295,14 +295,14 @@ func aptSign(ctx context.Context, dists, privateKey string, publicKey []byte) er
 	defer os.RemoveAll(home)
 	defer func() {
 		if hasTool("gpgconf") {
-			_ = exec.Command("gpgconf", "--homedir", filepath.ToSlash(home), "--kill", "all").Run()
+			_ = exec.Command("gpgconf", "--homedir", home, "--kill", "all").Run()
 		}
 	}()
 	if err := os.Chmod(home, 0o700); err != nil {
 		return err
 	}
 	gpg := func(stdin []byte, args ...string) ([]byte, error) {
-		cmd := exec.CommandContext(ctx, "gpg", append([]string{"--homedir", filepath.ToSlash(home), "--batch", "--yes", "--pinentry-mode", "loopback", "--passphrase", ""}, args...)...)
+		cmd := exec.CommandContext(ctx, "gpg", append([]string{"--homedir", home, "--batch", "--yes", "--pinentry-mode", "loopback", "--passphrase", ""}, args...)...)
 		cmd.Stdin = bytes.NewReader(stdin)
 		var out, errb bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &out, &errb
@@ -315,10 +315,10 @@ func aptSign(ctx context.Context, dists, privateKey string, publicKey []byte) er
 		return err
 	}
 	release := filepath.Join(dists, "Release")
-	if _, err := gpg(nil, "--digest-algo", "SHA256", "--clearsign", "-o", filepath.ToSlash(filepath.Join(dists, "InRelease")), filepath.ToSlash(release)); err != nil {
+	if _, err := gpg(nil, "--digest-algo", "SHA256", "--clearsign", "-o", filepath.Join(dists, "InRelease"), release); err != nil {
 		return err
 	}
-	if _, err := gpg(nil, "--digest-algo", "SHA256", "--armor", "--detach-sign", "-o", filepath.ToSlash(release+".gpg"), filepath.ToSlash(release)); err != nil {
+	if _, err := gpg(nil, "--digest-algo", "SHA256", "--armor", "--detach-sign", "-o", release+".gpg", release); err != nil {
 		return err
 	}
 
@@ -330,7 +330,7 @@ func aptSign(ctx context.Context, dists, privateKey string, publicKey []byte) er
 	if err := os.WriteFile(ringPath, ring, 0o600); err != nil {
 		return err
 	}
-	verify := exec.CommandContext(ctx, "gpgv", "--keyring", filepath.ToSlash(ringPath), filepath.ToSlash(filepath.Join(dists, "InRelease")))
+	verify := exec.CommandContext(ctx, "gpgv", "--keyring", ringPath, filepath.Join(dists, "InRelease"))
 	if out, err := verify.CombinedOutput(); err != nil {
 		return fmt.Errorf("apt: the signing key does not match the public key the .deb ships, so apt would refuse every update: %s", strings.TrimSpace(string(out)))
 	}

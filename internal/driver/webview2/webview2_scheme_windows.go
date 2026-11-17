@@ -28,7 +28,7 @@ func wireScheme(core, env unsafe.Pointer, scheme string, h webview.SchemeHandler
 	comCallStr(core, cwvAddWebResourceReqFilter, filter, webResourceContextAll)
 
 	handler := newHandler(func(_ /*sender*/, args unsafe.Pointer) {
-		serveRequest(env, args, h)
+		serveRequest(env, args, scheme, h)
 	})
 	token := new(int64) // heap: GC-stable address for the out-param
 	comCall(core, cwvAddWebResourceRequested, uintptr(unsafe.Pointer(handler)), uintptr(unsafe.Pointer(token)))
@@ -36,7 +36,7 @@ func wireScheme(core, env unsafe.Pointer, scheme string, h webview.SchemeHandler
 }
 
 // serveRequest answers one WebResourceRequested event from the handler (UI thread).
-func serveRequest(env, args unsafe.Pointer, h webview.SchemeHandler) {
+func serveRequest(env, args unsafe.Pointer, scheme string, h webview.SchemeHandler) {
 	req, _ := comCallOut(args, argsGetRequest)
 	if req == nil {
 		return
@@ -48,6 +48,9 @@ func serveRequest(env, args unsafe.Pointer, h webview.SchemeHandler) {
 	}
 	uri := windows.UTF16PtrToString((*uint16)(uriPtr))
 	coTaskMemFree(uriPtr)
+	if !schemeOwns(scheme, uri) {
+		return
+	}
 
 	resp := h(&webview.Request{Method: "GET", URL: uri})
 	if resp == nil {

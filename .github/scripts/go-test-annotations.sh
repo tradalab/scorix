@@ -15,7 +15,7 @@ awk '
 failed=$(grep -E -- '^ *--- FAIL: ' "$log" | awk '{print $3}' | paste -sd ' ' -)
 passed=$(grep -E -- '^ *--- PASS: ' "$log" | awk '{print $3}' | paste -sd ' ' -)
 if [ -z "$failed" ] && ! grep -qE '^(ok|PASS)([ \t]|$)' "$log"; then
-  tail=$(grep -v '^[[:space:]]*$' "$log" | tail -15 | cut -c1-200 | paste -sd '|' -)
+  tail=$( { grep -E 'WARN|ERROR|PROBE|panic' "$log" | head -8; grep -v '^[[:space:]]*$' "$log" | tail -8; } | cut -c1-300 | paste -sd '|' -)
   echo "::error title=$label ended without a result::$tail"
 fi
 echo "::notice title=$label::failed: ${failed:-none}; passed: ${passed:-see log}"
