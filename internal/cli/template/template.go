@@ -33,6 +33,7 @@ const (
 	ShellLibScorix   = "static/codegen/shell/lib_scorix.ts"
 	DocsIPCSurface   = "static/codegen/docs/ipc-surface.md"
 	AndroidPlugins   = "static/codegen/android/plugins.kt"
+	IOSPlugins       = "static/codegen/ios/plugins.swift"
 
 	// One fragment per module package, written by `go generate ./internal/modulets`.
 	ShellModuleDir   = "static/codegen/shell/modules"

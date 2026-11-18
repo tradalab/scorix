@@ -46,10 +46,17 @@ func GenerateHostAPI(root string, check bool) error {
 		return fmt.Errorf("host.proto: %w", err)
 	}
 	kt.Host, kt.Vis = true, "internal "
+	sw, err := swiftNatives(pf)
+	if err != nil {
+		return fmt.Errorf("host.proto: %w", err)
+	}
+	sw.Host = true
 	files := []generatedFile{
 		{Path: filepath.Join(root, "internal", "hostapi", "hostapi.go"), Template: mustRead(template.GoHostAPI), Data: pf, Go: true, Force: true},
 		{Path: filepath.Join(root, "mobile", "android", "scorix", "src", "main", "kotlin", "dev", "scorix", "HostPlugins.kt"),
 			Template: mustRead(template.AndroidPlugins), Data: kt, Force: true},
+		{Path: filepath.Join(root, "mobile", "ios", "ScorixHost", "Sources", "ScorixHost", "HostPlugins.swift"),
+			Template: mustRead(template.IOSPlugins), Data: sw, Force: true},
 	}
 	for _, f := range files {
 		s, err := renderGeneratedFile(f)

@@ -323,6 +323,14 @@ func nativeFiles(root string, pf protoFile, gen protoTemplateData) ([]generatedF
 	if len(pf.Natives) > 0 || fileExists(hostPath) {
 		out = append(out, generatedFile{Path: hostPath, Template: mustRead(template.GoHost), Data: gen, Go: true, Force: true})
 	}
+	swiftPath := filepath.Join(root, "ios", "App", "Scorix", "ScorixPlugins.swift")
+	if fileExists(filepath.Join(root, "ios", "App")) && (len(pf.Natives) > 0 || fileExists(swiftPath)) {
+		sw, err := swiftNatives(pf)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, generatedFile{Path: swiftPath, Template: mustRead(template.IOSPlugins), Data: sw, Force: true})
+	}
 	ktPath := filepath.Join(root, "android", "app", "src", "scorix", "kotlin", "dev", "scorix", "app", "ScorixPlugins.kt")
 	if !fileExists(filepath.Join(root, "android", "app")) || (len(pf.Natives) == 0 && !fileExists(ktPath)) {
 		return out, nil
