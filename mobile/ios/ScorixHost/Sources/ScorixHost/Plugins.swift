@@ -14,7 +14,7 @@ import WebKit
 import WidgetKit
 
 extension Scorix {
-    func hostPlugins() -> [ScorixPlugin] {
+    @MainActor func hostPlugins() -> [ScorixPlugin] {
         [KeystorePlugin(), BiometricPlugin(), ClipboardPlugin(), DialogPlugin(), ScannerPlugin(), BrowserPlugin(),
          SharePlugin(), LocationPlugin(), BluetoothPlugin(), NotificationPlugin(), WidgetPlugin(), CapturePlugin()]
     }

@@ -59,7 +59,7 @@ public final class Scorix {
     }
 
     /// Starts the Go side once per process; plugins replace host plugins of the same name.
-    public func start(plugins: [ScorixPlugin] = []) {
+    @MainActor public func start(plugins: [ScorixPlugin] = []) {
         guard !started else { return }
         started = true
         core.register(hostPlugins() + plugins)
