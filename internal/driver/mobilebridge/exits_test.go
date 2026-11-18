@@ -1,4 +1,4 @@
-package androidwebview
+package mobilebridge
 
 import (
 	"testing"

@@ -1,6 +1,4 @@
-//go:build android && cgo
-
-package androidwebview
+package mobilebridge
 
 import (
 	"context"

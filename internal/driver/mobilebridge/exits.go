@@ -1,4 +1,4 @@
-package androidwebview
+package mobilebridge
 
 import (
 	"strings"
@@ -18,11 +18,14 @@ var web = map[string]bool{"http": true, "https": true, "file": true, "mailto": t
 
 func (e *exits) keepsOut(target string, clicked bool) bool {
 	scheme, _, _ := strings.Cut(strings.ToLower(target), ":")
+	if e.guard.Allows(target) {
+		return false
+	}
 	if inPage[scheme] || web[scheme] && !e.guard.KeepsOut(target) {
 		return false
 	}
 	if e.guard.FirstRefusal(target) {
-		logger.Warn("androidwebview: kept a navigation out of the WebView, it leaves the origin the app loaded", "origin", origin.Of(target))
+		logger.Warn("mobile webview: kept a navigation out of the WebView, it leaves the origin the app loaded", "origin", origin.Of(target))
 	}
 	if clicked && e.external != nil {
 		go e.external(target)
