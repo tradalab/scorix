@@ -16,11 +16,12 @@ var (
 	mobileDevice       string
 	mobileDevURL       string
 	mobileDocker       bool
+	mobileSimulator    bool
 )
 
 var mobileCmd = &cobra.Command{
 	Use:   "mobile",
-	Short: "Build the app for Android (iOS later): the same Go main, inside a native project",
+	Short: "Build the app for Android or iOS: the same Go main, inside a native project",
 }
 
 func mobileSub(use, short string, run func(cmd *cobra.Command, opt runner.MobileOptions) error) *cobra.Command {
@@ -37,6 +38,7 @@ func mobileSub(use, short string, run func(cmd *cobra.Command, opt runner.Mobile
 			Device:       mobileDevice,
 			DevURL:       mobileDevURL,
 			Docker:       mobileDocker,
+			Simulator:    mobileSimulator,
 		})
 	})
 	c.Flags().StringVarP(&mobileDir, "dir", "d", ".", "project root directory")
@@ -44,7 +46,7 @@ func mobileSub(use, short string, run func(cmd *cobra.Command, opt runner.Mobile
 }
 
 func init() {
-	initCmd := mobileSub("init", "Create the native project (android/) once; it is yours to edit from then on",
+	initCmd := mobileSub("init", "Create the native project (android/ or ios/) once; it is yours to edit from then on",
 		func(cmd *cobra.Command, opt runner.MobileOptions) error { return runner.MobileInit(cmd.Context(), opt) })
 
 	syncCmd := mobileSub("sync", "Rebuild the Go library per ABI (frontend embedded) and refresh the host library",
@@ -63,6 +65,9 @@ func init() {
 	devCmd.Flags().StringVarP(&mobileDevice, "device", "s", "", "adb serial or a `scorix device` name (default: the only one connected, else the default device)")
 	devCmd.Flags().StringVar(&mobileDevURL, "url", "", "an already-running frontend dev server instead of starting `pnpm dev`")
 
+	for _, c := range []*cobra.Command{syncCmd, buildCmd} {
+		c.Flags().BoolVar(&mobileSimulator, "simulator", false, "ios: build for the iOS simulator instead of an iPhone (signed ad hoc, no profile needed)")
+	}
 	for _, c := range []*cobra.Command{syncCmd, buildCmd, devCmd} {
 		c.Flags().StringSliceVar(&mobileABIs, "abi", nil, "ABIs to build (default arm64-v8a,x86_64)")
 		c.Flags().BoolVar(&mobileSkipFrontend, "skip-frontend", false, "reuse existing .scorix/dist instead of rebuilding the frontend")

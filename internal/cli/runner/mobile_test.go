@@ -126,10 +126,12 @@ func TestFindAAPT2PicksNewestBuildTools(t *testing.T) {
 }
 
 func TestMobilePlatform(t *testing.T) {
-	if err := checkMobilePlatform("android"); err != nil {
-		t.Fatal(err)
+	for _, p := range []string{"android", "ios"} {
+		if err := checkMobilePlatform(p); err != nil {
+			t.Fatal(err)
+		}
 	}
-	for _, p := range []string{"ios", "windows", ""} {
+	for _, p := range []string{"windows", ""} {
 		err := checkMobilePlatform(p)
 		ee, ok := err.(*ExitError)
 		if !ok || ee.Code != ExitUsage {

@@ -60,6 +60,7 @@ type MobileOptions struct {
 	Device       string
 	DevURL       string
 	Docker       bool
+	Simulator    bool
 	JSONOut      io.Writer
 }
 
@@ -113,12 +114,15 @@ func checkMobilePlatform(p string) error {
 	case "android":
 		return nil
 	case "ios":
-		return exitErrorf(ExitUsage, "usage", "ios is not supported yet: it needs a Mac and comes after Android")
+		return nil
 	}
-	return UsageError(fmt.Errorf("unknown mobile platform %q (want android)", p))
+	return UsageError(fmt.Errorf("unknown mobile platform %q (want android or ios)", p))
 }
 
 func mobileInit(ctx context.Context, opt MobileOptions, res *MobileResult) error {
+	if opt.Platform == "ios" {
+		return iosInit(ctx, opt, res)
+	}
 	bc, err := resolveBuildContext(opt.Dir, "android", "arm64")
 	if err != nil {
 		return err
@@ -156,6 +160,9 @@ func mobileInit(ctx context.Context, opt MobileOptions, res *MobileResult) error
 }
 
 func mobileSync(ctx context.Context, opt MobileOptions, res *MobileResult) (*BuildContext, error) {
+	if opt.Platform == "ios" {
+		return iosSync(ctx, opt, res)
+	}
 	bc, err := resolveBuildContext(opt.Dir, "android", "arm64")
 	if err != nil {
 		return nil, err
@@ -262,6 +269,9 @@ func goBuildAndroid(ctx context.Context, bc *BuildContext, ndk string, abi andro
 }
 
 func mobileBuild(ctx context.Context, opt MobileOptions, res *MobileResult) error {
+	if opt.Platform == "ios" {
+		return iosBuild(ctx, opt, res)
+	}
 	if opt.Bundle && !opt.Release {
 		return UsageError(errors.New("--aab needs --release: an app bundle is what goes to the store"))
 	}
@@ -340,6 +350,9 @@ func gradleCommand(dir string) (string, error) {
 }
 
 func mobileDev(ctx context.Context, opt MobileOptions, res *MobileResult) error {
+	if opt.Platform == "ios" {
+		return exitErrorf(ExitUsage, "usage", "mobile dev ios is not there yet; build with --simulator and install it with xcrun simctl install")
+	}
 	opt.Release, opt.Bundle = false, false
 	adbRun, err := systemADB()
 	if err != nil {
