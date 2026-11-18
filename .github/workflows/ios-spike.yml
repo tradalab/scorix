@@ -1,0 +1,21 @@
+name: ios-spike
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "mobile/ios-spike/**"
+      - ".github/workflows/ios-spike.yml"
+
+jobs:
+  simulator:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: build the spike app (Go c-archive + swiftc, no Xcode project)
+        run: mobile/ios-spike/build.sh "$RUNNER_TEMP/spike"
+      - name: run it twice on a simulator and report the numbers as annotations
+        run: mobile/ios-spike/run-sim.sh "$RUNNER_TEMP/spike/Spike.app"
