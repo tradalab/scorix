@@ -103,6 +103,40 @@ jobs:
           CGO_ENABLED=1 GOOS=android GOARCH=arm64 CC=$CC go vet -unsafeptr=false ./internal/driver/androidwebview ./native
           CGO_ENABLED=1 GOOS=android GOARCH=arm64 CC=$CC go build ./internal/driver/androidwebview ./native ./app
 
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Swift host and widgets for the iOS simulator
+        shell: bash
+        working-directory: mobile/ios/ScorixHost
+        run: |
+          set -o pipefail
+          xcodebuild -scheme ScorixHost-Package -destination 'generic/platform=iOS Simulator' build 2>&1 | tee "$RUNNER_TEMP/ios.log" | grep -E 'error:|BUILD (SUCCEEDED|FAILED)'
+      - name: Swift host tests on macOS
+        shell: bash
+        working-directory: mobile/ios/ScorixHost
+        run: swift test 2>&1 | tee -a "$RUNNER_TEMP/ios.log" | tail -5
+      - name: ioswebview and app with cgo against the iOS SDK
+        shell: bash
+        run: |
+          set -o pipefail
+          sdk=$(xcrun --sdk iphonesimulator --show-sdk-path)
+          target=arm64-apple-ios16.0-simulator
+          CGO_ENABLED=1 GOOS=ios GOARCH=arm64 CC="$(xcrun --sdk iphonesimulator -f clang)" \
+            CGO_CFLAGS="-isysroot $sdk -target $target" CGO_LDFLAGS="-isysroot $sdk -target $target" \
+            go vet ./internal/driver/ioswebview ./internal/driver/mobilebridge ./app 2>&1 | tee -a "$RUNNER_TEMP/ios.log"
+      - name: compile errors as annotations
+        if: always()
+        shell: bash
+        run: |
+          [ -f "$RUNNER_TEMP/ios.log" ] || exit 0
+          grep -E 'error:|\.go:[0-9]+:[0-9]+:' "$RUNNER_TEMP/ios.log" | head -10 | while IFS= read -r line; do echo "::error title=ios::${line:0:400}"; done
+          grep -E 'Executed [0-9]+ tests|BUILD (SUCCEEDED|FAILED)' "$RUNNER_TEMP/ios.log" | tail -3 | while IFS= read -r line; do echo "::notice title=ios::$line"; done
+
   e2e:
     strategy:
       fail-fast: false

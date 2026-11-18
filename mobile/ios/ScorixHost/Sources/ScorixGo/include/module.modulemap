@@ -1,0 +1,4 @@
+module ScorixGo {
+    header "scorix_go.h"
+    export *
+}
