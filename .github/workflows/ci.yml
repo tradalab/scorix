@@ -134,8 +134,8 @@ jobs:
         shell: bash
         run: |
           [ -f "$RUNNER_TEMP/ios.log" ] || exit 0
-          grep -E 'error:|\.go:[0-9]+:[0-9]+:' "$RUNNER_TEMP/ios.log" | head -10 | while IFS= read -r line; do echo "::error title=ios::${line:0:400}"; done
-          grep -E 'Executed [0-9]+ tests|BUILD (SUCCEEDED|FAILED)' "$RUNNER_TEMP/ios.log" | tail -3 | while IFS= read -r line; do echo "::notice title=ios::$line"; done
+          { grep -E 'error:|\.go:[0-9]+:[0-9]+:' "$RUNNER_TEMP/ios.log" || true; } | head -10 | while IFS= read -r line; do echo "::error title=ios::${line:0:400}"; done
+          { grep -E 'Executed [0-9]+ tests|BUILD (SUCCEEDED|FAILED)' "$RUNNER_TEMP/ios.log" || true; } | tail -3 | while IFS= read -r line; do echo "::notice title=ios::$line"; done
 
   e2e:
     strategy:
