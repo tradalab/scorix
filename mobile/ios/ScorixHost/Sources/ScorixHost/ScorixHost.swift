@@ -195,7 +195,7 @@ public final class ScorixViewController: UIViewController, PageSurface, WKScript
         host?.core.goMessage(Data(text.utf8))
     }
 
-    public func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+    public func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
         guard action.targetFrame?.isMainFrame ?? true, let url = action.request.url?.absoluteString,
               let host = host, host.core.goKeepsOut(url, clicked: action.navigationType == .linkActivated) else {
             decisionHandler(.allow)

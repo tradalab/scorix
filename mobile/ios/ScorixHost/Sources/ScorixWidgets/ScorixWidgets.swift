@@ -98,25 +98,33 @@ struct CardView: View {
     }
 }
 
-/// One home-screen widget fed by the app's widget module; list it in the widget extension's
-/// WidgetBundle with the kind and layout scorix.yaml declares under widgets.
-public struct ScorixWidget: Widget {
-    let kind: String
-    let label: String
-    let layout: ScorixWidgetLayout
-
-    public init(kind: String, label: String, layout: ScorixWidgetLayout = .card) {
-        self.kind = kind
-        self.label = label
-        self.layout = layout
+struct WidgetBackground: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 17.0, *) {
+            content.containerBackground(.background, for: .widget)
+        } else {
+            content.background(.background)
+        }
     }
+}
+
+/// A home-screen widget fed by the app's widget module. The app's extension declares one type per
+/// kind in scorix.yaml (static kind, label, layout) and lists it in its WidgetBundle.
+public protocol ScorixWidget: Widget {
+    static var kind: String { get }
+    static var label: String { get }
+    static var layout: ScorixWidgetLayout { get }
+}
+
+extension ScorixWidget {
+    public static var layout: ScorixWidgetLayout { .card }
 
     public var body: some WidgetConfiguration {
-        StaticConfiguration(kind: kind, provider: Provider(kind: kind)) { state in
-            CardView(state: state, layout: layout).containerBackground(.background, for: .widget)
+        StaticConfiguration(kind: Self.kind, provider: Provider(kind: Self.kind)) { state in
+            CardView(state: state, layout: Self.layout).modifier(WidgetBackground())
         }
-        .configurationDisplayName(label)
-        .supportedFamilies(layout == .grid ? [.systemLarge, .systemMedium] : [.systemSmall, .systemMedium])
+        .configurationDisplayName(Self.label)
+        .supportedFamilies(Self.layout == .grid ? [.systemLarge, .systemMedium] : [.systemSmall, .systemMedium])
     }
 }
 #endif
