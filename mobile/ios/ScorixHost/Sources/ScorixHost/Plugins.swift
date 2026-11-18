@@ -4,7 +4,6 @@ import CoreImage
 import CoreLocation
 import CryptoKit
 import LocalAuthentication
-import PhotosUI
 import SafariServices
 import Security
 import UIKit
@@ -266,7 +265,7 @@ final class DialogPlugin: NSObject, DialogPluginBase, UIDocumentPickerDelegate {
     }
 }
 
-final class ScannerPlugin: NSObject, ScannerPluginBase, DataScannerViewControllerDelegate, PHPickerViewControllerDelegate {
+final class ScannerPlugin: NSObject, ScannerPluginBase, DataScannerViewControllerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
     private var scanReply: Reply<PlainText>?
     private var imageReply: Reply<PlainText>?
 
@@ -311,29 +310,30 @@ final class ScannerPlugin: NSObject, ScannerPluginBase, DataScannerViewControlle
     }
 
     func scanImage(_ req: Empty, reply: Reply<PlainText>) {
-        var config = PHPickerConfiguration()
-        config.filter = .images
-        let picker = PHPickerViewController(configuration: config)
+        let picker = UIImagePickerController()
+        picker.sourceType = .photoLibrary
         picker.delegate = self
         imageReply = reply
         Scorix.shared.top.present(picker, animated: true)
     }
 
-    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
         picker.dismiss(animated: true)
         guard let reply = imageReply else { return }
         imageReply = nil
-        guard let provider = results.first?.itemProvider, provider.canLoadObject(ofClass: UIImage.self) else {
-            return reply.reject("canceled", "no image picked")
+        guard let image = info[.originalImage] as? UIImage, let ci = CIImage(image: image),
+              let detector = CIDetector(ofType: CIDetectorTypeQRCode, context: nil, options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]),
+              let code = detector.features(in: ci).compactMap({ ($0 as? CIQRCodeFeature)?.messageString }).first else {
+            return reply.reject("not_found", "the image holds no QR code")
         }
-        provider.loadObject(ofClass: UIImage.self) { object, _ in
-            guard let image = object as? UIImage, let ci = CIImage(image: image),
-                  let detector = CIDetector(ofType: CIDetectorTypeQRCode, context: nil, options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]),
-                  let code = detector.features(in: ci).compactMap({ ($0 as? CIQRCodeFeature)?.messageString }).first else {
-                return reply.reject("not_found", "the image holds no QR code")
-            }
-            reply.resolve(PlainText(text: code))
-        }
+        reply.resolve(PlainText(text: code))
+    }
+
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        picker.dismiss(animated: true)
+        let reply = imageReply
+        imageReply = nil
+        reply?.reject("canceled", "no image picked")
     }
 }
 
